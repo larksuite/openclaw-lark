@@ -1,0 +1,63 @@
+{
+  "name": "@larksuite/openclaw-lark",
+  "version": "2026.3.10",
+  "description": "OpenClaw Lark/Feishu channel plugin",
+  "type": "module",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "release": "node scripts/release.mjs",
+    "lint": "eslint src/ index.ts",
+    "lint:fix": "eslint src/ index.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@sinclair/typebox": "0.34.48",
+    "image-size": "^2.0.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/qrcode": "^1.5.5",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^9.39.3",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-n": "^17.24.0",
+    "execa": "^9.6.0",
+    "fs-extra": "^11.3.2",
+    "minimist": "^1.2.8",
+    "openclaw": "2026.2.26",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "feishu-openclaw-plugin",
+      "label": "Feishu",
+      "selectionLabel": "Lark/Feishu (飞书)",
+      "docsPath": "/channels/feishu",
+      "docsLabel": "feishu",
+      "blurb": "飞书/Lark enterprise messaging with doc/wiki/drive/task/calendar tools.",
+      "aliases": [
+        "lark"
+      ],
+      "order": 35,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@larksuite/openclaw-lark",
+      "localPath": "extensions/feishu",
+      "defaultChoice": "npm"
+    }
+  }
+}

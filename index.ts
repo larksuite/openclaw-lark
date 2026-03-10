@@ -1,0 +1,188 @@
+/**
+ * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ *
+ * OpenClaw Lark/Feishu plugin entry point.
+ *
+ * Registers the Feishu channel and all tool families:
+ * doc, wiki, drive, perm, bitable, task, calendar.
+ */
+
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import { emptyPluginConfigSchema } from 'openclaw/plugin-sdk';
+import { feishuPlugin } from './src/channel/plugin';
+import { LarkClient } from './src/core/lark-client';
+import { registerOapiTools } from './src/tools/oapi/index';
+import { registerFeishuMcpDocTools } from './src/tools/mcp/doc/index';
+import { registerFeishuOAuthTool } from './src/tools/oauth';
+import { registerFeishuOAuthBatchAuthTool } from './src/tools/oauth-batch-auth';
+import {
+  runDiagnosis,
+  formatDiagReportCli,
+  traceByMessageId,
+  formatTraceOutput,
+  analyzeTrace,
+} from './src/commands/diagnose';
+import { registerCommands } from './src/commands/index';
+import { larkLogger } from './src/core/lark-logger';
+import { emitSecurityWarnings } from './src/core/security-check';
+
+const log = larkLogger('plugin');
+
+// ---------------------------------------------------------------------------
+// Re-exports for external consumers
+// ---------------------------------------------------------------------------
+
+export { monitorFeishuProvider } from './src/channel/monitor';
+export { sendMessageFeishu, sendCardFeishu, updateCardFeishu, editMessageFeishu } from './src/messaging/outbound/send';
+export { getMessageFeishu } from './src/messaging/outbound/fetch';
+export {
+  uploadImageLark,
+  uploadFileLark,
+  sendImageLark,
+  sendFileLark,
+  sendAudioLark,
+  uploadAndSendMediaLark,
+} from './src/messaging/outbound/media';
+export {
+  sendTextLark,
+  sendCardLark,
+  sendMediaLark,
+  type SendTextLarkParams,
+  type SendCardLarkParams,
+  type SendMediaLarkParams,
+} from './src/messaging/outbound/deliver';
+export { type FeishuChannelData } from './src/messaging/outbound/outbound';
+export { probeFeishu } from './src/channel/probe';
+export {
+  addReactionFeishu,
+  removeReactionFeishu,
+  listReactionsFeishu,
+  FeishuEmoji,
+  VALID_FEISHU_EMOJI_TYPES,
+} from './src/messaging/outbound/reactions';
+export { forwardMessageFeishu } from './src/messaging/outbound/forward';
+export {
+  updateChatFeishu,
+  addChatMembersFeishu,
+  removeChatMembersFeishu,
+  listChatMembersFeishu,
+} from './src/messaging/outbound/chat-manage';
+export { feishuMessageActions } from './src/messaging/outbound/actions';
+export {
+  mentionedBot,
+  nonBotMentions,
+  extractMessageBody,
+  formatMentionForText,
+  formatMentionForCard,
+  formatMentionAllForText,
+  formatMentionAllForCard,
+  buildMentionedMessage,
+  buildMentionedCardContent,
+  type MentionInfo,
+} from './src/messaging/inbound/mention';
+export { feishuPlugin } from './src/channel/plugin';
+export type {
+  MessageContext,
+  RawMessage,
+  RawSender,
+  FeishuMessageContext,
+  FeishuReactionCreatedEvent,
+} from './src/messaging/types';
+export { handleFeishuReaction } from './src/messaging/inbound/reaction-handler';
+export { parseMessageEvent } from './src/messaging/inbound/parse';
+export { checkMessageGate } from './src/messaging/inbound/gate';
+export { isMessageExpired } from './src/messaging/inbound/dedup';
+
+// ---------------------------------------------------------------------------
+// Plugin definition
+// ---------------------------------------------------------------------------
+
+const plugin = {
+  id: 'feishu-openclaw-plugin',
+  name: 'Feishu',
+  description: 'Lark/Feishu channel plugin with im/doc/wiki/drive/task/calendar tools',
+  configSchema: emptyPluginConfigSchema(),
+  register(api: OpenClawPluginApi) {
+    LarkClient.setRuntime(api.runtime);
+    api.registerChannel({ plugin: feishuPlugin });
+
+    // ========================================
+
+    // Register OAPI tools (calendar, task - using Feishu Open API directly)
+    registerOapiTools(api);
+
+    // Register MCP doc tools (using Model Context Protocol)
+    registerFeishuMcpDocTools(api);
+
+    // Register OAuth tool (UAT device flow authorization)
+    registerFeishuOAuthTool(api);
+
+    // Register OAuth batch auth tool (batch authorization for all app scopes)
+    registerFeishuOAuthBatchAuthTool(api);
+
+    // ---- Tool call hooks (auto-trace AI tool invocations) ----
+
+    api.on('before_tool_call', (event) => {
+      log.info(`tool call: ${event.toolName} params=${JSON.stringify(event.params)}`);
+    });
+
+    api.on('after_tool_call', (event) => {
+      if (event.error) {
+        log.error(`tool fail: ${event.toolName} ${event.error} (${event.durationMs ?? 0}ms)`);
+      } else {
+        log.info(`tool done: ${event.toolName} ok (${event.durationMs ?? 0}ms)`);
+      }
+    });
+
+    // ---- Diagnostic commands ----
+
+    // CLI: openclaw feishu-diagnose [--trace <messageId>]
+    api.registerCli(
+      (ctx) => {
+        ctx.program
+          .command('feishu-diagnose')
+          .description('运行飞书插件诊断，检查配置、连通性和权限状态')
+          .option('--trace <messageId>', '按 message_id 追踪完整处理链路')
+          .option('--analyze', '分析追踪日志（需配合 --trace 使用）')
+          .action(async (opts: { trace?: string; analyze?: boolean }) => {
+            try {
+              if (opts.trace) {
+                const lines = await traceByMessageId(opts.trace);
+                // eslint-disable-next-line no-console -- CLI 命令直接输出到终端
+                console.log(formatTraceOutput(lines, opts.trace));
+                if (opts.analyze && lines.length > 0) {
+                  // eslint-disable-next-line no-console -- CLI 命令直接输出到终端
+                  console.log(analyzeTrace(lines, opts.trace));
+                }
+              } else {
+                const report = await runDiagnosis({
+                  config: ctx.config,
+                  logger: ctx.logger,
+                });
+                // eslint-disable-next-line no-console -- CLI 命令直接输出到终端
+                console.log(formatDiagReportCli(report));
+                if (report.overallStatus === 'unhealthy') {
+                  process.exitCode = 1;
+                }
+              }
+            } catch (err) {
+              ctx.logger.error(`诊断命令执行失败: ${err}`);
+              process.exitCode = 1;
+            }
+          });
+      },
+      { commands: ['feishu-diagnose'] },
+    );
+
+    // Chat commands: /feishu_diagnose, /feishu_doctor, /feishu_auth, /feishu
+    registerCommands(api);
+
+    // ---- Multi-account security checks ----
+    if (api.config) {
+      emitSecurityWarnings(api.config, api.logger);
+    }
+  },
+};
+
+export default plugin;
