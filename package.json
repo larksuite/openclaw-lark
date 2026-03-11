@@ -3,22 +3,27 @@
   "version": "2026.3.10",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "type": "module",
+  "bin": {
+    "feishu-cli": "./cli/run.mjs"
+  },
   "files": [
     "dist/",
+    "cli/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "release": "node scripts/release.mjs",
-    "lint": "eslint src/ index.ts",
-    "lint:fix": "eslint src/ index.ts --fix",
-    "format": "prettier --write src/**/*.ts",
-    "format:check": "prettier --check src/**/*.ts"
+    "lint": "eslint src/ cli/ index.ts",
+    "lint:fix": "eslint src/ cli/ index.ts --fix",
+    "format": "prettier --write src/**/*.ts cli/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts cli/**/*.ts"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@sinclair/typebox": "0.34.48",
+    "esbuild": "^0.27.0",
     "image-size": "^2.0.2",
     "zod": "^4.3.6"
   },
@@ -35,6 +40,7 @@
     "minimist": "^1.2.8",
     "openclaw": "2026.2.26",
     "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "openclaw": {

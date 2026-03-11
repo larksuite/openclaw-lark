@@ -5,6 +5,7 @@ node_modules/
 dist/
 release/
 src/tools/docs/
+cli/.generated/
 
 *.log
 
