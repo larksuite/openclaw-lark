@@ -103,7 +103,7 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
       });
 
       const account = getLarkAccount(cfg, accountId);
-      if (account.config?.uat?.autoOnboarding) {
+      if (account.config?.uat?.autoOnboarding && enabledAccounts.length === 1) {
         try {
           await triggerOnboarding({ cfg, userOpenId: id, accountId });
           pluginLog.info('onboarding completed', { id, accountId });
@@ -111,9 +111,10 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
           pluginLog.warn('onboarding failed', { id, accountId, error: String(err) });
         }
       } else {
-        pluginLog.info('autoOnboarding disabled; authorization must be user-initiated', {
+        pluginLog.info('skipping autoOnboarding', {
           id,
           accountId,
+          reason: enabledAccounts.length !== 1 ? 'ambiguous account' : 'autoOnboarding disabled',
         });
       }
     },
