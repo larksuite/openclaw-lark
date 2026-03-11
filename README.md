@@ -1,7 +1,7 @@
 # OpenClaw Lark/Feishu Plugin
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@larksuiteoapi/feishu-openclaw-plugin.svg)](https://www.npmjs.com/package/@larksuiteoapi/feishu-openclaw-plugin)
+[![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
 
 [中文版](./README.zh.md) | English
