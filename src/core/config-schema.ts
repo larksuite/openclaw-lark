@@ -119,6 +119,12 @@ export const UATConfigSchema = z
     enabled: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
+    /** true = 只有飞书应用 Owner 可以触发 OAuth 授权流程（适合小团队/核心 Agent）。
+     *  false（默认）= 任何已信任用户均可为自己发起授权（适合大部门/公共 Agent）。 */
+    ownerOnly: z.boolean().optional(),
+    /** true = 配对审批通过后自动向用户推送 OAuth 授权卡片。
+     *  false（默认）= 用户需要手动执行 /feishu auth 发起授权。 */
+    autoOnboarding: z.boolean().optional(),
   })
   .optional();
 

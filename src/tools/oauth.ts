@@ -20,6 +20,7 @@ import type { OpenClawPluginApi, ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { Type } from '@sinclair/typebox';
 import { getLarkAccount } from '../core/accounts';
+import { assertOwnerAccessStrict } from '../core/owner-policy';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import type { LarkTicket } from '../core/lark-ticket';
@@ -274,7 +275,10 @@ export async function executeAuthorize(
   } = params;
   const { appId, appSecret, brand, accountId } = account;
 
-  // 0. Authorization is tied to the current sender instead of App Owner only.
+  // 0. ownerOnly 模式：只有应用 Owner 可以触发授权流程
+  if (account.config?.uat?.ownerOnly) {
+    await assertOwnerAccessStrict(account, LarkClient.fromAccount(account).sdk, senderOpenId);
+  }
 
   // effectiveScope：可变 scope 变量，后续可能因 pendingFlow 合并而扩大
   let effectiveScope = scope;
