@@ -12,7 +12,7 @@
 import type { ChannelMeta, ChannelPlugin, ChannelThreadingToolContext, ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { DEFAULT_ACCOUNT_ID, PAIRING_APPROVED_MESSAGE } from 'openclaw/plugin-sdk';
 import type { LarkAccount } from '../core/types';
-import { getLarkAccount, getLarkAccountIds, getDefaultLarkAccountId } from '../core/accounts';
+import { getEnabledLarkAccounts, getLarkAccount, getLarkAccountIds, getDefaultLarkAccountId } from '../core/accounts';
 import {
   listFeishuDirectoryPeers,
   listFeishuDirectoryGroups,
@@ -89,7 +89,9 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
     idLabel: 'feishuUserId',
     normalizeAllowEntry: (entry) => entry.replace(/^(feishu|user|open_id):/i, ''),
     notifyApproval: async ({ cfg, id }) => {
-      const accountId = getDefaultLarkAccountId(cfg);
+      const enabledAccounts = getEnabledLarkAccounts(cfg);
+      const accountId =
+        enabledAccounts.length === 1 ? enabledAccounts[0]?.accountId ?? getDefaultLarkAccountId(cfg) : getDefaultLarkAccountId(cfg);
       pluginLog.info('notifyApproval called', { id, accountId });
 
       // 1. 发送配对成功消息（保持现有行为）
@@ -101,6 +103,14 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
       });
 
       // 2. 触发 onboarding
+      if (enabledAccounts.length !== 1) {
+        pluginLog.info('skip onboarding after pairing because account is ambiguous', {
+          id,
+          accountCount: enabledAccounts.length,
+        });
+        return;
+      }
+
       try {
         await triggerOnboarding({ cfg, userOpenId: id, accountId });
         pluginLog.info('onboarding completed', { id });
