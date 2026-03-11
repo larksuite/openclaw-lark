@@ -102,20 +102,19 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
         accountId,
       });
 
-      // 2. 触发 onboarding
-      if (enabledAccounts.length !== 1) {
-        pluginLog.info('skip onboarding after pairing because account is ambiguous', {
+      const account = getLarkAccount(cfg, accountId);
+      if (account.config?.uat?.autoOnboarding) {
+        try {
+          await triggerOnboarding({ cfg, userOpenId: id, accountId });
+          pluginLog.info('onboarding completed', { id, accountId });
+        } catch (err) {
+          pluginLog.warn('onboarding failed', { id, accountId, error: String(err) });
+        }
+      } else {
+        pluginLog.info('autoOnboarding disabled; authorization must be user-initiated', {
           id,
-          accountCount: enabledAccounts.length,
+          accountId,
         });
-        return;
-      }
-
-      try {
-        await triggerOnboarding({ cfg, userOpenId: id, accountId });
-        pluginLog.info('onboarding completed', { id });
-      } catch (err) {
-        pluginLog.warn('onboarding failed', { id, error: String(err) });
       }
     },
   },

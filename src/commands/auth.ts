@@ -16,6 +16,7 @@ import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import { getStoredToken } from '../core/token-store';
 import { filterSensitiveScopes } from '../core/tool-scopes';
+import { assertOwnerAccessStrict, OwnerAccessDeniedError } from '../core/owner-policy';
 
 /**
  * 执行飞书用户权限批量授权命令
@@ -36,6 +37,18 @@ export async function runFeishuAuth(config: OpenClawConfig): Promise<string> {
 
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
+
+  // ownerOnly 预检：非 owner 用户直接拒绝，避免后续流程空走
+  if (acct.config?.uat?.ownerOnly) {
+    try {
+      await assertOwnerAccessStrict(acct, sdk, senderOpenId);
+    } catch (err) {
+      if (err instanceof OwnerAccessDeniedError) {
+        return '❌ 当前应用仅限所有者（App Owner）使用，您没有权限发起授权。';
+      }
+      throw err;
+    }
+  }
 
   // 预检：是否还有未授权的 scope
   let appScopes: string[];

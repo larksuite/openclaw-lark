@@ -38,6 +38,7 @@ import { callWithUAT } from './uat-client';
 import { getStoredToken } from './token-store';
 import { getAppGrantedScopes, invalidateAppScopeCache, missingScopes } from './app-scope-checker';
 import { getAppOwnerFallback } from './app-owner-fallback';
+import { assertOwnerAccessStrict } from './owner-policy';
 import { larkLogger } from './lark-logger';
 import { type ToolActionKey, getRequiredScopes } from './scope-manager';
 import { rawLarkRequest } from './raw-request';
@@ -327,6 +328,11 @@ export class ToolClient {
         appScopeVerified,
         appId: this.account.appId,
       });
+    }
+
+    // ownerOnly 模式：非 owner 用户不允许使用 UAT 调用 API
+    if (this.account.config?.uat?.ownerOnly) {
+      await assertOwnerAccessStrict(this.account, this.sdk, userOpenId);
     }
 
     // 预检：是否有已存储的 token
