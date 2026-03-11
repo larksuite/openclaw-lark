@@ -43,7 +43,6 @@ import { LarkClient } from '../core/lark-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
 import { executeAuthorize } from './oauth';
 import { formatLarkError, json } from './oapi/helpers';
-import { OwnerAccessDeniedError } from '../core/owner-policy';
 import { enqueueFeishuChatTask } from '../channel/chat-queue';
 import { handleFeishuMessage } from '../messaging/inbound/handler';
 import { withTicket } from '../core/lark-ticket';
@@ -958,16 +957,6 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
  */
 export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotConfig) {
   const ticket = getTicket();
-
-  // --- Path 0：Owner 访问拒绝 → 直接返回友好提示 ---
-  if (err instanceof OwnerAccessDeniedError) {
-    return json({
-      error: 'permission_denied',
-      message: '当前应用仅限所有者（App Owner）使用。您没有权限使用相关功能。',
-      user_open_id: err.userOpenId,
-      // 注意：不序列化 err.appOwnerId，避免泄露 owner 的 open_id
-    });
-  }
 
   if (ticket) {
     const senderOpenId = ticket.senderOpenId;

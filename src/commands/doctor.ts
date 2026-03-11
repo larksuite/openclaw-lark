@@ -13,6 +13,7 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 
 import { getEnabledLarkAccounts } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
+import { getTicket } from '../core/lark-ticket';
 
 /**
  * Resolve the global config for cross-account operations.
@@ -65,6 +66,35 @@ function getAllToolScopes(): string[] {
     }
   }
   return Array.from(scopesSet).sort();
+}
+
+async function resolveDiagnosisUser(
+  account: ConfiguredLarkAccount,
+  sdk: Lark.Client,
+  preferSenderOpenId: boolean,
+): Promise<{ userOpenId: string | undefined; label: string }> {
+  if (preferSenderOpenId) {
+    const senderOpenId = getTicket()?.senderOpenId?.trim();
+    if (senderOpenId) {
+      return {
+        userOpenId: senderOpenId,
+        label: '当前发送者',
+      };
+    }
+  }
+
+  const ownerId = await getAppOwnerFallback(account, sdk);
+  if (ownerId) {
+    return {
+      userOpenId: ownerId,
+      label: '应用所有者（兜底）',
+    };
+  }
+
+  return {
+    userOpenId: undefined,
+    label: '未识别诊断对象',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +307,7 @@ function generatePermissionTable(
 async function checkUserPermissions(
   account: ConfiguredLarkAccount,
   sdk: Lark.Client,
+  preferSenderOpenId: boolean,
 ): Promise<{
   status: CheckStatus;
   markdown: string;
@@ -288,11 +319,10 @@ async function checkUserPermissions(
   const lines: string[] = [];
 
   try {
-    // 1. 获取应用所有者
-    const ownerId = await getAppOwnerFallback(account, sdk);
-
-    // 2. 读取 token
-    const token = ownerId ? await getStoredToken(appId, ownerId) : null;
+    const { userOpenId, label } = await resolveDiagnosisUser(account, sdk, preferSenderOpenId);
+    lines.push(`ℹ️ **诊断对象**: ${label}`);
+    lines.push('');
+    const token = userOpenId ? await getStoredToken(appId, userOpenId) : null;
 
     // 判断是否有有效的用户授权
     const hasUserAuth = !!token;
@@ -494,6 +524,7 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
   // }
 
   // 4. 逐账户诊断（仅目标账户）
+  const preferSenderOpenId = accounts.length === 1;
   for (let i = 0; i < accounts.length; i++) {
     const account = accounts[i] as ConfiguredLarkAccount;
     const sdk = LarkClient.fromAccount(account).sdk;
@@ -525,7 +556,7 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
     lines.push('');
 
     // 4c. 用户权限
-    const userResult = await checkUserPermissions(account, sdk);
+    const userResult = await checkUserPermissions(account, sdk, preferSenderOpenId);
     const userTitle = userResult.status === 'pass' ? '#### ✅ 用户身份权限检查通过' : '#### ❌ 用户身份权限检查未通过';
     lines.push(userTitle);
     lines.push('');
