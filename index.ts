@@ -11,7 +11,9 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { emptyPluginConfigSchema } from 'openclaw/plugin-sdk';
 import { feishuPlugin } from './src/channel/plugin';
+import { getEnabledLarkAccounts } from './src/core/accounts';
 import { LarkClient } from './src/core/lark-client';
+import { resolveAnyEnabledToolsConfig } from './src/core/tools-config';
 import { registerOapiTools } from './src/tools/oapi/index';
 import { registerFeishuMcpDocTools } from './src/tools/mcp/doc/index';
 import { registerFeishuOAuthTool } from './src/tools/oauth';
@@ -103,7 +105,7 @@ const plugin = {
   name: 'Feishu',
   description: 'Lark/Feishu channel plugin with im/doc/wiki/drive/task/calendar tools',
   configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
+  register(api: OpenClawPluginApi): void {
     LarkClient.setRuntime(api.runtime);
     api.registerChannel({ plugin: feishuPlugin });
 
@@ -115,11 +117,18 @@ const plugin = {
     // Register MCP doc tools (using Model Context Protocol)
     registerFeishuMcpDocTools(api);
 
-    // Register OAuth tool (UAT device flow authorization)
-    registerFeishuOAuthTool(api);
-
-    // Register OAuth batch auth tool (batch authorization for all app scopes)
-    registerFeishuOAuthBatchAuthTool(api);
+    // Register OAuth tools only when at least one enabled account keeps the
+    // auth capability group enabled.
+    if (api.config) {
+      const accounts = getEnabledLarkAccounts(api.config);
+      const toolsCfg = resolveAnyEnabledToolsConfig(accounts);
+      if (toolsCfg.auth) {
+        registerFeishuOAuthTool(api);
+        registerFeishuOAuthBatchAuthTool(api);
+      } else {
+        api.logger.info?.('feishu_oauth: auth tool group disabled in all accounts');
+      }
+    }
 
     // ---- Tool call hooks (auto-trace AI tool invocations) ----
 

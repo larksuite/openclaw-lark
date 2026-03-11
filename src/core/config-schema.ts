@@ -51,11 +51,21 @@ const ToolPolicySchema = z
 
 const FeishuToolsFlagSchema = z
   .object({
+    preset: z.enum(['full', 'minimal']).optional(),
     doc: z.boolean().optional(),
     wiki: z.boolean().optional(),
     drive: z.boolean().optional(),
     perm: z.boolean().optional(),
     scopes: z.boolean().optional(),
+    chat: z.boolean().optional(),
+    im: z.boolean().optional(),
+    calendar: z.boolean().optional(),
+    task: z.boolean().optional(),
+    bitable: z.boolean().optional(),
+    auth: z.boolean().optional(),
+    mail: z.boolean().optional(),
+    sheets: z.boolean().optional(),
+    okr: z.boolean().optional(),
   })
   .optional();
 

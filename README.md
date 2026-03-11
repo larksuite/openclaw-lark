@@ -69,6 +69,26 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+## Reducing Tool Overhead
+
+If you want a smaller default tool surface and lower prompt/context overhead, use the `minimal` preset and then opt specific capability groups back in:
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "tools": {
+        "preset": "minimal",
+        "calendar": true,
+        "task": true
+      }
+    }
+  }
+}
+```
+
+The `minimal` preset keeps the core messaging/auth/doc path available while disabling heavier capability groups such as calendar, tasks, bitable, wiki, drive, and sheets unless you explicitly re-enable them.
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).

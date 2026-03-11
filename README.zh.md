@@ -69,6 +69,26 @@
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+## 降低工具上下文开销
+
+如果你希望默认注册的工具更少、prompt/context 开销更低，可以使用 `minimal` 预设，再按需打开具体能力组：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "tools": {
+        "preset": "minimal",
+        "calendar": true,
+        "task": true
+      }
+    }
+  }
+}
+```
+
+`minimal` 预设会保留消息交互 / 授权 / 文档这条核心链路，同时默认关闭日历、任务、多维表格、知识库、云空间、电子表格等较重的能力组，只有在你显式打开时才会注册。
+
 ## 贡献
 
 我们欢迎社区的贡献！如果你发现 Bug 或有功能建议，请随时提交 [Issue](https://github.com/larksuite/openclaw-larksuite/issues) 或 [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls)。

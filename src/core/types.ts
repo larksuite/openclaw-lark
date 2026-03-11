@@ -58,11 +58,18 @@ export type FeishuIdType = 'open_id' | 'user_id' | 'union_id' | 'chat_id';
 
 /** Per-feature toggles for the Feishu-specific tool capabilities. */
 export interface FeishuToolsConfig {
+  preset?: 'full' | 'minimal';
   doc?: boolean;
   wiki?: boolean;
   drive?: boolean;
   perm?: boolean;
   scopes?: boolean;
+  chat?: boolean;
+  im?: boolean;
+  calendar?: boolean;
+  task?: boolean;
+  bitable?: boolean;
+  auth?: boolean;
   mail?: boolean;
   sheets?: boolean;
   okr?: boolean;

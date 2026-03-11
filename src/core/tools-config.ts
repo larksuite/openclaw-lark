@@ -23,16 +23,48 @@ import type { FeishuToolsConfig, LarkAccount } from './types';
  * permissions is a privileged operation that admins should opt into
  * explicitly.
  */
-export const DEFAULT_TOOLS_CONFIG: Required<FeishuToolsConfig> = {
+export const FULL_TOOLS_CONFIG: Required<Omit<FeishuToolsConfig, 'preset'>> = {
   doc: true,
   wiki: true,
   drive: true,
   scopes: true,
   perm: false,
+  chat: true,
+  im: true,
+  calendar: true,
+  task: true,
+  bitable: true,
+  auth: true,
   mail: true,
   sheets: true,
   okr: false,
 };
+
+/**
+ * A smaller default tool surface for users who want lower prompt overhead.
+ *
+ * Keeps the core messaging/auth/doc path available while disabling the
+ * heaviest capability groups unless they are explicitly re-enabled.
+ */
+export const MINIMAL_TOOLS_CONFIG: Required<Omit<FeishuToolsConfig, 'preset'>> = {
+  doc: true,
+  wiki: false,
+  drive: false,
+  scopes: false,
+  perm: false,
+  chat: true,
+  im: true,
+  calendar: false,
+  task: false,
+  bitable: false,
+  auth: true,
+  mail: false,
+  sheets: false,
+  okr: false,
+};
+
+/** Backward-compatible alias for the full/default preset. */
+export const DEFAULT_TOOLS_CONFIG = FULL_TOOLS_CONFIG;
 
 // ---------------------------------------------------------------------------
 // Resolver
@@ -45,17 +77,25 @@ export const DEFAULT_TOOLS_CONFIG: Required<FeishuToolsConfig> = {
  * to the default value.
  */
 export function resolveToolsConfig(cfg?: FeishuToolsConfig): Required<FeishuToolsConfig> {
-  if (!cfg) return { ...DEFAULT_TOOLS_CONFIG };
+  const preset = cfg?.preset ?? 'full';
+  const base = preset === 'minimal' ? MINIMAL_TOOLS_CONFIG : FULL_TOOLS_CONFIG;
 
   return {
-    doc: cfg.doc ?? DEFAULT_TOOLS_CONFIG.doc,
-    wiki: cfg.wiki ?? DEFAULT_TOOLS_CONFIG.wiki,
-    drive: cfg.drive ?? DEFAULT_TOOLS_CONFIG.drive,
-    perm: cfg.perm ?? DEFAULT_TOOLS_CONFIG.perm,
-    scopes: cfg.scopes ?? DEFAULT_TOOLS_CONFIG.scopes,
-    mail: cfg.mail ?? DEFAULT_TOOLS_CONFIG.mail,
-    sheets: cfg.sheets ?? DEFAULT_TOOLS_CONFIG.sheets,
-    okr: cfg.okr ?? DEFAULT_TOOLS_CONFIG.okr,
+    preset,
+    doc: cfg?.doc ?? base.doc,
+    wiki: cfg?.wiki ?? base.wiki,
+    drive: cfg?.drive ?? base.drive,
+    perm: cfg?.perm ?? base.perm,
+    scopes: cfg?.scopes ?? base.scopes,
+    chat: cfg?.chat ?? base.chat,
+    im: cfg?.im ?? base.im,
+    calendar: cfg?.calendar ?? base.calendar,
+    task: cfg?.task ?? base.task,
+    bitable: cfg?.bitable ?? base.bitable,
+    auth: cfg?.auth ?? base.auth,
+    mail: cfg?.mail ?? base.mail,
+    sheets: cfg?.sheets ?? base.sheets,
+    okr: cfg?.okr ?? base.okr,
   };
 }
 
@@ -71,11 +111,18 @@ export function resolveToolsConfig(cfg?: FeishuToolsConfig): Required<FeishuTool
  */
 export function resolveAnyEnabledToolsConfig(accounts: LarkAccount[]): Required<FeishuToolsConfig> {
   const merged: Required<FeishuToolsConfig> = {
+    preset: 'full',
     doc: false,
     wiki: false,
     drive: false,
     perm: false,
     scopes: false,
+    chat: false,
+    im: false,
+    calendar: false,
+    task: false,
+    bitable: false,
+    auth: false,
     mail: false,
     sheets: false,
     okr: false,
@@ -87,6 +134,12 @@ export function resolveAnyEnabledToolsConfig(accounts: LarkAccount[]): Required<
     merged.drive = merged.drive || cfg.drive;
     merged.perm = merged.perm || cfg.perm;
     merged.scopes = merged.scopes || cfg.scopes;
+    merged.chat = merged.chat || cfg.chat;
+    merged.im = merged.im || cfg.im;
+    merged.calendar = merged.calendar || cfg.calendar;
+    merged.task = merged.task || cfg.task;
+    merged.bitable = merged.bitable || cfg.bitable;
+    merged.auth = merged.auth || cfg.auth;
     merged.mail = merged.mail || cfg.mail;
     merged.sheets = merged.sheets || cfg.sheets;
     merged.okr = merged.okr || cfg.okr;

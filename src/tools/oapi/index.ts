@@ -9,6 +9,8 @@
  */
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import { getEnabledLarkAccounts } from '../../core/accounts';
+import { resolveAnyEnabledToolsConfig } from '../../core/tools-config';
 import {
   registerFeishuCalendarCalendarTool,
   registerFeishuCalendarEventTool,
@@ -40,50 +42,98 @@ import { registerFeishuSheetsTools } from './sheets/index';
 import { registerFeishuChatTools } from './chat/index';
 import { registerFeishuImTools as registerFeishuImUserTools } from './im/index';
 
-export function registerOapiTools(api: OpenClawPluginApi) {
+export function registerOapiTools(api: OpenClawPluginApi): void {
+  if (!api.config) {
+    api.logger.debug?.('feishu_oapi: No config available, skipping');
+    return;
+  }
+
+  const accounts = getEnabledLarkAccounts(api.config);
+  if (accounts.length === 0) {
+    api.logger.debug?.('feishu_oapi: No Feishu accounts configured, skipping');
+    return;
+  }
+
+  const toolsCfg = resolveAnyEnabledToolsConfig(accounts);
+  const enabledGroups: string[] = [];
+
   // Common tools
-  registerGetUserTool(api);
-  registerSearchUserTool(api);
+  if (toolsCfg.chat || toolsCfg.im || toolsCfg.calendar || toolsCfg.task) {
+    registerGetUserTool(api);
+    registerSearchUserTool(api);
+    enabledGroups.push('common');
+  }
 
   // Chat tools
-  registerFeishuChatTools(api);
+  if (toolsCfg.chat) {
+    registerFeishuChatTools(api);
+    enabledGroups.push('chat');
+  }
 
   // IM tools (user identity)
-  registerFeishuImUserTools(api);
+  if (toolsCfg.im) {
+    registerFeishuImUserTools(api);
+    enabledGroups.push('im');
+  }
 
   // Calendar tools
-  registerFeishuCalendarCalendarTool(api);
-  registerFeishuCalendarEventTool(api);
-  registerFeishuCalendarEventAttendeeTool(api);
-  registerFeishuCalendarFreebusyTool(api);
+  if (toolsCfg.calendar) {
+    registerFeishuCalendarCalendarTool(api);
+    registerFeishuCalendarEventTool(api);
+    registerFeishuCalendarEventAttendeeTool(api);
+    registerFeishuCalendarFreebusyTool(api);
+    enabledGroups.push('calendar');
+  }
 
   // Task tools
-  registerFeishuTaskTaskTool(api);
-  registerFeishuTaskTasklistTool(api);
-  registerFeishuTaskCommentTool(api);
-  registerFeishuTaskSubtaskTool(api);
+  if (toolsCfg.task) {
+    registerFeishuTaskTaskTool(api);
+    registerFeishuTaskTasklistTool(api);
+    registerFeishuTaskCommentTool(api);
+    registerFeishuTaskSubtaskTool(api);
+    enabledGroups.push('task');
+  }
 
   // Bitable tools
-  registerFeishuBitableAppTool(api);
-  registerFeishuBitableAppTableTool(api);
-  registerFeishuBitableAppTableRecordTool(api);
-  registerFeishuBitableAppTableFieldTool(api);
-  registerFeishuBitableAppTableViewTool(api);
+  if (toolsCfg.bitable) {
+    registerFeishuBitableAppTool(api);
+    registerFeishuBitableAppTableTool(api);
+    registerFeishuBitableAppTableRecordTool(api);
+    registerFeishuBitableAppTableFieldTool(api);
+    registerFeishuBitableAppTableViewTool(api);
+    enabledGroups.push('bitable');
+  }
 
   // Search tools
-  registerFeishuSearchTools(api);
+  if (toolsCfg.doc) {
+    registerFeishuSearchTools(api);
+    enabledGroups.push('search');
+  }
 
   // Drive tools
-  registerFeishuDriveTools(api);
+  if (toolsCfg.drive) {
+    registerFeishuDriveTools(api);
+    enabledGroups.push('drive');
+  }
 
   // Wiki tools
-  registerFeishuWikiTools(api);
+  if (toolsCfg.wiki) {
+    registerFeishuWikiTools(api);
+    enabledGroups.push('wiki');
+  }
 
   // Sheets tools
-  registerFeishuSheetsTools(api);
+  if (toolsCfg.sheets) {
+    registerFeishuSheetsTools(api);
+    enabledGroups.push('sheets');
+  }
 
   // IM tools (bot identity)
-  registerFeishuImBotTools(api);
+  if (toolsCfg.im) {
+    registerFeishuImBotTools(api);
+  }
 
-  api.logger.info?.('Registered all OAPI tools (calendar, task, bitable, search, drive, wiki, sheets, im)');
+  api.logger.info?.(
+    `Registered OAPI tool groups: ${enabledGroups.length > 0 ? enabledGroups.join(', ') : 'none'}`,
+  );
 }

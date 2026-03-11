@@ -153,16 +153,37 @@ function detectRegisteredTools(config: OpenClawConfig): string[] {
   if (toolsCfg.wiki) tools.push('feishu_wiki');
   if (toolsCfg.drive) tools.push('feishu_drive');
   if (toolsCfg.perm) tools.push('feishu_perm');
-  tools.push(
-    'feishu_bitable_get_meta',
-    'feishu_bitable_list_fields',
-    'feishu_bitable_list_records',
-    'feishu_bitable_get_record',
-    'feishu_bitable_create_record',
-    'feishu_bitable_update_record',
-  );
-  tools.push('feishu_task');
-  tools.push('feishu_calendar');
+  if (toolsCfg.chat) tools.push('feishu_chat', 'feishu_chat_members');
+  if (toolsCfg.im) {
+    tools.push(
+      'feishu_im_user_message',
+      'feishu_im_user_fetch_resource',
+      'feishu_im_user_get_messages',
+      'feishu_im_user_get_thread_messages',
+      'feishu_im_user_search_messages',
+      'feishu_im_bot_image',
+    );
+  }
+  if (toolsCfg.bitable) {
+    tools.push(
+      'feishu_bitable_app',
+      'feishu_bitable_app_table',
+      'feishu_bitable_app_table_record',
+      'feishu_bitable_app_table_field',
+      'feishu_bitable_app_table_view',
+    );
+  }
+  if (toolsCfg.task) tools.push('feishu_task', 'feishu_task_tasklist', 'feishu_task_comment', 'feishu_task_subtask');
+  if (toolsCfg.calendar) {
+    tools.push(
+      'feishu_calendar',
+      'feishu_calendar_event',
+      'feishu_calendar_event_attendee',
+      'feishu_calendar_freebusy',
+    );
+  }
+  if (toolsCfg.sheets) tools.push('feishu_sheet');
+  if (toolsCfg.auth) tools.push('feishu_oauth', 'feishu_oauth_batch_auth');
 
   return tools;
 }
