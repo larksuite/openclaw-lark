@@ -117,6 +117,7 @@ const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
 export const UATConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
+    ownerOnly: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
   })

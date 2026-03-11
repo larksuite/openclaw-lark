@@ -330,8 +330,11 @@ export class ToolClient {
       });
     }
 
-    // Owner 检查：非 owner 用户直接拒绝（从 uat-client.ts 迁移至此）
-    await assertOwnerAccessStrict(this.account, this.sdk, userOpenId);
+    // Owner 检查：仅在 ownerOnly 模式下执行（默认 true）
+    const ownerOnly = this.account.config?.uat?.ownerOnly ?? true;
+    if (ownerOnly) {
+      await assertOwnerAccessStrict(this.account, this.sdk, userOpenId);
+    }
 
     // 预检：是否有已存储的 token
     const stored = await getStoredToken(this.account.appId, userOpenId);
