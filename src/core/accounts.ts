@@ -37,25 +37,9 @@ function baseConfig(section: FeishuConfig): Omit<FeishuConfig, 'accounts'> {
   return rest;
 }
 
-/**
- * 合并 base config 与 account override。
- *
- * 当 account 将策略设为 "open" 时，剔除从 base 继承的限制性字段，
- * 避免与 "open" 语义冲突。
- */
+/** Merge base config with account override (account fields take precedence). */
 function mergeAccountConfig(base: Omit<FeishuConfig, 'accounts'>, override: Partial<FeishuConfig>): FeishuConfig {
-  const merged = { ...base, ...override } as FeishuConfig;
-
-  if (override.groupPolicy === 'open') {
-    if (!('groups' in override)) merged.groups = undefined;
-    if (!('groupAllowFrom' in override)) merged.groupAllowFrom = undefined;
-  }
-
-  if (override.dmPolicy === 'open' && !('allowFrom' in override)) {
-    merged.allowFrom = ['*'];
-  }
-
-  return merged;
+  return { ...base, ...override } as FeishuConfig;
 }
 
 /** Coerce a domain string to `LarkBrand`, defaulting to `"feishu"`. */
