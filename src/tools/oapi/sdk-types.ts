@@ -47,6 +47,12 @@ export interface DriveFileData {
   file?: { token?: string; [key: string]: unknown };
 }
 
+/** Drive folder creation response. */
+export interface DriveFolderData {
+  token?: string;
+  url?: string;
+}
+
 /** Drive async task response (move / delete). */
 export interface DriveTaskData {
   task_id?: string;

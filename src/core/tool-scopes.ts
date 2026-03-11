@@ -109,6 +109,7 @@ export type ToolActionKey =
   | 'feishu_doc_comments.patch'
   | 'feishu_doc_media.download'
   | 'feishu_doc_media.insert'
+  | 'feishu_drive_file.create_folder'
   | 'feishu_drive_file.copy'
   | 'feishu_drive_file.delete'
   | 'feishu_drive_file.download'
@@ -251,6 +252,7 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_chat.search': ['im:chat:read'],
   'feishu_chat.get': ['im:chat:read'],
   'feishu_chat_members.default': ['im:chat.members:read'],
+  'feishu_drive_file.create_folder': ['space:folder:create'],
   'feishu_drive_file.list': ['space:document:retrieve'],
   'feishu_drive_file.get_meta': ['drive:drive.metadata:readonly'],
   'feishu_drive_file.copy': ['docs:document:copy'],
