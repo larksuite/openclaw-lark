@@ -2,7 +2,7 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 历史消息列表以应用身份读取，搜索仍以用户身份调用
+ * 消息读取工具集 -- 先以用户身份校验访问边界，再以应用身份拉取历史消息
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -25,6 +25,81 @@ import { getUATUserName, batchResolveUserNamesAsUser } from './user-name-uat';
 
 function sortRuleToSortType(rule?: 'create_time_asc' | 'create_time_desc'): 'ByCreateTimeAsc' | 'ByCreateTimeDesc' {
   return rule === 'create_time_asc' ? 'ByCreateTimeAsc' : 'ByCreateTimeDesc';
+}
+
+/**
+ * 在 tenant 拉取历史消息前，先显式做一遍 UAT 预检。
+ *
+ * 这样可以保留原先的 owner / OAuth 边界，避免 tenant 读取路径绕过用户态校验。
+ */
+async function assertHistoryReadAccessAsUser(
+  client: ToolClient,
+  log: { info: (msg: string) => void },
+): Promise<void> {
+  const senderOpenId = client.senderOpenId;
+  if (!senderOpenId) {
+    throw new Error('missing sender open_id for history access check');
+  }
+
+  log.info(`history access check: sender_open_id=${senderOpenId}`);
+  const res = await client.invoke(
+    'feishu_im_user_get_messages.default',
+    (sdk, opts) =>
+      sdk.contact.user.batch(
+        {
+          params: {
+            user_ids: [senderOpenId],
+            user_id_type: 'open_id',
+          },
+        },
+        opts,
+      ),
+    {
+      as: 'user',
+      userOpenId: senderOpenId,
+    },
+  );
+  assertLarkOk(res);
+}
+
+/**
+ * 对显式传入的 chat_id 做一次用户态可见性校验。
+ *
+ * 使用 chat.get 的安全校验头，确保当前用户本来就能访问这个会话。
+ */
+async function assertChatReadableAsUser(
+  client: ToolClient,
+  chatId: string,
+  log: { info: (msg: string) => void },
+): Promise<void> {
+  const senderOpenId = client.senderOpenId;
+  if (!senderOpenId) {
+    throw new Error('missing sender open_id for chat visibility check');
+  }
+
+  log.info(`chat visibility check: chat_id=${chatId}`);
+  const res = await client.invoke(
+    'feishu_chat.get',
+    (sdk, opts) =>
+      sdk.im.v1.chat.get(
+        {
+          path: { chat_id: chatId },
+          params: { user_id_type: 'open_id' },
+        },
+        {
+          ...(opts ?? {}),
+          headers: {
+            ...((opts as any)?.headers ?? {}),
+            'X-Chat-Custom-Header': 'enable_chat_list_security_check',
+          },
+        } as any,
+      ),
+    {
+      as: 'user',
+      userOpenId: senderOpenId,
+    },
+  );
+  assertLarkOk(res);
 }
 
 /** open_id → chat_id (P2P 单聊) */
@@ -149,7 +224,7 @@ function registerGetMessages(api: OpenClawPluginApi) {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
       description:
-        '【历史消息列表以应用身份读取】获取群聊或单聊的历史消息。' +
+        '【先校验用户访问边界，再以应用身份拉取历史消息】获取群聊或单聊的历史消息。' +
         '\n\n用法：' +
         '\n- 通过 chat_id 获取群聊/单聊消息' +
         '\n- 通过 open_id 获取与指定用户的单聊消息（会先以用户身份解析 chat_id）' +
@@ -175,9 +250,12 @@ function registerGetMessages(api: OpenClawPluginApi) {
           }
 
           const client = toolClient();
+          await assertHistoryReadAccessAsUser(client, log);
 
           let chatId = p.chat_id ?? '';
-          if (p.open_id) {
+          if (p.chat_id) {
+            await assertChatReadableAsUser(client, p.chat_id, log);
+          } else if (p.open_id) {
             log.info(`resolving P2P chat for open_id=${p.open_id}`);
             chatId = await resolveP2PChatId(client, p.open_id, log);
           }
@@ -253,7 +331,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
       description:
-        '【历史消息列表以应用身份读取】获取话题（thread）内的消息列表。' +
+        '【先校验用户访问边界，再以应用身份拉取历史消息】获取话题（thread）内的消息列表。' +
         '\n\n用法：' +
         '\n- 通过 thread_id（omt_xxx）获取话题内的所有消息' +
         '\n- 支持分页：page_size + page_token' +
@@ -264,6 +342,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
         const p = params as GetThreadMessagesParams;
         try {
           const client = toolClient();
+          await assertHistoryReadAccessAsUser(client, log);
           log.info(
             `list: thread_id=${p.thread_id}, sort=${p.sort_rule ?? 'create_time_desc'}, page_size=${p.page_size ?? 50}`,
           );
