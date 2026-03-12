@@ -62,6 +62,9 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
   const resolvedFooter = resolveFooterConfig(feishuCfg?.footer);
 
+  let selectedModelName: string | undefined;
+  let usedSkills: string[] = params.skillFilter ? [...params.skillFilter] : [];
+
   log.info('reply mode resolved', {
     effectiveReplyMode,
     replyMode,
@@ -85,6 +88,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         replyToMessageId,
         replyInThread,
         resolvedFooter,
+        modelName: selectedModelName,
+        usedSkills,
       })
     : null;
 
@@ -306,7 +311,19 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     dispatcher,
     replyOptions: {
       ...replyOptions,
-      onModelSelected: prefixContext.onModelSelected,
+      onModelSelected: (ctx: { provider: string; model: string; thinkLevel: string | undefined }) => {
+        selectedModelName = `${ctx.provider}/${ctx.model}`;
+        controller?.setModelName(selectedModelName);
+        prefixContext.onModelSelected?.(ctx);
+      },
+      onToolStart: async (payload: { name?: string; phase?: string }) => {
+        const toolName = payload.name?.trim();
+        if (!toolName) return;
+        if (!usedSkills.includes(toolName)) {
+          usedSkills = [...usedSkills, toolName];
+          controller?.setUsedSkills(usedSkills);
+        }
+      },
       disableBlockStreaming: !enableBlockStreaming,
       ...(controller
         ? {

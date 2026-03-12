@@ -121,6 +121,8 @@ export interface CreateFeishuReplyDispatcherParams {
   skipTyping?: boolean;
   /** When true, replies are sent into the thread instead of main chat. */
   replyInThread?: boolean;
+  /** Effective skill filter for this run (group-level resolved). */
+  skillFilter?: string[];
 }
 
 /**
@@ -165,4 +167,6 @@ export interface StreamingCardDeps {
   replyToMessageId: string | undefined;
   replyInThread: boolean | undefined;
   resolvedFooter: Required<FeishuFooterConfig>;
+  modelName?: string;
+  usedSkills?: string[];
 }

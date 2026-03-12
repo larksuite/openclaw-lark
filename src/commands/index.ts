@@ -11,7 +11,6 @@ import { runFeishuDoctor } from './doctor';
 import { runFeishuAuth } from './auth';
 import { getPluginVersion } from '../core/version';
 
-
 export function registerCommands(api: OpenClawPluginApi): void {
   // /feishu_diagnose
   api.registerCommand({
