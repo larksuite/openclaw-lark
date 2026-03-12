@@ -220,7 +220,13 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       if (shouldUseCard(text)) {
         const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
         log.info('deliver: sending card chunks', { count: chunks.length, chatId });
+        let cardTableLimitHit = false;
         for (const chunk of chunks) {
+          // After a 230099, skip card attempts for remaining chunks
+          if (cardTableLimitHit) {
+            await sendMessageFeishu({ cfg, to: chatId, text: chunk, replyToMessageId, replyInThread, accountId });
+            continue;
+          }
           try {
             await sendMarkdownCardFeishu({
               cfg,
@@ -234,15 +240,9 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             if (staticGuard?.terminate('deliver.cardChunk', err)) return;
             // Card table count exceeds Feishu limit — fall back to plain text
             if (extractLarkApiCode(err) === 230099) {
-              log.warn('card table limit exceeded (230099), falling back to text for this chunk');
-              await sendMessageFeishu({
-                cfg,
-                to: chatId,
-                text: chunk,
-                replyToMessageId,
-                replyInThread,
-                accountId,
-              });
+              log.warn('card table limit exceeded (230099), falling back to text');
+              cardTableLimitHit = true;
+              await sendMessageFeishu({ cfg, to: chatId, text: chunk, replyToMessageId, replyInThread, accountId });
               continue;
             }
             throw err;

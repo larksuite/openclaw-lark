@@ -714,9 +714,13 @@ export class StreamingCardController {
       }
 
       // Card table count exceeds Feishu limit — disable CardKit streaming
+      // Also clear originalCardKitCardId so onIdle won't retry with the same card
       if (apiCode === 230099) {
-        log.warn('flushCardUpdate: card table limit exceeded (230099), disabling CardKit streaming');
+        log.warn('flushCardUpdate: card table limit exceeded (230099), disabling CardKit streaming', {
+          seq: this.cardKit.cardKitSequence,
+        });
         this.cardKit.cardKitCardId = null;
+        this.cardKit.originalCardKitCardId = null;
         return;
       }
 
