@@ -119,6 +119,7 @@ export const UATConfigSchema = z
     enabled: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
+    ownerOnly: z.boolean().optional(),
   })
   .optional();
 

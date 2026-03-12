@@ -11,6 +11,10 @@
 import type { ConfiguredLarkAccount } from './types';
 import { getAppOwnerFallback } from './app-owner-fallback';
 
+function isOwnerOnlyEnabled(account: ConfiguredLarkAccount): boolean {
+  return account.config.uat?.ownerOnly ?? true;
+}
+
 // ---------------------------------------------------------------------------
 // Error class
 // ---------------------------------------------------------------------------
@@ -52,6 +56,10 @@ export async function assertOwnerAccessStrict(
   sdk: any,
   userOpenId: string,
 ): Promise<void> {
+  if (!isOwnerOnlyEnabled(account)) {
+    return;
+  }
+
   const ownerOpenId = await getAppOwnerFallback(account, sdk);
 
   if (!ownerOpenId) {
