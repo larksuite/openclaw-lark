@@ -5,7 +5,7 @@
  * feishu_doc_media tool -- 文档媒体管理（插入 + 下载）
  *
  * Actions:
- *   insert   - 在飞书文档末尾插入本地图片或文件（3 步流程）
+ *   insert   - 在飞书文档中插入本地图片或文件（支持指定位置，3 步流程）
  *   download - 下载文档素材或画板缩略图到本地
  *
  * 使用以下 SDK 接口:
@@ -126,6 +126,22 @@ const DocMediaSchema = Type.Union([
         description: '图片描述/标题（可选，仅图片生效）',
       }),
     ),
+    block_id: Type.Optional(
+      Type.String({
+        description:
+          '父块 ID（可选）。指定将媒体插入到哪个块的子级下。' +
+          '默认为文档根节点（documentId），即追加到文档末尾。' +
+          '可通过 feishu_doc_read 获取目标块的 block_id',
+      }),
+    ),
+    index: Type.Optional(
+      Type.Integer({
+        description:
+          '插入位置索引（可选，0-based）。在父块的子块列表中，插入到第 index 个子块之前。' +
+          '不指定则追加到父块末尾',
+        minimum: 0,
+      }),
+    ),
   }),
 
   // DOWNLOAD action
@@ -156,6 +172,8 @@ interface InsertParams {
   type?: 'image' | 'file';
   align?: 'left' | 'center' | 'right';
   caption?: string;
+  block_id?: string;
+  index?: number;
 }
 
 interface DownloadParams {
@@ -213,12 +231,15 @@ async function handleInsert(
         {
           path: {
             document_id: documentId,
-            block_id: documentId,
+            block_id: p.block_id ?? documentId,
           },
           data: {
             children: [{ block_type: config.block_type, ...config.block_data }],
           },
-          params: { document_revision_id: -1 },
+          params: {
+            document_revision_id: -1,
+            ...(p.index != null ? { index: p.index } : {}),
+          },
         },
         opts,
       ),
@@ -414,7 +435,7 @@ export function registerDocMediaTool(api: OpenClawPluginApi) {
       description:
         '【以用户身份】文档媒体管理工具。' +
         '支持两种操作：' +
-        '(1) insert - 在飞书文档末尾插入本地图片或文件（需要文档 ID + 本地文件路径）；' +
+        '(1) insert - 在飞书文档中插入本地图片或文件（需要文档 ID + 本地文件路径，可指定插入位置）；' +
         '(2) download - 下载文档素材或画板缩略图到本地（需要资源 token + 输出路径）。' +
         '\n\n【重要】insert 仅支持本地文件路径。URL 图片请使用 create-doc/update-doc 的 <image url="..."/> 语法。',
       parameters: DocMediaSchema,
