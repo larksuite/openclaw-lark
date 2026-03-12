@@ -713,14 +713,14 @@ export class StreamingCardController {
         return;
       }
 
-      // Card table count exceeds Feishu limit — disable CardKit streaming
-      // Also clear originalCardKitCardId so onIdle won't retry with the same card
+      // Card table count exceeds Feishu limit — disable CardKit streaming.
+      // Keep originalCardKitCardId so onIdle can do final CardKit update
+      // (CardKit 2.0 cards don't support IM patch, only CardKit API).
       if (apiCode === 230099) {
         log.warn('flushCardUpdate: card table limit exceeded (230099), disabling CardKit streaming', {
           seq: this.cardKit.cardKitSequence,
         });
         this.cardKit.cardKitCardId = null;
-        this.cardKit.originalCardKitCardId = null;
         return;
       }
 

@@ -74,7 +74,7 @@ export function expandAutoMode(params: {
  * being rendered inside a Feishu interactive card (fenced code blocks or
  * markdown tables).
  */
-/** Empirical Feishu card table limit (error 230099 beyond this). */
+/** Empirical Feishu card table limit — 4+ tables trigger error 230099 (tested 2026-03). */
 const FEISHU_CARD_TABLE_LIMIT = 3;
 
 export function shouldUseCard(text: string): boolean {

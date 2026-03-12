@@ -220,9 +220,9 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       if (shouldUseCard(text)) {
         const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
         log.info('deliver: sending card chunks', { count: chunks.length, chatId });
+        // Runtime fallback after shouldUseCard() pre-check passed but API still rejects
         let cardTableLimitHit = false;
         for (const chunk of chunks) {
-          // After a 230099, skip card attempts for remaining chunks
           if (cardTableLimitHit) {
             await sendMessageFeishu({ cfg, to: chatId, text: chunk, replyToMessageId, replyInThread, accountId });
             continue;
