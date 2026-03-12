@@ -38,25 +38,30 @@ function baseConfig(section: FeishuConfig): Omit<FeishuConfig, 'accounts'> {
 }
 
 /**
- * 合并 base config 与 account override。
+ * Merge base config with account override.
  *
- * 当 account 将策略设为 "open" 时，剔除从 base 继承的限制性字段，
- * 避免与 "open" 语义冲突。
+ * Account-level fields take precedence, while preserving the multi-account
+ * semantics added on this branch:
+ * - `uat` keeps a shallow deep-merge so account-level partial overrides do not
+ *   discard top-level policy flags.
+ * - switching an account to `"open"` should not inherit restrictive
+ *   `groups`/`groupAllowFrom`/`allowFrom` values from the base config.
  */
 function mergeAccountConfig(base: Omit<FeishuConfig, 'accounts'>, override: Partial<FeishuConfig>): FeishuConfig {
   const merged = { ...base, ...override } as FeishuConfig;
 
-  // uat 需要 deep merge：账号级只改 autoOnboarding 时不应丢弃顶层的 ownerOnly/appRoleAuth/accessLevel。
-  // 仅当 account override 显式设了 uat 时才合并，否则保留 base 的值。
+  // 账号级仅覆盖部分 UAT 配置时，保留顶层未覆盖的判权开关。
   if ('uat' in override && override.uat !== undefined) {
     merged.uat = { ...base.uat, ...override.uat };
   }
 
+  // account 显式切到 open 时，不再继承顶层的群限制配置。
   if (override.groupPolicy === 'open') {
     if (!('groups' in override)) merged.groups = undefined;
     if (!('groupAllowFrom' in override)) merged.groupAllowFrom = undefined;
   }
 
+  // account 显式切到 open 且未自带 allowFrom 时，补齐通配符语义。
   if (override.dmPolicy === 'open' && !('allowFrom' in override)) {
     merged.allowFrom = ['*'];
   }

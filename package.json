@@ -1,6 +1,6 @@
 {
-  "name": "@larksuite/feishu-openclaw-plugin",
-  "version": "2026.3.10",
+  "name": "@larksuite/openclaw-lark",
+  "version": "2026.3.12",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "type": "module",
   "files": [
@@ -42,7 +42,7 @@
       "./index.ts"
     ],
     "channel": {
-      "id": "feishu-openclaw-plugin",
+      "id": "openclaw-lark",
       "label": "Feishu",
       "selectionLabel": "Lark/Feishu (飞书)",
       "docsPath": "/channels/feishu",

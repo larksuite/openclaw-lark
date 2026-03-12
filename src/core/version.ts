@@ -41,13 +41,13 @@ export function getPluginVersion(): string {
 /**
  * 生成 User-Agent 字符串
  *
- * @returns User-Agent 字符串，格式：`feishu-openclaw-plugin/{version}`
+ * @returns User-Agent 字符串，格式：`openclaw-lark/{version}`
  *
  * @example
  * ```typescript
- * getUserAgent() // => "feishu-openclaw-plugin/2026.2.28.5"
+ * getUserAgent() // => "openclaw-lark/2026.2.28.5"
  * ```
  */
 export function getUserAgent(): string {
-  return `feishu-openclaw-plugin/${getPluginVersion()}`;
+  return `openclaw-lark/${getPluginVersion()}`;
 }
