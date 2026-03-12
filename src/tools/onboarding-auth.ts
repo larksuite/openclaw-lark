@@ -17,6 +17,13 @@ import { getAppGrantedScopes } from '../core/app-scope-checker';
 import { executeAuthorize } from './oauth';
 import { larkLogger } from '../core/lark-logger';
 import { filterSensitiveScopes } from '../core/tool-scopes';
+import {
+  assertUatAccess,
+  UatAccessDeniedError,
+  UatAccessUnavailableError,
+  UatIdentityRequiredError,
+} from '../core/uat-access-guard';
+import { sendMessageFeishu } from '../messaging/outbound/send';
 
 const log = larkLogger('tools/onboarding-auth');
 
@@ -53,6 +60,38 @@ export async function triggerOnboarding(params: {
 
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
+
+  // UAT 策略检查：onboarding 是辅助功能，不满足时给用户明确提示，而不是静默跳过。
+  try {
+    let stateDir: string | undefined;
+    try { stateDir = LarkClient.runtime.state.resolveStateDir(); } catch {}
+    await assertUatAccess({ account: acct, sdk, userOpenId, stateDir });
+  } catch (err) {
+    log.info(`UAT access check failed for ${userOpenId}, skipping onboarding: ${err}`);
+    let text: string | undefined;
+    if (err instanceof UatAccessDeniedError) {
+      text = `已完成配对，但当前策略不允许自动发起授权：${err.message}\n如需继续，请联系管理员调整 Feishu UAT 访问策略。`;
+    } else if (err instanceof UatAccessUnavailableError) {
+      text = `已完成配对，但暂时无法自动发起授权：${err.message}\n请稍后重试，或联系管理员检查应用权限。`;
+    } else if (err instanceof UatIdentityRequiredError) {
+      text = `已完成配对，但暂时无法自动发起授权：${err.message}`;
+    }
+
+    if (text) {
+      try {
+        await sendMessageFeishu({
+          cfg,
+          to: userOpenId,
+          text,
+          accountId,
+        });
+      } catch (notifyErr) {
+        log.warn(`failed to notify onboarding skip for ${userOpenId}: ${notifyErr}`);
+      }
+    }
+    return;
+  }
+
   log.info(`starting OAuth for ${userOpenId}`);
 
   // 1. 动态获取应用已开通的 user scope 列表

@@ -46,6 +46,12 @@ function baseConfig(section: FeishuConfig): Omit<FeishuConfig, 'accounts'> {
 function mergeAccountConfig(base: Omit<FeishuConfig, 'accounts'>, override: Partial<FeishuConfig>): FeishuConfig {
   const merged = { ...base, ...override } as FeishuConfig;
 
+  // uat 需要 deep merge：账号级只改 autoOnboarding 时不应丢弃顶层的 ownerOnly/appRoleAuth/accessLevel。
+  // 仅当 account override 显式设了 uat 时才合并，否则保留 base 的值。
+  if ('uat' in override && override.uat !== undefined) {
+    merged.uat = { ...base.uat, ...override.uat };
+  }
+
   if (override.groupPolicy === 'open') {
     if (!('groups' in override)) merged.groups = undefined;
     if (!('groupAllowFrom' in override)) merged.groupAllowFrom = undefined;

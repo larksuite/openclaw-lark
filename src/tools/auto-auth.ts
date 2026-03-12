@@ -38,6 +38,7 @@ import { larkLogger } from '../core/lark-logger';
 const log = larkLogger('tools/auto-auth');
 import { getLarkAccount } from '../core/accounts';
 import { UserAuthRequiredError, UserScopeInsufficientError, AppScopeMissingError } from '../core/tool-client';
+import { isUatPolicyError } from '../core/uat-access-guard';
 import { invalidateAppScopeCache, getAppGrantedScopes, isAppScopeSatisfied } from '../core/app-scope-checker';
 import { LarkClient } from '../core/lark-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
@@ -960,6 +961,12 @@ export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotC
 
   if (ticket) {
     const senderOpenId = ticket.senderOpenId;
+
+    // --- Path 0：UAT 策略错误 → 直接返回结构化错误，不触发 auto-auth ---
+    if (isUatPolicyError(err)) {
+      log.info(`UatPolicyError (${(err as Error).name}), skipping auto-auth`);
+      return json({ error: (err as Error).message });
+    }
 
     // --- Path 1：用户授权类错误 → 防抖合并后发起 OAuth ---
 
