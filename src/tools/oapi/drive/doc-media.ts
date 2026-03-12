@@ -138,7 +138,7 @@ const DocMediaSchema = Type.Union([
       Type.Integer({
         description:
           '插入位置索引（可选，0-based）。在父块的子块列表中，插入到第 index 个子块之前。' +
-          '不指定则追加到父块末尾',
+          '不指定则追加到父块末尾。若未指定 block_id，则以文档根节点为父块',
         minimum: 0,
       }),
     ),
@@ -223,7 +223,7 @@ async function handleInsert(
   const fileName = path.basename(filePath);
   log.info(`insert: doc=${documentId}, type=${mediaType}, file=${fileName}, size=${fileSize}`);
 
-  // 2. 创建空 Block（追加到文档末尾）
+  // 2. 创建空 Block（插入到指定父块，默认追加到文档末尾）
   const createRes: any = await client.invoke(
     'feishu_doc_media.insert',
     (sdk, opts) =>
