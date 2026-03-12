@@ -16,6 +16,7 @@ import { getStoredToken } from '../core/token-store';
 import { getLarkAccount } from '../core/accounts';
 import { getTicket } from '../core/lark-ticket';
 import { LarkClient } from '../core/lark-client';
+import { assertUatAccess, UatAccessDeniedError, UatAccessUnavailableError, UatIdentityRequiredError } from '../core/uat-access-guard';
 import { executeAuthorize } from './oauth';
 import { formatLarkError } from '../core/api-error';
 import { filterSensitiveScopes } from '../core/tool-scopes';
@@ -31,7 +32,7 @@ const FeishuOAuthBatchAuthSchema = Type.Object(
   },
 );
 
-export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
+export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi): void {
   if (!api.config) return;
 
   const cfg = api.config;
@@ -63,9 +64,31 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
           }
           const account = acct; // Now we know it's ConfiguredLarkAccount
           const { appId } = account;
+          const sdk = LarkClient.fromAccount(account).sdk;
+
+          // 0. 所有授权入口都应先过 UAT 访问策略
+          {
+            let stateDir: string | undefined;
+            try {
+              stateDir = LarkClient.runtime.state.resolveStateDir();
+            } catch {
+              // runtime 未初始化时不阻塞
+            }
+            try {
+              await assertUatAccess({ account, sdk, userOpenId: senderOpenId, stateDir });
+            } catch (err) {
+              if (
+                err instanceof UatAccessDeniedError ||
+                err instanceof UatAccessUnavailableError ||
+                err instanceof UatIdentityRequiredError
+              ) {
+                return json({ error: err.message });
+              }
+              throw err;
+            }
+          }
 
           // 1. 查询应用已开通的 user scope
-          const sdk = LarkClient.fromAccount(account).sdk;
           let appScopes: string[];
           try {
             appScopes = await getAppGrantedScopes(sdk, appId, 'user');

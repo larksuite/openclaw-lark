@@ -408,6 +408,7 @@ export { assertLarkOk, formatLarkError } from '../../core/api-error';
 // ---------------------------------------------------------------------------
 
 import { AppScopeMissingError, UserAuthRequiredError, UserScopeInsufficientError } from '../../core/tool-client';
+import { isUatPolicyError } from '../../core/uat-access-guard';
 
 /**
  * Check whether an error is a structured invoke-level auth/permission error.
@@ -422,7 +423,8 @@ export function isInvokeError(err: unknown): boolean {
   return (
     err instanceof UserAuthRequiredError ||
     err instanceof AppScopeMissingError ||
-    err instanceof UserScopeInsufficientError
+    err instanceof UserScopeInsufficientError ||
+    isUatPolicyError(err)
   );
 }
 

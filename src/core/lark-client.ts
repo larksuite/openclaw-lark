@@ -21,6 +21,7 @@ import type { LarkBrand, LarkAccount, FeishuProbeResult } from './types';
 import { getLarkAccount } from './accounts';
 import { clearUserNameCache } from '../messaging/inbound/user-name-cache';
 import { clearChatInfoCache } from './chat-info-cache';
+import { clearCollaboratorCache } from './app-collaborator-cache';
 import { getUserAgent } from './version';
 import { larkLogger } from './lark-logger';
 
@@ -166,6 +167,7 @@ export class LarkClient {
     // Credentials changed — tear down the stale instance before replacing it.
     if (existing) {
       log.info(`credentials changed, disposing stale instance`, { accountId: account.accountId });
+      clearCollaboratorCache(account.accountId);
       existing.dispose();
     }
     const instance = new LarkClient(account);
@@ -209,10 +211,12 @@ export class LarkClient {
       cache.get(accountId)?.dispose();
       clearUserNameCache(accountId);
       clearChatInfoCache(accountId);
+      clearCollaboratorCache(accountId);
     } else {
       for (const inst of cache.values()) inst.dispose();
       clearUserNameCache();
       clearChatInfoCache();
+      clearCollaboratorCache();
     }
   }
 

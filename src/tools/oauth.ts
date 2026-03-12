@@ -20,7 +20,7 @@ import type { OpenClawPluginApi, ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { Type } from '@sinclair/typebox';
 import { getLarkAccount } from '../core/accounts';
-import { assertOwnerAccessStrict } from '../core/owner-policy';
+import { assertUatAccess } from '../core/uat-access-guard';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import type { LarkTicket } from '../core/lark-ticket';
@@ -275,9 +275,16 @@ export async function executeAuthorize(
   } = params;
   const { appId, appSecret, brand, accountId } = account;
 
-  // 0. ownerOnly 模式：只有应用 Owner 可以触发授权流程
-  if (account.config?.uat?.ownerOnly) {
-    await assertOwnerAccessStrict(account, LarkClient.fromAccount(account).sdk, senderOpenId);
+  // 0. 统一 UAT 访问策略检查
+  {
+    const sdk = LarkClient.fromAccount(account).sdk;
+    let stateDir: string | undefined;
+    try {
+      stateDir = LarkClient.runtime.state.resolveStateDir();
+    } catch {
+      // runtime 未初始化时不阻塞
+    }
+    await assertUatAccess({ account, sdk, userOpenId: senderOpenId, stateDir });
   }
 
   // effectiveScope：可变 scope 变量，后续可能因 pendingFlow 合并而扩大

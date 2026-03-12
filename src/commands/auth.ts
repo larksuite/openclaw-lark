@@ -16,7 +16,7 @@ import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import { getStoredToken } from '../core/token-store';
 import { filterSensitiveScopes } from '../core/tool-scopes';
-import { assertOwnerAccessStrict, OwnerAccessDeniedError } from '../core/owner-policy';
+import { assertUatAccess, UatAccessDeniedError, UatAccessUnavailableError, UatIdentityRequiredError } from '../core/uat-access-guard';
 
 /**
  * 执行飞书用户权限批量授权命令
@@ -38,13 +38,26 @@ export async function runFeishuAuth(config: OpenClawConfig): Promise<string> {
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
 
-  // ownerOnly 预检：非 owner 用户直接拒绝，避免后续流程空走
-  if (acct.config?.uat?.ownerOnly) {
+  // 统一 UAT 访问策略检查
+  {
+    let stateDir: string | undefined;
     try {
-      await assertOwnerAccessStrict(acct, sdk, senderOpenId);
+      const { LarkClient } = await import('../core/lark-client');
+      stateDir = LarkClient.runtime.state.resolveStateDir();
+    } catch {
+      // runtime 未初始化时不阻塞
+    }
+    try {
+      await assertUatAccess({ account: acct, sdk, userOpenId: senderOpenId, stateDir });
     } catch (err) {
-      if (err instanceof OwnerAccessDeniedError) {
-        return '❌ 当前应用仅限所有者（App Owner）使用，您没有权限发起授权。';
+      if (err instanceof UatAccessDeniedError) {
+        return `❌ ${err.message}`;
+      }
+      if (err instanceof UatAccessUnavailableError) {
+        return `❌ ${err.message}`;
+      }
+      if (err instanceof UatIdentityRequiredError) {
+        return `❌ ${err.message}`;
       }
       throw err;
     }
