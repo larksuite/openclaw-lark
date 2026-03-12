@@ -2,7 +2,7 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 会话历史先校验用户边界后以应用身份拉取，话题历史和搜索仍以用户身份调用
+ * 消息读取工具集 -- 会话历史与搜索均以用户身份调用，话题历史走 thread message.list
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -25,74 +25,6 @@ import { getUATUserName, batchResolveUserNamesAsUser } from './user-name-uat';
 
 function sortRuleToSortType(rule?: 'create_time_asc' | 'create_time_desc'): 'ByCreateTimeAsc' | 'ByCreateTimeDesc' {
   return rule === 'create_time_asc' ? 'ByCreateTimeAsc' : 'ByCreateTimeDesc';
-}
-
-/**
- * 对显式传入的 chat_id 做一次用户态可见性校验。
- *
- * 使用 chat.get 的安全校验头，确保当前用户本来就能访问这个会话。
- */
-async function assertChatReadableAsUser(
-  client: ToolClient,
-  chatId: string,
-  log: { info: (msg: string) => void },
-): Promise<void> {
-  log.info(`chat visibility check: chat_id=${chatId}`);
-  const res = await client.invoke(
-    'feishu_chat.get',
-    (sdk, opts) =>
-      sdk.im.v1.chat.get(
-        {
-          path: { chat_id: chatId },
-          params: { user_id_type: 'open_id' },
-        },
-        {
-          ...(opts ?? {}),
-          headers: {
-            ...((opts as any)?.headers ?? {}),
-            'X-Chat-Custom-Header': 'enable_chat_list_security_check',
-          },
-        } as any,
-      ),
-    {
-      as: 'user',
-    },
-  );
-  assertLarkOk(res);
-}
-
-/**
- * 在 tenant 拉取会话历史前，先对同一个 chat_id 做一次轻量 UAT 读取。
- *
- * 这里直接命中 message.list，而不是用无关 API 代替，确保校验链路与
- * 实际历史消息读取拥有相同的 owner / OAuth / scope 语义。
- */
-async function assertChatHistoryReadableAsUser(
-  client: ToolClient,
-  chatId: string,
-  log: { info: (msg: string) => void },
-): Promise<void> {
-  log.info(`history access check: chat_id=${chatId}, sender_open_id=${client.senderOpenId ?? 'owner-fallback'}`);
-  const res = await client.invoke(
-    'feishu_im_user_get_messages.default',
-    (sdk, opts) =>
-      sdk.im.v1.message.list(
-        {
-          params: {
-            container_id_type: 'chat',
-            container_id: chatId,
-            page_size: 1,
-            sort_type: 'ByCreateTimeDesc',
-            card_msg_content_type: 'raw_card_content',
-          } as any,
-        },
-        opts,
-      ),
-    {
-      as: 'user',
-    },
-  );
-  assertLarkOk(res);
 }
 
 /** open_id → chat_id (P2P 单聊) */
@@ -217,7 +149,7 @@ function registerGetMessages(api: OpenClawPluginApi) {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
       description:
-        '【先校验用户访问边界，再以应用身份拉取历史消息】获取群聊或单聊的历史消息。' +
+        '【以用户身份】获取群聊或单聊的历史消息。chat_id / open_id 路径通过搜索接口按会话过滤获取消息。' +
         '\n\n用法：' +
         '\n- 通过 chat_id 获取群聊/单聊消息' +
         '\n- 通过 open_id 获取与指定用户的单聊消息（会先以用户身份解析 chat_id）' +
@@ -226,6 +158,7 @@ function registerGetMessages(api: OpenClawPluginApi) {
         '\n\n【参数约束】' +
         '\n- open_id 和 chat_id 必须二选一，不能同时提供' +
         '\n- relative_time 和 start_time/end_time 不能同时使用' +
+        '\n- 当前仅支持 create_time_desc 排序' +
         '\n- page_size 范围 1-50，默认 50' +
         '\n\n返回消息列表，每条消息包含 message_id、msg_type、content（AI 可读文本）、sender、create_time 等字段。',
       parameters: GetMessagesSchema,
@@ -241,47 +174,80 @@ function registerGetMessages(api: OpenClawPluginApi) {
           if (p.relative_time && (p.start_time || p.end_time)) {
             return json({ error: 'cannot use both relative_time and start_time/end_time' });
           }
+          if (p.sort_rule === 'create_time_asc') {
+            return json({ error: 'create_time_asc is not supported for chat history yet, please use create_time_desc' });
+          }
 
           const client = toolClient();
           let chatId = p.chat_id ?? '';
-          if (p.chat_id) {
-            await assertChatReadableAsUser(client, p.chat_id, log);
-          } else if (p.open_id) {
+          if (p.open_id) {
             log.info(`resolving P2P chat for open_id=${p.open_id}`);
             chatId = await resolveP2PChatId(client, p.open_id, log);
           }
-          await assertChatHistoryReadableAsUser(client, chatId, log);
 
           const time = resolveTimeRange(p, log.info);
-          log.info(
-            `list: chat_id=${chatId}, sort=${p.sort_rule ?? 'create_time_desc'}, page_size=${p.page_size ?? 50}`,
-          );
-
-          const res = await client.invoke(
-            'feishu_im_user_get_messages.default',
-            (sdk, opts) =>
-              sdk.im.v1.message.list(
-                {
-                  params: {
-                    container_id_type: 'chat',
-                    container_id: chatId,
-                    start_time: time.start,
-                    end_time: time.end,
-                    sort_type: sortRuleToSortType(p.sort_rule),
-                    page_size: p.page_size ?? 50,
-                    page_token: p.page_token,
-                    card_msg_content_type: 'raw_card_content',
-                  } as any,
-                },
-                opts,
-              ),
+          const searchData = buildSearchData(
             {
-              as: 'tenant',
+              query: '',
+              chat_id: chatId,
+            },
+            {
+              start: time.start ?? '978307200',
+              end: time.end ?? Math.floor(Date.now() / 1000).toString(),
             },
           );
-          assertLarkOk(res);
+          log.info(`history search: chat_id=${chatId}, page_size=${p.page_size ?? 50}`);
 
-          return formatAndReturn(res, config, log, client);
+          const searchRes = await client.invoke(
+            'feishu_im_user_search_messages.default',
+            (sdk, opts) =>
+              sdk.search.message.create(
+                {
+                  data: searchData as any,
+                  params: {
+                    user_id_type: 'open_id',
+                    page_size: p.page_size ?? 50,
+                    page_token: p.page_token,
+                  },
+                },
+                opts!,
+              ),
+            {
+              as: 'user',
+            },
+          );
+          assertLarkOk(searchRes as any);
+
+          const messageIds: string[] = (searchRes as any).data?.items ?? [];
+          const hasMore: boolean = (searchRes as any).data?.has_more ?? false;
+          const pageToken: string | undefined = (searchRes as any).data?.page_token;
+          log.info(`history search: found ${messageIds.length} IDs, has_more=${hasMore}`);
+
+          if (messageIds.length === 0) {
+            return json({ messages: [], has_more: hasMore, page_token: pageToken });
+          }
+
+          const queryStr = messageIds.map((id) => `message_ids=${encodeURIComponent(id)}`).join('&');
+          const mgetRes = await client.invokeByPath<{
+            code?: number;
+            msg?: string;
+            data?: { items?: any[] };
+          }>('feishu_im_user_search_messages.default', `/open-apis/im/v1/messages/mget?${queryStr}`, {
+            method: 'GET',
+            query: { user_id_type: 'open_id', card_msg_content_type: 'raw_card_content' },
+            as: 'user',
+          });
+
+          const items = mgetRes.data?.items ?? [];
+          const account = getFirstAccount(config);
+          const messages = await formatMessageList(
+            items,
+            account,
+            (...args: unknown[]) => log.info(args.map(String).join(' ')),
+            client,
+          );
+
+          return json({ messages, has_more: hasMore, page_token: pageToken });
         } catch (err) {
           return await handleInvokeErrorWithAutoAuth(err, config);
         }
