@@ -52,7 +52,8 @@
         "lark"
       ],
       "order": 35,
-      "quickstartAllowFrom": true
+      "quickstartAllowFrom": true,
+      "preferOver": ["feishu"]
     },
     "install": {
       "npmSpec": "@larksuite/openclaw-lark",
