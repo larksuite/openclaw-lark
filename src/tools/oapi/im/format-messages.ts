@@ -203,7 +203,12 @@ export async function formatMessageList(
   if (senderIds.length > 0) {
     const missing = senderIds.filter((id) => getUATUserName(accountId, id) === undefined);
     if (missing.length > 0) {
-      await batchResolveUserNamesAsUser({ client, openIds: missing, log });
+      try {
+        await batchResolveUserNamesAsUser({ client, openIds: missing, log });
+      } catch (err) {
+        // sender 名字补全是增强信息，不应阻断 tenant 历史消息主链路返回。
+        log(`formatMessageList: batch sender name resolve skipped: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

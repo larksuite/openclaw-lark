@@ -28,23 +28,6 @@ function sortRuleToSortType(rule?: 'create_time_asc' | 'create_time_desc'): 'ByC
 }
 
 /**
- * 在 tenant 拉取历史消息前，先显式做一遍 UAT 预检。
- *
- * 这样可以保留原先的 owner / OAuth 边界，避免 tenant 读取路径绕过用户态校验。
- */
-async function assertHistoryReadAccessAsUser(client: ToolClient, log: { info: (msg: string) => void }): Promise<void> {
-  log.info(`history access check: sender_open_id=${client.senderOpenId ?? 'owner-fallback'}`);
-  const res = await client.invoke(
-    'feishu_im_user_get_messages.default',
-    (sdk, opts) => sdk.authen.v1.userInfo.get({}, opts),
-    {
-      as: 'user',
-    },
-  );
-  assertLarkOk(res);
-}
-
-/**
  * 对显式传入的 chat_id 做一次用户态可见性校验。
  *
  * 使用 chat.get 的安全校验头，确保当前用户本来就能访问这个会话。
@@ -70,6 +53,40 @@ async function assertChatReadableAsUser(
             'X-Chat-Custom-Header': 'enable_chat_list_security_check',
           },
         } as any,
+      ),
+    {
+      as: 'user',
+    },
+  );
+  assertLarkOk(res);
+}
+
+/**
+ * 在 tenant 拉取会话历史前，先对同一个 chat_id 做一次轻量 UAT 读取。
+ *
+ * 这里直接命中 message.list，而不是用无关 API 代替，确保校验链路与
+ * 实际历史消息读取拥有相同的 owner / OAuth / scope 语义。
+ */
+async function assertChatHistoryReadableAsUser(
+  client: ToolClient,
+  chatId: string,
+  log: { info: (msg: string) => void },
+): Promise<void> {
+  log.info(`history access check: chat_id=${chatId}, sender_open_id=${client.senderOpenId ?? 'owner-fallback'}`);
+  const res = await client.invoke(
+    'feishu_im_user_get_messages.default',
+    (sdk, opts) =>
+      sdk.im.v1.message.list(
+        {
+          params: {
+            container_id_type: 'chat',
+            container_id: chatId,
+            page_size: 1,
+            sort_type: 'ByCreateTimeDesc',
+            card_msg_content_type: 'raw_card_content',
+          } as any,
+        },
+        opts,
       ),
     {
       as: 'user',
@@ -226,8 +243,6 @@ function registerGetMessages(api: OpenClawPluginApi) {
           }
 
           const client = toolClient();
-          await assertHistoryReadAccessAsUser(client, log);
-
           let chatId = p.chat_id ?? '';
           if (p.chat_id) {
             await assertChatReadableAsUser(client, p.chat_id, log);
@@ -235,6 +250,7 @@ function registerGetMessages(api: OpenClawPluginApi) {
             log.info(`resolving P2P chat for open_id=${p.open_id}`);
             chatId = await resolveP2PChatId(client, p.open_id, log);
           }
+          await assertChatHistoryReadableAsUser(client, chatId, log);
 
           const time = resolveTimeRange(p, log.info);
           log.info(
