@@ -45,7 +45,7 @@ async function monitorSingleAccount(params: {
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
 }): Promise<void> {
-  const { cfg, account, runtime, abortSignal } = params;
+  const { account, runtime, abortSignal } = params;
   const { accountId } = account;
   const log = runtime?.log ?? ((...args: unknown[]) => mlog.info(args.map(String).join(' ')));
   const error = runtime?.error ?? ((...args: unknown[]) => mlog.error(args.map(String).join(' ')));
@@ -79,7 +79,9 @@ async function monitorSingleAccount(params: {
   const chatHistories = new Map<string, HistoryEntry[]>();
 
   const ctx: MonitorContext = {
-    cfg,
+    get cfg() {
+      return LarkClient.runtime.config.loadConfig();
+    },
     lark,
     accountId,
     chatHistories,
