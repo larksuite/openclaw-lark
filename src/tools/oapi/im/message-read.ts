@@ -2,7 +2,7 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 先以用户身份校验访问边界，再以应用身份拉取历史消息
+ * 消息读取工具集 -- 会话历史先校验用户边界后以应用身份拉取，话题历史和搜索仍以用户身份调用
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -32,31 +32,13 @@ function sortRuleToSortType(rule?: 'create_time_asc' | 'create_time_desc'): 'ByC
  *
  * 这样可以保留原先的 owner / OAuth 边界，避免 tenant 读取路径绕过用户态校验。
  */
-async function assertHistoryReadAccessAsUser(
-  client: ToolClient,
-  log: { info: (msg: string) => void },
-): Promise<void> {
-  const senderOpenId = client.senderOpenId;
-  if (!senderOpenId) {
-    throw new Error('missing sender open_id for history access check');
-  }
-
-  log.info(`history access check: sender_open_id=${senderOpenId}`);
+async function assertHistoryReadAccessAsUser(client: ToolClient, log: { info: (msg: string) => void }): Promise<void> {
+  log.info(`history access check: sender_open_id=${client.senderOpenId ?? 'owner-fallback'}`);
   const res = await client.invoke(
     'feishu_im_user_get_messages.default',
-    (sdk, opts) =>
-      sdk.contact.user.batch(
-        {
-          params: {
-            user_ids: [senderOpenId],
-            user_id_type: 'open_id',
-          },
-        },
-        opts,
-      ),
+    (sdk, opts) => sdk.authen.v1.userInfo.get({}, opts),
     {
       as: 'user',
-      userOpenId: senderOpenId,
     },
   );
   assertLarkOk(res);
@@ -72,11 +54,6 @@ async function assertChatReadableAsUser(
   chatId: string,
   log: { info: (msg: string) => void },
 ): Promise<void> {
-  const senderOpenId = client.senderOpenId;
-  if (!senderOpenId) {
-    throw new Error('missing sender open_id for chat visibility check');
-  }
-
   log.info(`chat visibility check: chat_id=${chatId}`);
   const res = await client.invoke(
     'feishu_chat.get',
@@ -96,7 +73,6 @@ async function assertChatReadableAsUser(
       ),
     {
       as: 'user',
-      userOpenId: senderOpenId,
     },
   );
   assertLarkOk(res);
@@ -331,7 +307,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
       description:
-        '【先校验用户访问边界，再以应用身份拉取历史消息】获取话题（thread）内的消息列表。' +
+        '【以用户身份】获取话题（thread）内的消息列表。' +
         '\n\n用法：' +
         '\n- 通过 thread_id（omt_xxx）获取话题内的所有消息' +
         '\n- 支持分页：page_size + page_token' +
@@ -342,7 +318,6 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
         const p = params as GetThreadMessagesParams;
         try {
           const client = toolClient();
-          await assertHistoryReadAccessAsUser(client, log);
           log.info(
             `list: thread_id=${p.thread_id}, sort=${p.sort_rule ?? 'create_time_desc'}, page_size=${p.page_size ?? 50}`,
           );
@@ -364,7 +339,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
                 opts,
               ),
             {
-              as: 'tenant',
+              as: 'user',
             },
           );
           assertLarkOk(res);
