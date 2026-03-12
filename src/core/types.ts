@@ -72,6 +72,8 @@ export interface FeishuToolsConfig {
 export interface FeishuFooterConfig {
   status?: boolean;
   elapsed?: boolean;
+  model?: boolean;
+  skills?: boolean;
 }
 
 // ---------------------------------------------------------------------------

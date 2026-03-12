@@ -85,6 +85,7 @@ async function dispatchNormalMessage(
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.isThread,
+    skillFilter,
   });
 
   // Create an AbortController so the abort fast-path can cancel the
