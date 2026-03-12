@@ -119,12 +119,12 @@ export const UATConfigSchema = z
     enabled: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
-    /** true = 只有飞书应用 Owner 可以触发 OAuth 授权流程和使用 UAT。
-     *  false（默认）= 任何已信任用户均可为自己发起授权。
+    /** true（默认）= 只有飞书应用 Owner 可以触发 OAuth 授权流程和使用 UAT。
+     *  false = 允许非 Owner 用户继续进入 appRoleAuth / accessLevel 判权链路。
      *  启用时 appRoleAuth 和 accessLevel 不生效。 */
     ownerOnly: z.boolean().optional(),
     /** true = 启用应用角色鉴权，按协作者角色放行 UAT 访问。
-     *  false（默认）= 不做角色校验，所有通过入口控制的用户均可使用 UAT。
+     *  false（默认）= 在 ownerOnly=false 时，不做额外角色校验。
      *  仅在 ownerOnly=false 时生效。 */
     appRoleAuth: z.boolean().optional(),
     /** 最低准入角色等级（仅在 appRoleAuth=true 时生效）。

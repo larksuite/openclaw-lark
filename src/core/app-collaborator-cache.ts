@@ -8,7 +8,7 @@
  * 官方角色枚举：administrator / developer / operator（不含 owner）。
  *
  * 两层缓存：
- *   1. 进程内热缓存（Map，TTL 5 分钟，负缓存 60 秒）
+ *   1. 进程内热缓存（Map，TTL 1 分钟，负缓存 60 秒）
  *   2. 状态目录快照（<stateDir>/feishu/accounts/<accountId>/role-cache.json）
  *
  * 设计约束：
@@ -50,7 +50,7 @@ interface MemoryCacheEntry {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MEMORY_TTL_MS = 5 * 60 * 1000;      // 热缓存 5 分钟
+const MEMORY_TTL_MS = 60 * 1000;           // 热缓存 1 分钟
 const NEGATIVE_CACHE_TTL_MS = 60 * 1000;   // 失败负缓存 60 秒
 const MAX_STALE_MS = 30 * 60 * 1000;       // 快照最大陈旧期 30 分钟
 

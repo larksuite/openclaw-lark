@@ -57,7 +57,7 @@ export const ROLE_RANK: Record<UatRole, number> = {
  * 从账号配置中解析出稳定的 UAT 策略对象。
  *
  * 所有字段均填充默认值，消费方不需要处理 undefined：
- * - ownerOnly: false（保持兼容）
+ * - ownerOnly: true（默认最小暴露面）
  * - appRoleAuth: false
  * - requiredRole: 'normal'
  * - autoOnboarding: false
@@ -65,7 +65,7 @@ export const ROLE_RANK: Record<UatRole, number> = {
 export function resolveUatPolicy(account: ConfiguredLarkAccount): ResolvedUatPolicy {
   const uat = account.config?.uat;
   return {
-    ownerOnly: uat?.ownerOnly ?? false,
+    ownerOnly: uat?.ownerOnly ?? true,
     appRoleAuth: uat?.appRoleAuth ?? false,
     requiredRole: ACCESS_LEVEL_TO_ROLE[uat?.accessLevel ?? 1] ?? 'normal',
     autoOnboarding: uat?.autoOnboarding ?? false,
