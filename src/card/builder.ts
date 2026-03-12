@@ -204,7 +204,9 @@ export function buildCardContent(
     elapsedMs?: number;
     isError?: boolean;
     isAborted?: boolean;
-    footer?: { status?: boolean; elapsed?: boolean };
+    footer?: { status?: boolean; elapsed?: boolean; model?: boolean; skills?: boolean };
+    modelName?: string;
+    usedSkills?: string[];
   } = {},
 ): FeishuCard {
   switch (state) {
@@ -222,6 +224,8 @@ export function buildCardContent(
         reasoningElapsedMs: data.reasoningElapsedMs,
         isAborted: data.isAborted,
         footer: data.footer,
+        modelName: data.modelName,
+        usedSkills: data.usedSkills,
       });
     case 'confirm':
       return buildConfirmCard(data.confirmData!);
@@ -291,9 +295,22 @@ function buildCompleteCard(params: {
   reasoningText?: string;
   reasoningElapsedMs?: number;
   isAborted?: boolean;
-  footer?: { status?: boolean; elapsed?: boolean };
+  footer?: { status?: boolean; elapsed?: boolean; model?: boolean; skills?: boolean };
+  modelName?: string;
+  usedSkills?: string[];
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer } = params;
+  const {
+    text,
+    toolCalls,
+    elapsedMs,
+    isError,
+    reasoningText,
+    reasoningElapsedMs,
+    isAborted,
+    footer,
+    modelName,
+    usedSkills,
+  } = params;
   const elements: CardElement[] = [];
 
   // Collapsible reasoning panel (before main content)
@@ -365,6 +382,15 @@ function buildCompleteCard(params: {
 
   if (footer?.elapsed && elapsedMs != null) {
     parts.push(`耗时 ${formatElapsed(elapsedMs)}`);
+  }
+
+  if (footer?.model) {
+    parts.push(`模型 ${modelName?.trim() || 'unknown'}`);
+  }
+
+  if (footer?.skills) {
+    const skillText = usedSkills && usedSkills.length > 0 ? usedSkills.join(', ') : 'none';
+    parts.push(`Skills ${skillText}`);
   }
 
   if (parts.length > 0) {

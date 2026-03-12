@@ -63,6 +63,8 @@ const FeishuFooterSchema = z
   .object({
     status: z.boolean().optional(),
     elapsed: z.boolean().optional(),
+    model: z.boolean().optional(),
+    skills: z.boolean().optional(),
   })
   .optional();
 
