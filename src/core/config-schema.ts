@@ -119,6 +119,21 @@ export const UATConfigSchema = z
     enabled: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
+    /** true = 只有飞书应用 Owner 可以触发 OAuth 授权流程和使用 UAT。
+     *  false（默认）= 任何已信任用户均可为自己发起授权。
+     *  启用时 appRoleAuth 和 accessLevel 不生效。 */
+    ownerOnly: z.boolean().optional(),
+    /** true = 启用应用角色鉴权，按协作者角色放行 UAT 访问。
+     *  false（默认）= 不做角色校验，所有通过入口控制的用户均可使用 UAT。
+     *  仅在 ownerOnly=false 时生效。 */
+    appRoleAuth: z.boolean().optional(),
+    /** 最低准入角色等级（仅在 appRoleAuth=true 时生效）。
+     *  1=normal（所有用户）, 2=operator, 3=developer, 4=administrator。
+     *  默认 1（不限角色）。 */
+    accessLevel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+    /** true = 配对审批通过后自动向用户推送 OAuth 授权卡片。
+     *  false（默认）= 用户需要手动执行 /feishu auth 发起授权。 */
+    autoOnboarding: z.boolean().optional(),
   })
   .optional();
 

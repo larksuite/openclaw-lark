@@ -4,8 +4,7 @@
  *
  * Onboarding 预授权模块。
  *
- * 配对后自动发起 OAuth Device Flow，引导应用 owner 完成用户授权。
- * 仅当配对用户 === 应用 owner 时触发。
+ * 配对后自动发起 OAuth Device Flow，引导当前用户完成用户授权。
  *
  * 飞书限制：单次 OAuth 最多 50 个 scope。
  * 超过 50 个时自动分批处理，每批授权完成后自动发起下一批（链式触发）。
@@ -15,10 +14,16 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
-import { getAppOwnerFallback } from '../core/app-owner-fallback';
 import { executeAuthorize } from './oauth';
 import { larkLogger } from '../core/lark-logger';
 import { filterSensitiveScopes } from '../core/tool-scopes';
+import {
+  assertUatAccess,
+  UatAccessDeniedError,
+  UatAccessUnavailableError,
+  UatIdentityRequiredError,
+} from '../core/uat-access-guard';
+import { sendMessageFeishu } from '../messaging/outbound/send';
 
 const log = larkLogger('tools/onboarding-auth');
 
@@ -36,10 +41,9 @@ const MAX_SCOPES_PER_BATCH = 100;
  * 配对后触发 onboarding OAuth 授权。
  *
  * 流程：
- *   1. 检查 userOpenId === 应用 owner，不匹配则静默跳过
- *   2. 读取 onboarding-scopes.json 中的 user scope 列表
- *   3. 分批处理（每批最多 50 个），第一批直接发起 OAuth Device Flow
- *   4. 每批授权完成后通过 onAuthComplete 回调自动发起下一批
+ *   1. 读取当前应用已开通的 user scope 列表
+ *   2. 分批处理（每批最多 50 个），第一批直接发起 OAuth Device Flow
+ *   3. 每批授权完成后通过 onAuthComplete 回调自动发起下一批
  */
 export async function triggerOnboarding(params: {
   cfg: ClawdbotConfig;
@@ -57,20 +61,40 @@ export async function triggerOnboarding(params: {
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
 
-  // 1. 检查 userOpenId === 应用 owner（统一走 getAppOwnerFallback）
-  const ownerOpenId = await getAppOwnerFallback(acct, sdk);
-  if (!ownerOpenId) {
-    log.info(`app ${appId} has no owner info, skipping`);
-    return;
-  }
-  if (userOpenId !== ownerOpenId) {
-    log.info(`user ${userOpenId} is not app owner (${ownerOpenId}), skipping`);
+  // UAT 策略检查：onboarding 是辅助功能，不满足时给用户明确提示，而不是静默跳过。
+  try {
+    let stateDir: string | undefined;
+    try { stateDir = LarkClient.runtime.state.resolveStateDir(); } catch {}
+    await assertUatAccess({ account: acct, sdk, userOpenId, stateDir });
+  } catch (err) {
+    log.info(`UAT access check failed for ${userOpenId}, skipping onboarding: ${err}`);
+    let text: string | undefined;
+    if (err instanceof UatAccessDeniedError) {
+      text = `已完成配对，但当前策略不允许自动发起授权：${err.message}\n如需继续，请联系管理员调整 Feishu UAT 访问策略。`;
+    } else if (err instanceof UatAccessUnavailableError) {
+      text = `已完成配对，但暂时无法自动发起授权：${err.message}\n请稍后重试，或联系管理员检查应用权限。`;
+    } else if (err instanceof UatIdentityRequiredError) {
+      text = `已完成配对，但暂时无法自动发起授权：${err.message}`;
+    }
+
+    if (text) {
+      try {
+        await sendMessageFeishu({
+          cfg,
+          to: userOpenId,
+          text,
+          accountId,
+        });
+      } catch (notifyErr) {
+        log.warn(`failed to notify onboarding skip for ${userOpenId}: ${notifyErr}`);
+      }
+    }
     return;
   }
 
-  log.info(`user ${userOpenId} is app owner, starting OAuth`);
+  log.info(`starting OAuth for ${userOpenId}`);
 
-  // 3. 动态获取应用已开通的 user scope 列表
+  // 1. 动态获取应用已开通的 user scope 列表
   let allUserScopes: string[];
   try {
     allUserScopes = await getAppGrantedScopes(sdk, appId, 'user');
