@@ -713,6 +713,13 @@ export class StreamingCardController {
         return;
       }
 
+      // Card table count exceeds Feishu limit — disable CardKit streaming
+      if (apiCode === 230099) {
+        log.warn('flushCardUpdate: card table limit exceeded (230099), disabling CardKit streaming');
+        this.cardKit.cardKitCardId = null;
+        return;
+      }
+
       const apiDetail = extractApiDetail(err);
       log.error('card stream update failed', {
         apiCode,

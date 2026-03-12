@@ -17,6 +17,7 @@ import {
   logTypingFailure,
   type ReplyPayload,
 } from 'openclaw/plugin-sdk';
+import { extractLarkApiCode } from '../core/api-error';
 import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
@@ -231,6 +232,19 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             });
           } catch (err) {
             if (staticGuard?.terminate('deliver.cardChunk', err)) return;
+            // Card table count exceeds Feishu limit — fall back to plain text
+            if (extractLarkApiCode(err) === 230099) {
+              log.warn('card table limit exceeded (230099), falling back to text for this chunk');
+              await sendMessageFeishu({
+                cfg,
+                to: chatId,
+                text: chunk,
+                replyToMessageId,
+                replyInThread,
+                accountId,
+              });
+              continue;
+            }
             throw err;
           }
         }

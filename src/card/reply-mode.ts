@@ -79,9 +79,11 @@ export function shouldUseCard(text: string): boolean {
   if (/```[\s\S]*?```/.test(text)) {
     return true;
   }
-  // Markdown tables (header + separator rows separated by pipes)
-  if (/\|.+\|[\r\n]+\|[-:| ]+\|/.test(text)) {
-    return true;
+  // Markdown tables (header + separator rows separated by pipes).
+  // Feishu cards support at most ~3 tables; skip card mode when exceeded.
+  const tableMatches = text.match(/\|.+\|[\r\n]+\|[-:| ]+\|/g);
+  if (tableMatches) {
+    return tableMatches.length <= 3;
   }
   return false;
 }
