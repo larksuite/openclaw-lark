@@ -231,7 +231,7 @@ async function handleInsert(
         {
           path: {
             document_id: documentId,
-            block_id: p.block_id ?? documentId,
+            block_id: p.block_id?.trim() || documentId,
           },
           data: {
             children: [{ block_type: config.block_type, ...config.block_data }],
