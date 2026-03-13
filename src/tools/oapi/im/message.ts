@@ -15,7 +15,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool } from '../helpers';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -130,10 +130,10 @@ type FeishuImMessageParams =
 export function registerFeishuImUserMessageTool(api: OpenClawPluginApi) {
   if (!api.config) return;
   const cfg = api.config;
-
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_message');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_message',
       label: 'Feishu: IM User Message',
@@ -241,6 +241,4 @@ export function registerFeishuImUserMessageTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_im_user_message' },
   );
-
-  api.logger.info?.('feishu_im_user_message: Registered feishu_im_user_message tool');
 }

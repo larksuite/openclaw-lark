@@ -13,7 +13,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { buildRandomTempFilePath } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -93,7 +93,8 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_fetch_resource');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_fetch_resource',
       label: 'Feishu: IM Fetch Resource',
@@ -189,5 +190,4 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
     { name: 'feishu_im_user_fetch_resource' },
   );
 
-  api.logger.info?.('feishu_im_user_fetch_resource: Registered feishu_im_user_fetch_resource tool');
 }

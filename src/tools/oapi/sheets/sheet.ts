@@ -21,6 +21,7 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -475,7 +476,8 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_sheet');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_sheet',
       label: 'Feishu Spreadsheet',
@@ -951,5 +953,4 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
     { name: 'feishu_sheet' },
   );
 
-  api.logger.info?.('feishu_sheet: Registered feishu_sheet tool');
 }

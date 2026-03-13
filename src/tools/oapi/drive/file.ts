@@ -24,6 +24,7 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import type { DriveFileListData, DriveFileData, DriveTaskData } from '../sdk-types';
 import * as fs from 'fs/promises';
@@ -300,7 +301,8 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_drive_file');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_drive_file',
       label: 'Feishu Drive Files',
@@ -741,5 +743,4 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
     { name: 'feishu_drive_file' },
   );
 
-  api.logger.info?.('feishu_drive_file: Registered feishu_drive_file tool');
 }

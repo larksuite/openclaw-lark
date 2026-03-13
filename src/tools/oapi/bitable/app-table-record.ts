@@ -21,7 +21,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -259,7 +259,8 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi) 
 
   const { toolClient, log } = createToolContext(api, 'feishu_bitable_app_table_record');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_bitable_app_table_record',
       label: 'Feishu Bitable Records',
@@ -684,5 +685,4 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi) 
     { name: 'feishu_bitable_app_table_record' },
   );
 
-  api.logger.info?.('feishu_bitable_app_table_record: Registered feishu_bitable_app_table_record tool');
 }

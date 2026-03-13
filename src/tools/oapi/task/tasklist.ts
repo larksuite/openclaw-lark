@@ -22,7 +22,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -170,7 +170,8 @@ export function registerFeishuTaskTasklistTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_task_tasklist');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_task_tasklist',
       label: 'Feishu Task Lists',
@@ -502,5 +503,4 @@ export function registerFeishuTaskTasklistTool(api: OpenClawPluginApi) {
     { name: 'feishu_task_tasklist' },
   );
 
-  api.logger.info?.('feishu_task_tasklist: Registered feishu_task_tasklist tool');
 }

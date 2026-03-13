@@ -19,7 +19,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import { validateLocalMediaRoots } from '../../../messaging/outbound/media-url-utils';
 import * as fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -407,7 +407,8 @@ export function registerDocMediaTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_doc_media');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_doc_media',
       label: 'Feishu: Document Media',
@@ -437,5 +438,4 @@ export function registerDocMediaTool(api: OpenClawPluginApi) {
     { name: 'feishu_doc_media' },
   );
 
-  api.logger.info?.('feishu_doc_media: Registered feishu_doc_media tool (insert, download)');
 }

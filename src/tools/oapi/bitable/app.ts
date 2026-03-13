@@ -17,7 +17,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { BitableAppListData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,8 @@ export function registerFeishuBitableAppTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_bitable_app');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_bitable_app',
       label: 'Feishu Bitable Apps',
@@ -297,5 +298,4 @@ export function registerFeishuBitableAppTool(api: OpenClawPluginApi) {
     { name: 'feishu_bitable_app' },
   );
 
-  api.logger.info?.('feishu_bitable_app: Registered feishu_bitable_app tool');
 }

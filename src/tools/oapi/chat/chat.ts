@@ -15,7 +15,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,8 @@ export function registerChatSearchTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_chat');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_chat',
       label: 'Feishu: Chat Management',
@@ -184,5 +185,4 @@ export function registerChatSearchTool(api: OpenClawPluginApi) {
     { name: 'feishu_chat' },
   );
 
-  api.logger.info?.('feishu_chat: Registered feishu_chat tool');
 }

@@ -19,7 +19,7 @@ import { LarkClient } from '../core/lark-client';
 import { executeAuthorize } from './oauth';
 import { formatLarkError } from '../core/api-error';
 import { filterSensitiveScopes } from '../core/tool-scopes';
-import { json } from './oapi/helpers';
+import { json, registerTool } from './oapi/helpers';
 
 const FeishuOAuthBatchAuthSchema = Type.Object(
   {},
@@ -36,7 +36,8 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
 
   const cfg = api.config;
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_oauth_batch_auth',
       label: 'Feishu: OAuth Batch Authorization',

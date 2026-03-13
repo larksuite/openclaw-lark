@@ -20,6 +20,7 @@ import {
   parseTimeToTimestampMs,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
@@ -101,7 +102,8 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_task_subtask');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_task_subtask',
       label: 'Feishu Task Subtasks',
@@ -239,5 +241,4 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi) {
     { name: 'feishu_task_subtask' },
   );
 
-  api.logger.info?.('feishu_task_subtask: Registered feishu_task_subtask tool');
 }
