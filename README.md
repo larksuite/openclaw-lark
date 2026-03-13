@@ -27,6 +27,35 @@ Additionally, the plugin supports:
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
 
+## Owner Policy (Owner-only vs Multi-user OAuth)
+
+`channels.feishu.ownerPolicy` controls whether OAuth-sensitive flows are restricted to App Owner:
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "ownerPolicy": "strict"
+    }
+  }
+}
+```
+
+Set to `multiUser` for a single bot serving many users with per-user OAuth identity:
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "ownerPolicy": "multiUser"
+    }
+  }
+}
+```
+
+- `strict` (default): only App Owner can trigger owner-gated auth flows.
+- `multiUser`: any bound user can trigger OAuth flows, while execution still uses each user's own token.
+
 ## Security & Risk Warnings (Read Before Use)
 
 **Core risk:** This plugin connects to your work data via Lark/Feishu APIs—messages, docs, calendars, contacts. Anything the AI can read could theoretically be leaked. While we have implemented security protections, AI systems are not yet mature or stable enough to guarantee absolute safety.

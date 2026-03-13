@@ -113,6 +113,7 @@ const DedupSchema = z
   .optional();
 
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
+const OwnerPolicyEnum = z.enum(['strict', 'multiUser']).optional();
 
 export const UATConfigSchema = z
   .object({
@@ -182,6 +183,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  ownerPolicy: OwnerPolicyEnum,
   uat: UATConfigSchema,
 });
 

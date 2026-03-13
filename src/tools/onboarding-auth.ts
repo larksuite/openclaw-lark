@@ -16,6 +16,7 @@ import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import { getAppOwnerFallback } from '../core/app-owner-fallback';
+import { getOwnerPolicyMode } from '../core/owner-policy';
 import { executeAuthorize } from './oauth';
 import { larkLogger } from '../core/lark-logger';
 import { filterSensitiveScopes } from '../core/tool-scopes';
@@ -57,18 +58,21 @@ export async function triggerOnboarding(params: {
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
 
-  // 1. 检查 userOpenId === 应用 owner（统一走 getAppOwnerFallback）
-  const ownerOpenId = await getAppOwnerFallback(acct, sdk);
-  if (!ownerOpenId) {
-    log.info(`app ${appId} has no owner info, skipping`);
-    return;
+  // 1. ownerPolicy 控制触发资格
+  if (getOwnerPolicyMode(acct) === 'strict') {
+    const ownerOpenId = await getAppOwnerFallback(acct, sdk);
+    if (!ownerOpenId) {
+      log.info(`app ${appId} has no owner info, skipping`);
+      return;
+    }
+    if (userOpenId !== ownerOpenId) {
+      log.info(`user ${userOpenId} is not app owner (${ownerOpenId}), skipping`);
+      return;
+    }
+    log.info(`user ${userOpenId} is app owner, starting OAuth`);
+  } else {
+    log.info(`ownerPolicy=multiUser, user ${userOpenId} starting OAuth`);
   }
-  if (userOpenId !== ownerOpenId) {
-    log.info(`user ${userOpenId} is not app owner (${ownerOpenId}), skipping`);
-    return;
-  }
-
-  log.info(`user ${userOpenId} is app owner, starting OAuth`);
 
   // 3. 动态获取应用已开通的 user scope 列表
   let allUserScopes: string[];

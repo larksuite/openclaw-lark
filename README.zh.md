@@ -27,6 +27,35 @@
 - **🔒 权限策略**：为私聊和群聊提供灵活的访问控制策略
 - **⚙️ 高级群组配置**：每个群聊的独立设置，包括白名单、技能绑定和自定义系统提示词
 
+## Owner Policy（仅 Owner / 多用户 OAuth）
+
+通过 `channels.feishu.ownerPolicy` 控制 OAuth 敏感流程是否仅限 App Owner：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "ownerPolicy": "strict"
+    }
+  }
+}
+```
+
+如需“一个 bot 服务多用户、按每个用户身份授权执行”，可设置：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "ownerPolicy": "multiUser"
+    }
+  }
+}
+```
+
+- `strict`（默认）：仅 App Owner 可触发 owner 受限授权流程。
+- `multiUser`：任意已绑定用户可触发 OAuth 流程，实际工具执行仍使用该用户自己的 token。
+
 ## 安全与风险提示（使用前必读）
 
 **核心风险：** 这个插件通过 Lark/飞书接口连接了你的工作数据——消息、文档、日历、联系人，AI 能读到的东西理论上就有泄露的可能。虽然我们做了安全防护，但 AI 系统本身还不够成熟稳定，不能保证万无一失。

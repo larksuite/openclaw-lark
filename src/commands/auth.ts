@@ -5,7 +5,7 @@
  * feishu_auth command — 飞书用户权限批量授权命令实现
  *
  * 直接复用 onboarding-auth.ts 的 triggerOnboarding() 函数。
- * 注意：此命令仅限应用 owner 执行（与 onboarding 逻辑一致）
+ * ownerPolicy=strict 时仅限应用 owner 执行；multiUser 时允许绑定用户执行。
  */
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
@@ -19,8 +19,8 @@ import { filterSensitiveScopes } from '../core/tool-scopes';
 import { assertOwnerAccessStrict, OwnerAccessDeniedError } from '../core/owner-policy';
 
 /**
- * 执行飞书用户权限批量授权命令
- * 直接调用 triggerOnboarding()，包含 owner 检查
+ * 执行飞书用户权限批量授权命令。
+ * 直接调用 triggerOnboarding()，并遵循 ownerPolicy 配置。
  */
 export async function runFeishuAuth(config: OpenClawConfig): Promise<string> {
   const ticket = getTicket();
@@ -51,7 +51,7 @@ export async function runFeishuAuth(config: OpenClawConfig): Promise<string> {
     await assertOwnerAccessStrict(acct, sdk, senderOpenId);
   } catch (err) {
     if (err instanceof OwnerAccessDeniedError) {
-      return '❌ 此命令仅限应用 owner 执行\n\n如需授权，请联系应用管理员。';
+      return '❌ 当前配置为 owner-only 模式，此命令仅限应用 owner 执行。\n\n如需多用户授权，请将 channels.feishu.ownerPolicy 设置为 multiUser。';
     }
     throw err;
   }
