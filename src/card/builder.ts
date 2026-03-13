@@ -42,10 +42,11 @@ export interface FeishuCard {
   config: {
     wide_screen_mode: boolean;
     update_multi?: boolean;
+    locales?: string[];
     summary?: { content: string };
   };
   header?: {
-    title: { tag: 'plain_text'; content: string };
+    title: { tag: 'plain_text'; content: string; i18n_content?: Record<string, string> };
     template: string;
   };
   elements: CardElement[];
@@ -161,11 +162,12 @@ function cleanReasoningPrefix(text: string): string {
 }
 
 /**
- * Format reasoning duration into a human-readable string.
- * e.g. "Thought for 3.2s" or "Thought for 1m 15s"
+ * Format reasoning duration into a human-readable i18n pair.
+ * e.g. { zh: "思考了 3.2s", en: "Thought for 3.2s" }
  */
-export function formatReasoningDuration(ms: number): string {
-  return `Thought for ${formatElapsed(ms)}`;
+export function formatReasoningDuration(ms: number): { zh: string; en: string } {
+  const d = formatElapsed(ms);
+  return { zh: `思考了 ${d}`, en: `Thought for ${d}` };
 }
 
 /**
@@ -177,12 +179,18 @@ export function formatElapsed(ms: number): string {
 }
 
 /**
- * Build footer meta-info: hr separator + notation-sized text.
+ * Build footer meta-info: notation-sized text with i18n support.
  * Error text is rendered in red; normal text uses default grey (notation).
  */
-function buildFooter(text: string, isError?: boolean): CardElement[] {
-  const content = isError ? `<font color='red'>${text}</font>` : text;
-  return [{ tag: 'markdown', content, text_size: 'notation' }];
+function buildFooter(zhText: string, enText: string, isError?: boolean): CardElement[] {
+  const zhContent = isError ? `<font color='red'>${zhText}</font>` : zhText;
+  const enContent = isError ? `<font color='red'>${enText}</font>` : enText;
+  return [{
+    tag: 'markdown',
+    content: enContent,
+    i18n_content: { zh_cn: zhContent, en_us: enContent },
+    text_size: 'notation',
+  }];
 }
 
 // ---------------------------------------------------------------------------
@@ -236,11 +244,12 @@ export function buildCardContent(
 
 function buildThinkingCard(): FeishuCard {
   return {
-    config: { wide_screen_mode: true, update_multi: true },
+    config: { wide_screen_mode: true, update_multi: true, locales: ['zh_cn', 'en_us'] },
     elements: [
       {
         tag: 'markdown',
-        content: '思考中...',
+        content: 'Thinking...',
+        i18n_content: { zh_cn: '思考中...', en_us: 'Thinking...' },
       },
     ],
   };
@@ -254,6 +263,10 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
     elements.push({
       tag: 'markdown',
       content: `💭 **Thinking...**\n\n${reasoningText}`,
+      i18n_content: {
+        zh_cn: `💭 **思考中...**\n\n${reasoningText}`,
+        en_us: `💭 **Thinking...**\n\n${reasoningText}`,
+      },
       text_size: 'notation',
     });
   } else if (partialText) {
@@ -278,7 +291,7 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
   }
 
   return {
-    config: { wide_screen_mode: true, update_multi: true },
+    config: { wide_screen_mode: true, update_multi: true, locales: ['zh_cn', 'en_us'] },
     elements,
   };
 }
@@ -298,14 +311,20 @@ function buildCompleteCard(params: {
 
   // Collapsible reasoning panel (before main content)
   if (reasoningText) {
-    const durationLabel = reasoningElapsedMs ? formatReasoningDuration(reasoningElapsedMs) : 'Thought';
+    const dur = reasoningElapsedMs ? formatReasoningDuration(reasoningElapsedMs) : null;
+    const zhLabel = dur ? dur.zh : '思考';
+    const enLabel = dur ? dur.en : 'Thought';
     elements.push({
       tag: 'collapsible_panel',
       expanded: false,
       header: {
         title: {
           tag: 'markdown',
-          content: `💭 ${durationLabel}`,
+          content: `💭 ${enLabel}`,
+          i18n_content: {
+            zh_cn: `💭 ${zhLabel}`,
+            en_us: `💭 ${enLabel}`,
+          },
         },
         vertical_align: 'center',
         icon: {
@@ -351,25 +370,30 @@ function buildCompleteCard(params: {
 
   // Footer meta-info: each metadata item is independently controlled via
   // the `footer` config. Both status and elapsed default to hidden.
-  const parts: string[] = [];
+  const zhParts: string[] = [];
+  const enParts: string[] = [];
 
   if (footer?.status) {
     if (isError) {
-      parts.push('出错');
+      zhParts.push('出错');
+      enParts.push('Error');
     } else if (isAborted) {
-      parts.push('已停止');
+      zhParts.push('已停止');
+      enParts.push('Stopped');
     } else {
-      parts.push('已完成');
+      zhParts.push('已完成');
+      enParts.push('Completed');
     }
   }
 
   if (footer?.elapsed && elapsedMs != null) {
-    parts.push(`耗时 ${formatElapsed(elapsedMs)}`);
+    const d = formatElapsed(elapsedMs);
+    zhParts.push(`耗时 ${d}`);
+    enParts.push(`Elapsed ${d}`);
   }
 
-  if (parts.length > 0) {
-    const footerText = parts.join(' · ');
-    elements.push(...buildFooter(footerText, isError));
+  if (zhParts.length > 0) {
+    elements.push(...buildFooter(zhParts.join(' · '), enParts.join(' · '), isError));
   }
 
   // Use the answer text (not reasoning) as the feed preview summary.
@@ -378,7 +402,7 @@ function buildCompleteCard(params: {
   const summary = summaryText ? { content: summaryText.slice(0, 120) } : undefined;
 
   return {
-    config: { wide_screen_mode: true, update_multi: true, summary },
+    config: { wide_screen_mode: true, update_multi: true, locales: ['zh_cn', 'en_us'], summary },
     elements,
   };
 }

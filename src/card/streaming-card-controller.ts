@@ -51,7 +51,11 @@ const STREAMING_THINKING_CARD = {
   schema: '2.0',
   config: {
     streaming_mode: true,
-    summary: { content: '思考中...' },
+    locales: ['zh_cn', 'en_us'],
+    summary: {
+      content: 'Thinking...',
+      i18n_content: { zh_cn: '思考中...', en_us: 'Thinking...' },
+    },
   },
   body: {
     elements: [
