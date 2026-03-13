@@ -4,16 +4,17 @@
  *
  * feishu_drive_file tool -- Manage Feishu Drive files.
  *
- * Actions: list, get_meta, copy, move, delete, upload, download
+ * Actions: list, get_meta, copy, move, create_folder, delete, upload, download
  *
  * Uses the Feishu Drive API:
- *   - list:        GET    /open-apis/drive/v1/files
- *   - get_meta:    POST   /open-apis/drive/v1/metas/batch_query
- *   - copy:        POST   /open-apis/drive/v1/files/:file_token/copy
- *   - move:        POST   /open-apis/drive/v1/files/:file_token/move
- *   - delete:      DELETE /open-apis/drive/v1/files/:file_token
- *   - upload:      POST   /open-apis/drive/v1/files/upload_all
- *   - download:    GET    /open-apis/drive/v1/files/:file_token/download
+ *   - list:         GET    /open-apis/drive/v1/files
+ *   - get_meta:     POST   /open-apis/drive/v1/metas/batch_query
+ *   - copy:         POST   /open-apis/drive/v1/files/:file_token/copy
+ *   - move:         POST   /open-apis/drive/v1/files/:file_token/move
+ *   - create_folder: POST   /open-apis/drive/v1/files/create_folder
+ *   - delete:       DELETE /open-apis/drive/v1/files/:file_token
+ *   - upload:       POST   /open-apis/drive/v1/files/upload_all
+ *   - download:     GET    /open-apis/drive/v1/files/:file_token/download
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -165,6 +166,19 @@ const FeishuDriveFileSchema = Type.Union([
     }),
   }),
 
+  // CREATE FOLDER
+  Type.Object({
+    action: Type.Literal('create_folder'),
+    name: Type.String({
+      description: '文件夹名称（必填）',
+    }),
+    folder_token: Type.Optional(
+      Type.String({
+        description: '父文件夹 token（可选）。不填写时创建在「我的空间」根目录',
+      }),
+    ),
+  }),
+
   // DELETE FILE
   Type.Object({
     action: Type.Literal('delete'),
@@ -272,6 +286,11 @@ type FeishuDriveFileParams =
       folder_token: string;
     }
   | {
+      action: 'create_folder';
+      name: string;
+      folder_token?: string;
+    }
+  | {
       action: 'delete';
       file_token: string;
       type: string;
@@ -311,6 +330,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
         "\n- get_meta（批量获取元数据）：批量查询文档元信息，使用 request_docs 数组参数，格式：[{doc_token: '...', doc_type: 'sheet'}]" +
         '\n- copy（复制文件）：复制文件到指定位置' +
         '\n- move（移动文件）：移动文件到指定文件夹' +
+        '\n- create_folder（创建文件夹）：在云空间中创建新文件夹' +
         '\n- delete（删除文件）：删除文件' +
         '\n- upload（上传文件）：上传本地文件到云空间。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）' +
         '\n- download（下载文件）：下载文件到本地。提供 output_path（本地保存路径）则保存到本地，否则返回 Base64 编码' +
@@ -439,35 +459,6 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
 
               const res = await client.invoke(
                 'feishu_drive_file.move',
-                (sdk, opts) =>
-                  sdk.drive.file.move(
-                    {
-                      path: { file_token: p.file_token },
-                      data: {
-                        type: p.type as any,
-                        folder_token: p.folder_token,
-                      },
-                    },
-                    opts,
-                  ),
-                { as: 'user' },
-              );
-              assertLarkOk(res);
-
-              const data = res.data as DriveTaskData | undefined;
-              log.info(`move: task_id=${data?.task_id}`);
-
-              return json({
-                success: true,
-                task_id: data?.task_id,
-                file_token: p.file_token,
-                target_folder_token: p.folder_token,
-              });
-            }
-
-            // -----------------------------------------------------------------
-            // DELETE FILE
-            // -----------------------------------------------------------------
             case 'delete': {
               log.info(`delete: file_token=${p.file_token}, type=${p.type}`);
 
