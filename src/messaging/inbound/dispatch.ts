@@ -41,6 +41,8 @@ import {
 import { dispatchPermissionNotification, dispatchSystemCommand } from './dispatch-commands';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
+import { runFeishuDoctorI18n } from '../../commands/doctor';
+import { sendCardFeishu, buildI18nMarkdownCard, sendMessageFeishu } from '../outbound/send';
 
 const log = larkLogger('inbound/dispatch');
 
@@ -244,6 +246,42 @@ export async function dispatchToAgent(params: {
       ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
     },
   });
+
+  // 8a. Intercept /feishu_doctor and /feishu doctor for i18n multi-locale post
+  //     Must run BEFORE the SDK command check — the SDK does not recognise
+  //     plugin-registered commands via isControlCommandMessage, so
+  //     /feishu_doctor falls through to the AI agent otherwise.
+  const contentTrimmed = (params.ctx.content ?? '').trim();
+  const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
+
+  if (isDoctorCommand) {
+    dc.log(`feishu[${dc.account.accountId}]: doctor command detected, using i18n dispatch`);
+    log.info('doctor command detected, using i18n dispatch');
+    try {
+      const i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
+      const card = buildI18nMarkdownCard(i18nTexts);
+      await sendCardFeishu({
+        cfg: dc.accountScopedCfg,
+        to: dc.ctx.chatId,
+        card,
+        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+        accountId: dc.account.accountId,
+        replyInThread: dc.isThread,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      dc.error(`feishu[${dc.account.accountId}]: doctor i18n dispatch failed: ${errMsg}`);
+      await sendMessageFeishu({
+        cfg: dc.accountScopedCfg,
+        to: dc.ctx.chatId,
+        text: `诊断执行失败: ${errMsg}`,
+        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+        accountId: dc.account.accountId,
+        replyInThread: dc.isThread,
+      });
+    }
+    return;
+  }
 
   // 8. Dispatch: system command vs. normal message
   const isCommand = dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
