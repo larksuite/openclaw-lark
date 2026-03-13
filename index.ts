@@ -48,6 +48,7 @@ export {
   sendTextLark,
   sendCardLark,
   sendMediaLark,
+  sendStickerLark,
   type SendTextLarkParams,
   type SendCardLarkParams,
   type SendMediaLarkParams,

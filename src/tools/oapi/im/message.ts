@@ -32,10 +32,10 @@ const FeishuImMessageSchema = Type.Union([
       description: "接收者 ID，与 receive_id_type 对应。open_id 填 'ou_xxx'，chat_id 填 'oc_xxx'",
     }),
     msg_type: StringEnum(
-      ['text', 'post', 'image', 'file', 'audio', 'media', 'interactive', 'share_chat', 'share_user'],
+      ['text', 'post', 'image', 'file', 'audio', 'media', 'interactive', 'share_chat', 'share_user', 'sticker'],
       {
         description:
-          '消息类型：text（纯文本）、post（富文本）、image（图片）、file（文件）、interactive（消息卡片）、share_chat（群名片）、share_user（个人名片）等',
+          '消息类型：text（纯文本）、post（富文本）、image（图片）、file（文件）、interactive（消息卡片）、share_chat（群名片）、share_user（个人名片）、sticker（表情包）等',
       },
     ),
     content: Type.String({
@@ -44,6 +44,7 @@ const FeishuImMessageSchema = Type.Union([
         '示例：text → \'{"text":"你好"}\'，' +
         'image → \'{"image_key":"img_xxx"}\'，' +
         'share_chat → \'{"chat_id":"oc_xxx"}\'，' +
+        'sticker → \'{"file_key":"xxx"}\'，' +
         'post → \'{"zh_cn":{"title":"标题","content":[[{"tag":"text","text":"正文"}]]}}\'',
     }),
     uuid: Type.Optional(
@@ -60,9 +61,9 @@ const FeishuImMessageSchema = Type.Union([
       description: '被回复消息的 ID（om_xxx 格式）',
     }),
     msg_type: StringEnum(
-      ['text', 'post', 'image', 'file', 'audio', 'media', 'interactive', 'share_chat', 'share_user'],
+      ['text', 'post', 'image', 'file', 'audio', 'media', 'interactive', 'share_chat', 'share_user', 'sticker'],
       {
-        description: '消息类型：text（纯文本）、post（富文本）、image（图片）、interactive（消息卡片）等',
+        description: '消息类型：text（纯文本）、post（富文本）、image（图片）、interactive（消息卡片）、sticker（表情包）等',
       },
     ),
     content: Type.String({

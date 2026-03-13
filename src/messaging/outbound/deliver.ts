@@ -81,7 +81,7 @@ async function sendImMessage(params: {
   client: ReturnType<typeof LarkClient.fromCfg>['sdk'];
   to: string;
   content: string;
-  msgType: 'post' | 'interactive';
+  msgType: 'post' | 'interactive' | 'sticker';
   replyToMessageId?: string;
   replyInThread?: boolean;
 }): Promise<FeishuSendResult> {
@@ -234,6 +234,12 @@ export interface SendTextLarkParams {
  */
 export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSendResult> {
   const { cfg, to, text, replyToMessageId, replyInThread, accountId } = params;
+
+  // Detect sticker shorthand: STICKER:<file_key>
+  const stickerMatch = text.trim().match(/^STICKER:(\S+)$/);
+  if (stickerMatch) {
+    return sendStickerLark({ cfg, to, fileKey: stickerMatch[1], replyToMessageId, replyInThread, accountId });
+  }
 
   // Detect card JSON in text — route to card sending before text preprocessing.
   const card = detectCardJson(text);
@@ -389,6 +395,44 @@ export interface SendMediaLarkParams {
  * });
  * ```
  */
+// ---------------------------------------------------------------------------
+// sendStickerLark
+// ---------------------------------------------------------------------------
+
+export interface SendStickerLarkParams {
+  cfg: ClawdbotConfig;
+  to: string;
+  fileKey: string;
+  replyToMessageId?: string;
+  replyInThread?: boolean;
+  accountId?: string;
+}
+
+/**
+ * Send a sticker message to a Feishu chat or user.
+ *
+ * Stickers use `msg_type: "sticker"` with a `file_key` obtained from
+ * a previously received sticker message.  There is no API to upload
+ * custom images as stickers — the bot can only re-send stickers it
+ * has received before.
+ *
+ * @param params - See {@link SendStickerLarkParams}.
+ * @returns The message ID and chat ID.
+ */
+export async function sendStickerLark(params: SendStickerLarkParams): Promise<FeishuSendResult> {
+  const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
+
+  log.info(`sendStickerLark: target=${to}, fileKey=${fileKey}`);
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  const content = JSON.stringify({ file_key: fileKey });
+
+  return sendImMessage({ client, to, content, msgType: 'sticker', replyToMessageId, replyInThread });
+}
+
+// ---------------------------------------------------------------------------
+// sendMediaLark
+// ---------------------------------------------------------------------------
+
 export async function sendMediaLark(params: SendMediaLarkParams): Promise<FeishuSendResult> {
   const { cfg, to, mediaUrl, replyToMessageId, replyInThread, accountId, mediaLocalRoots } = params;
 
