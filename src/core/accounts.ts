@@ -110,7 +110,7 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
   const base = baseConfig(section);
   const accountMap = getAccountMap(section);
   const accountOverride =
-    accountMap && requestedId !== DEFAULT_ACCOUNT_ID
+    accountMap
       ? (accountMap[requestedId] as Partial<FeishuConfig> | undefined)
       : undefined;
 
