@@ -20,6 +20,7 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import type { CommentReplyListData } from '../sdk-types';
 
@@ -217,7 +218,8 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_doc_comments');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_doc_comments',
       label: 'Feishu: Doc Comments',
@@ -423,5 +425,4 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
     { name: 'feishu_doc_comments' },
   );
 
-  api.logger.info?.('feishu_doc_comments: Registered feishu_doc_comments tool');
 }

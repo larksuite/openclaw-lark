@@ -22,6 +22,7 @@ import {
   parseTimeToTimestampMs,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import type { PaginatedData, TaskCreateData } from '../sdk-types';
 
@@ -288,7 +289,8 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_task_task');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_task_task',
       label: 'Feishu Task Management',
@@ -545,5 +547,4 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi) {
     { name: 'feishu_task_task' },
   );
 
-  api.logger.info?.('feishu_task_task: Registered feishu_task_task tool');
 }

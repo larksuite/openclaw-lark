@@ -14,7 +14,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import type { ToolClient } from '../helpers';
-import { assertLarkOk, createToolContext, getFirstAccount, handleInvokeErrorWithAutoAuth, json } from '../helpers';
+import { assertLarkOk, createToolContext, getFirstAccount, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
 import { dateTimeToSecondsString, parseTimeRangeToSeconds } from './time-utils';
 import { formatMessageList, type FormattedMessage } from './format-messages';
 import { getUATUserName, batchResolveUserNamesAsUser } from './user-name-uat';
@@ -144,7 +144,8 @@ function registerGetMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
@@ -248,7 +249,8 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_thread_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
@@ -482,7 +484,8 @@ function registerSearchMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_search_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_search_messages',
       label: 'Feishu: Search Messages',

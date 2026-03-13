@@ -15,7 +15,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { buildRandomTempFilePath } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, formatLarkError } from '../../oapi/helpers';
+import { json, createToolContext, formatLarkError, registerTool } from '../../oapi/helpers';
 import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -132,7 +132,8 @@ export function registerFeishuImBotImageTool(api: OpenClawPluginApi) {
 
   const { getClient, log } = createToolContext(api, 'feishu_im_bot_image');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_bot_image',
       label: 'Feishu: IM Bot Image Download',

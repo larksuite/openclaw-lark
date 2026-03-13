@@ -23,6 +23,8 @@ export {
   getFirstAccount,
   validateRequiredParams,
   validateEnum,
+  checkToolRegistration,
+  registerTool,
 } from '../helpers';
 
 export type { ToolResult, ClientGetter, ToolContext } from '../helpers';

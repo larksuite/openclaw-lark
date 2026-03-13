@@ -10,7 +10,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { ChatMemberListData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,8 @@ export function registerChatMembersTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_chat_members');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_chat_members',
       label: 'Feishu: Get Chat Members',
@@ -119,5 +120,4 @@ export function registerChatMembersTool(api: OpenClawPluginApi) {
     { name: 'feishu_chat_members' },
   );
 
-  api.logger.info?.('feishu_chat_members: Registered feishu_chat_members tool');
 }

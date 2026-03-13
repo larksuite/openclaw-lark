@@ -307,7 +307,8 @@ async function checkUserPermissions(
 
     // 获取应用开通的支持 user token 的权限
     const appUserScopes = await getAppGrantedScopes(sdk, appId, 'user');
-    const allScopes = getAllToolScopes();
+    let  allScopes = getAllToolScopes();
+    allScopes = filterSensitiveScopes(allScopes);
     const appGrantedCount = appUserScopes.filter((s) => allScopes.includes(s)).length;
 
     if (hasUserAuth) {

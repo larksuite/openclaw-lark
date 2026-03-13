@@ -19,6 +19,7 @@ import {
   handleInvokeErrorWithAutoAuth,
   convertTimeRange,
   unixTimestampToISO8601,
+  registerTool,
 } from '../helpers';
 
 // ---------------------------------------------------------------------------
@@ -190,7 +191,8 @@ export function registerFeishuSearchDocWikiTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_search_doc_wiki');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_search_doc_wiki',
       label: 'Feishu Document & Wiki Search',
@@ -299,5 +301,4 @@ export function registerFeishuSearchDocWikiTool(api: OpenClawPluginApi) {
     { name: 'feishu_search_doc_wiki' },
   );
 
-  api.logger.info?.('feishu_search_doc_wiki: Registered feishu_search_doc_wiki tool');
 }

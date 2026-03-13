@@ -16,7 +16,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,8 @@ export function registerFeishuCalendarEventAttendeeTool(api: OpenClawPluginApi) 
 
   const { toolClient, log } = createToolContext(api, 'feishu_calendar_event_attendee');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_calendar_event_attendee',
       label: 'Feishu Calendar Event Attendees',
@@ -399,5 +400,4 @@ export function registerFeishuCalendarEventAttendeeTool(api: OpenClawPluginApi) 
     { name: 'feishu_calendar_event_attendee' },
   );
 
-  api.logger.info?.('feishu_calendar_event_attendee: Registered feishu_calendar_event_attendee tool');
 }

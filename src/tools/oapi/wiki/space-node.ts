@@ -23,6 +23,7 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
 } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
@@ -216,7 +217,8 @@ export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_wiki_space_node');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_wiki_space_node',
       label: 'Feishu Wiki Space Nodes',
@@ -409,5 +411,4 @@ export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
     { name: 'feishu_wiki_space_node' },
   );
 
-  api.logger.info?.('feishu_wiki_space_node: Registered feishu_wiki_space_node tool');
 }

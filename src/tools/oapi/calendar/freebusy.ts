@@ -12,7 +12,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, parseTimeToRFC3339, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, parseTimeToRFC3339, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { FreebusyData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -60,7 +60,8 @@ export function registerFeishuCalendarFreebusyTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_calendar_freebusy');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_calendar_freebusy',
       label: 'Feishu Calendar Free/Busy Status',
@@ -157,5 +158,4 @@ export function registerFeishuCalendarFreebusyTool(api: OpenClawPluginApi) {
     { name: 'feishu_calendar_freebusy' },
   );
 
-  api.logger.info?.('feishu_calendar_freebusy: Registered feishu_calendar_freebusy tool');
 }

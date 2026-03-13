@@ -15,7 +15,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -84,7 +84,8 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_task_comment');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_task_comment',
       label: 'Feishu Task Comments',
@@ -218,5 +219,4 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi) {
     { name: 'feishu_task_comment' },
   );
 
-  api.logger.info?.('feishu_task_comment: Registered feishu_task_comment tool');
 }

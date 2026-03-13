@@ -8,7 +8,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import type { TSchema } from '@sinclair/typebox';
-import { createToolContext, formatToolResult } from '../helpers';
+import { createToolContext, formatToolResult, registerTool } from '../helpers';
 import { handleInvokeErrorWithAutoAuth } from '../oapi/helpers';
 import { getUserAgent } from '../../core/version';
 import fs from 'node:fs';
@@ -224,7 +224,8 @@ export function registerMcpTool<T extends Record<string, unknown>>(
 ): void {
   const { toolClient, log } = createToolContext(api, config.name);
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: config.name,
       label: config.label,

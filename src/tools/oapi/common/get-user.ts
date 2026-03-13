@@ -11,7 +11,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -45,7 +45,8 @@ export function registerGetUserTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_get_user');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_get_user',
       label: 'Feishu: Get User Info',
@@ -146,5 +147,4 @@ export function registerGetUserTool(api: OpenClawPluginApi) {
     { name: 'feishu_get_user' },
   );
 
-  api.logger.info?.('feishu_get_user: Registered feishu_get_user tool');
 }

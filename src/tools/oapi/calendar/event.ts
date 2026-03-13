@@ -24,6 +24,7 @@ import {
   handleInvokeErrorWithAutoAuth,
   formatLarkError,
   unixTimestampToISO8601,
+  registerTool,
 } from '../helpers';
 import type { CalendarPrimaryData, PaginatedData } from '../sdk-types';
 
@@ -538,7 +539,8 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi) {
     return resolved;
   };
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_calendar_event',
       label: 'Feishu Calendar Events',
@@ -1089,5 +1091,4 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi) {
     { name: 'feishu_calendar_event' },
   );
 
-  api.logger.info?.('feishu_calendar_event: Registered feishu_calendar_event tool');
 }

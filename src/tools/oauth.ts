@@ -36,7 +36,7 @@ import { getStoredToken, setStoredToken, tokenStatus, type StoredUAToken } from 
 import { revokeUAT } from '../core/uat-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
 import { buildAuthCard, buildAuthSuccessCard, buildAuthFailedCard, buildAuthIdentityMismatchCard } from './oauth-cards';
-import { json } from './oapi/helpers';
+import { json, registerTool } from './oapi/helpers';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -139,7 +139,8 @@ export function registerFeishuOAuthTool(api: OpenClawPluginApi) {
 
   const cfg = api.config;
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_oauth',
       label: 'Feishu OAuth',
