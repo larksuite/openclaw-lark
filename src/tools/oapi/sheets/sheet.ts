@@ -22,6 +22,7 @@ import {
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
   registerTool,
+  StringEnum,
 } from '../helpers';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -397,7 +398,7 @@ const FeishuSheetSchema = Type.Union([
     action: Type.Literal('export'),
     url: UrlOrToken[0],
     spreadsheet_token: UrlOrToken[1],
-    file_extension: Type.Union([Type.Literal('xlsx'), Type.Literal('csv')], {
+    file_extension: StringEnum(['xlsx', 'csv'], {
       description: '导出格式：xlsx 或 csv',
     }),
     output_path: Type.Optional(

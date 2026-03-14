@@ -15,7 +15,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { buildRandomTempFilePath } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, formatLarkError, registerTool } from '../../oapi/helpers';
+import { json, createToolContext, formatLarkError, registerTool, StringEnum } from '../../oapi/helpers';
 import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -116,7 +116,7 @@ const FeishuImBotImageSchema = Type.Object({
   file_key: Type.String({
     description: '资源 Key，图片消息的 image_key（img_xxx）或文件消息的 file_key（file_xxx）',
   }),
-  type: Type.Union([Type.Literal('image'), Type.Literal('file')], {
+  type: StringEnum(['image', 'file'], {
     description: '资源类型：image（图片消息中的图片）、file（文件/音频/视频消息中的文件）',
   }),
 });

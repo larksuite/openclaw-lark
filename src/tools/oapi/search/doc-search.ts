@@ -20,6 +20,7 @@ import {
   convertTimeRange,
   unixTimestampToISO8601,
   registerTool,
+  StringEnum,
 } from '../helpers';
 
 // ---------------------------------------------------------------------------
@@ -39,32 +40,22 @@ const TimeRangeSchema = Type.Object({
   ),
 });
 
-const DocTypeEnum = Type.Union([
-  Type.Literal('DOC'),
-  Type.Literal('SHEET'),
-  Type.Literal('BITABLE'),
-  Type.Literal('MINDNOTE'),
-  Type.Literal('FILE'),
-  Type.Literal('WIKI'),
-  Type.Literal('DOCX'),
-  Type.Literal('FOLDER'),
-  Type.Literal('CATALOG'),
-  Type.Literal('SLIDES'),
-  Type.Literal('SHORTCUT'),
+const DocTypeEnum = StringEnum([
+  'DOC',
+  'SHEET',
+  'BITABLE',
+  'MINDNOTE',
+  'FILE',
+  'WIKI',
+  'DOCX',
+  'FOLDER',
+  'CATALOG',
+  'SLIDES',
+  'SHORTCUT',
 ]);
 
-const SortTypeEnum = Type.Union(
-  [
-    Type.Literal('DEFAULT_TYPE'),
-    Type.Literal('OPEN_TIME'),
-    Type.Literal('EDIT_TIME'), // User编辑时间降序（推荐获取最新文档）
-    Type.Literal('EDIT_TIME_ASC'),
-    // 以下排序类型暂不支持：
-    // Type.Literal("ENTITY_CREATE_TIME_ASC"),
-    // Type.Literal("ENTITY_CREATE_TIME_DESC"),
-    Type.Literal('CREATE_TIME'),
-    // Type.Literal("CREATE_TIME_ASC"),
-  ],
+const SortTypeEnum = StringEnum(
+  ['DEFAULT_TYPE', 'OPEN_TIME', 'EDIT_TIME', 'EDIT_TIME_ASC', 'CREATE_TIME'],
   {
     description:
       '排序方式。EDIT_TIME=编辑时间降序（最新文档在前，推荐），EDIT_TIME_ASC=编辑时间升序，CREATE_TIME=按文档创建时间排序，OPEN_TIME=打开时间，DEFAULT_TYPE=默认排序',

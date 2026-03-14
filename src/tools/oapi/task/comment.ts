@@ -15,7 +15,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ const FeishuTaskCommentSchema = Type.Union([
     action: Type.Literal('list'),
     resource_id: Type.String({ description: '要获取评论的资源 ID（任务 GUID）' }),
     direction: Type.Optional(
-      Type.Union([Type.Literal('asc'), Type.Literal('desc')], {
+      StringEnum(['asc', 'desc'], {
         description: '排序方式（asc=从旧到新，desc=从新到旧，默认 asc）',
       }),
     ),

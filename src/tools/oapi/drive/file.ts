@@ -25,6 +25,7 @@ import {
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
   registerTool,
+  StringEnum,
 } from '../helpers';
 import type { DriveFileListData, DriveFileData, DriveTaskData } from '../sdk-types';
 import * as fs from 'fs/promises';
@@ -60,12 +61,12 @@ const FeishuDriveFileSchema = Type.Union([
       }),
     ),
     order_by: Type.Optional(
-      Type.Union([Type.Literal('EditedTime'), Type.Literal('CreatedTime')], {
+      StringEnum(['EditedTime', 'CreatedTime'], {
         description: '排序方式：EditedTime（编辑时间）、CreatedTime（创建时间）',
       }),
     ),
     direction: Type.Optional(
-      Type.Union([Type.Literal('ASC'), Type.Literal('DESC')], {
+      StringEnum(['ASC', 'DESC'], {
         description: '排序方向：ASC（升序）、DESC（降序）',
       }),
     ),
