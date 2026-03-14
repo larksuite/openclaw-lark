@@ -34,6 +34,7 @@ import { filterSensitiveScopes, REQUIRED_APP_SCOPES, TOOL_SCOPES } from '../core
 import { probeFeishu } from '../channel/probe';
 import { AppScopeCheckFailedError } from '../core/tool-client';
 import { getPluginVersion } from '../core/version';
+import { openPlatformDomain } from '../core/domains';
 // TODO: 暂时注释掉，等产品策略明确后再放开
 // import { checkMultiAccountIsolation, formatIsolationWarning } from "../core/security-check";
 
@@ -42,6 +43,213 @@ import { getPluginVersion } from '../core/version';
 // ---------------------------------------------------------------------------
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
+
+export type { FeishuLocale } from './locale';
+/** @deprecated Use FeishuLocale instead */
+export type DoctorLocale = import('./locale').FeishuLocale;
+
+// ---------------------------------------------------------------------------
+// I18n text map
+// ---------------------------------------------------------------------------
+
+const T: Record<DoctorLocale, {
+  // maskSecret
+  notSet: string;
+  // checkBasicInfo
+  legacyNotDisabled: string;
+  legacyRunCmds: string;
+  legacyDisabled: string;
+  credentials: string;
+  accountEnabled: string;
+  apiOk: string;
+  apiFail: string;
+  apiError: string;
+  // checkToolsProfile
+  toolsOk: string;
+  toolsWarnProfile: (profile: string) => string;
+  toolsDocRef: string;
+  // checkAppPermissions
+  allPermsGranted: (count: number) => string;
+  missingPermsPrefix: string;
+  missingPermsSuffix: string;
+  cannotQueryPerms: string;
+  cannotQueryPermsGeneric: string;
+  suggestCheckPerm: string;
+  adminApply: string;
+  apply: string;
+  // generatePermissionTable
+  permTableHeader: string;
+  // checkUserPermissions
+  authStatusLabel: string;
+  userTotal: string;
+  valid: string;
+  needRefresh: string;
+  expired: string;
+  tokenRefreshLabel: string;
+  tokenRefreshOn: string;
+  tokenRefreshOff: string;
+  noUserAuth: string;
+  noUserAuthDesc: string;
+  permCompareLabel: string;
+  permInsufficient: string;
+  userCountLabel: string;
+  noAuthLabel: string;
+  appMissingUserPerms: (count: number) => string;
+  permCompareSummary: (appCount: number, total: number, userPart: string) => string;
+  userReauth: string;
+  userNeedsOAuth: string;
+  userPermFailed: string;
+  userPermFailedNoSelfManage: string;
+  // runFeishuDoctor (main report)
+  reportTitle: string;
+  pluginVersionLabel: string;
+  diagTimeLabel: string;
+  noAccounts: string;
+  accountNotFoundPrefix: string;
+  enabledAccountsLabel: string;
+  toolsCheckPass: string;
+  toolsCheckWarn: string;
+  accountPrefix: string;
+  envCheckPass: string;
+  envCheckFail: string;
+  appPermPass: string;
+  appPermFail: string;
+  userPermPass: string;
+  userPermFail: string;
+}> = {
+  zh_cn: {
+    notSet: '(未设置)',
+    legacyNotDisabled:
+      '❌ **旧版插件**: 检测到旧版官方插件未禁用\n' +
+      '👉 请依次运行命令：\n' +
+      '```\n' +
+      'openclaw config set plugins.entries.feishu.enabled false --json\n' +
+      'openclaw gateway restart\n' +
+      '```',
+    legacyRunCmds: '👉 请依次运行命令：',
+    legacyDisabled: '✅ **旧版插件**: 已禁用',
+    credentials: '✅ **凭证完整性**',
+    accountEnabled: '✅ **账户启用**: 已启用',
+    apiOk: '✅ **API 连通性**: 连接成功',
+    apiFail: '❌ **API 连通性**: 连接失败',
+    apiError: '❌ **API 连通性**: 探测异常',
+    toolsOk: '✅ 飞书工具加载暂未发现异常',
+    toolsWarnProfile: (profile: string) =>
+      `⚠️ **工具基础允许列表**: 当前为 \`${profile}\`，飞书工具可能无法加载。可以按需修改配置：`,
+    toolsDocRef: '📖 参考文档',
+    allPermsGranted: (count: number) => `全部 ${count} 个必需权限已开通`,
+    missingPermsPrefix: '缺少',
+    missingPermsSuffix: '个必需权限。需应用管理员申请开通',
+    cannotQueryPerms: '无法查询应用权限状态。原因：未开通 application:application:self_manage 权限',
+    cannotQueryPermsGeneric: '无法查询应用权限状态。',
+    suggestCheckPerm: '建议检查 application:application:self_manage 权限',
+    adminApply: '需应用管理员申请开通',
+    apply: '申请',
+    permTableHeader: '| 权限名称 | 应用已开通 | 用户已授权 |',
+    authStatusLabel: '**授权状态**',
+    userTotal: '共 1 个用户',
+    valid: '有效',
+    needRefresh: '需刷新',
+    expired: '已过期',
+    tokenRefreshLabel: '**Token 自动刷新**',
+    tokenRefreshOn: '✓ 已开启自动刷新 (1/1 个用户)',
+    tokenRefreshOff: '✗ 未开启自动刷新，Token 将在 2 小时后过期',
+    noUserAuth: '⚠️ **暂无用户授权**',
+    noUserAuthDesc: '尚未有用户通过 OAuth 授权。用户首次使用需以用户身份的功能时，会自动触发授权流程。',
+    permCompareLabel: '**权限对照**',
+    permInsufficient: '**用户身份权限不足**',
+    userCountLabel: '已授权',
+    noAuthLabel: '暂无授权',
+    appMissingUserPerms: (count: number) => `💡 应用缺少 ${count} 个用户身份权限。需应用管理员申请开通`,
+    permCompareSummary: (appCount: number, total: number, userPart: string) =>
+      `应用 **${appCount}/${total}** 已开通，用户 **${userPart}**`,
+    userReauth: '💡 用户需要重新授权以获得完整权限，可以向机器人发送消息 "**/feishu auth**"',
+    userNeedsOAuth: '💡 用户需要进行 OAuth 授权，可以向机器人发送消息 "**/feishu auth**"',
+    userPermFailed: '用户权限检查失败',
+    userPermFailedNoSelfManage: '用户权限检查失败：无法查询应用权限。原因：未开通 application:application:self_manage 权限',
+    reportTitle: '### 飞书插件诊断',
+    pluginVersionLabel: '插件版本',
+    diagTimeLabel: '诊断时间',
+    noAccounts: '❌ **错误**: 未找到已启用的飞书账户\n\n请在 OpenClaw 配置文件中配置飞书账户并启用。',
+    accountNotFoundPrefix: '❌ **错误**: 未找到账户',
+    enabledAccountsLabel: '当前已启用的账户',
+    toolsCheckPass: '#### ✅ 工具配置检查通过',
+    toolsCheckWarn: '#### ⚠️ 工具配置检查异常',
+    accountPrefix: '### 账户',
+    envCheckPass: '#### ✅ 环境信息检查通过',
+    envCheckFail: '#### ❌ 环境信息检查未通过',
+    appPermPass: '#### ✅ 应用身份权限检查通过',
+    appPermFail: '#### ❌ 应用身份权限检查未通过',
+    userPermPass: '#### ✅ 用户身份权限检查通过',
+    userPermFail: '#### ❌ 用户身份权限检查未通过',
+  },
+  en_us: {
+    notSet: '(not set)',
+    legacyNotDisabled:
+      '❌ **Legacy Plugin**: Legacy official plugin is not disabled\n' +
+      '👉 Please run the following commands:\n' +
+      '```\n' +
+      'openclaw config set plugins.entries.feishu.enabled false --json\n' +
+      'openclaw gateway restart\n' +
+      '```',
+    legacyRunCmds: '👉 Please run the following commands:',
+    legacyDisabled: '✅ **Legacy Plugin**: Disabled',
+    credentials: '✅ **Credentials**',
+    accountEnabled: '✅ **Account**: Enabled',
+    apiOk: '✅ **API Connectivity**: Connected',
+    apiFail: '❌ **API Connectivity**: Connection failed',
+    apiError: '❌ **API Connectivity**: Probe error',
+    toolsOk: '✅ Feishu tools loading: No issues found',
+    toolsWarnProfile: (profile: string) =>
+      `⚠️ **Tool Allowlist**: Currently set to \`${profile}\`. Feishu tools may not load properly. Update configuration as needed:`,
+    toolsDocRef: '📖 Documentation',
+    allPermsGranted: (count: number) => `All ${count} required permissions granted`,
+    missingPermsPrefix: 'Missing',
+    missingPermsSuffix: 'required permissions. Admin needs to apply',
+    cannotQueryPerms: 'Unable to query app permissions. Reason: Missing application:application:self_manage permission',
+    cannotQueryPermsGeneric: 'Unable to query app permissions.',
+    suggestCheckPerm: 'Please check application:application:self_manage permission',
+    adminApply: 'Admin needs to apply',
+    apply: 'Apply',
+    permTableHeader: '| Permission | App Granted | User Authorized |',
+    authStatusLabel: '**Auth Status**',
+    userTotal: '1 user total',
+    valid: 'Valid',
+    needRefresh: 'Needs refresh',
+    expired: 'Expired',
+    tokenRefreshLabel: '**Token Auto-Refresh**',
+    tokenRefreshOn: '✓ Auto-refresh enabled (1/1 users)',
+    tokenRefreshOff: '✗ Auto-refresh not enabled. Token will expire in 2 hours',
+    noUserAuth: '⚠️ **No User Authorization**',
+    noUserAuthDesc: 'No user has authorized via OAuth yet. The authorization flow will be triggered automatically when a user first uses a feature requiring user identity.',
+    permCompareLabel: '**Permission Comparison**',
+    permInsufficient: '**Insufficient User Permissions**',
+    userCountLabel: 'authorized',
+    noAuthLabel: 'not authorized',
+    appMissingUserPerms: (count: number) => `💡 App is missing ${count} user-identity permissions. Admin needs to apply`,
+    permCompareSummary: (appCount: number, total: number, userPart: string) =>
+      `App **${appCount}/${total}** granted, User **${userPart}**`,
+    userReauth: '💡 User needs to re-authorize for full permissions. Send message to bot: "**/feishu auth**"',
+    userNeedsOAuth: '💡 User needs OAuth authorization. Send message to bot: "**/feishu auth**"',
+    userPermFailed: 'User permission check failed',
+    userPermFailedNoSelfManage: 'User permission check failed: Unable to query app permissions. Reason: Missing application:application:self_manage permission',
+    reportTitle: '### Feishu Plugin Diagnostics',
+    pluginVersionLabel: 'Plugin version',
+    diagTimeLabel: 'Diagnosis time',
+    noAccounts: '❌ **Error**: No enabled Feishu accounts found\n\nPlease configure and enable a Feishu account in the OpenClaw configuration.',
+    accountNotFoundPrefix: '❌ **Error**: Account not found',
+    enabledAccountsLabel: 'Currently enabled accounts',
+    toolsCheckPass: '#### ✅ Tool Configuration Check Passed',
+    toolsCheckWarn: '#### ⚠️ Tool Configuration Check Warning',
+    accountPrefix: '### Account',
+    envCheckPass: '#### ✅ Environment Check Passed',
+    envCheckFail: '#### ❌ Environment Check Failed',
+    appPermPass: '#### ✅ App Permission Check Passed',
+    appPermFail: '#### ❌ App Permission Check Failed',
+    userPermPass: '#### ✅ User Permission Check Passed',
+    userPermFail: '#### ❌ User Permission Check Failed',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,8 +282,8 @@ function getAllToolScopes(): string[] {
 /**
  * 掩码敏感信息（appSecret）
  */
-function maskSecret(secret?: string): string {
-  if (!secret) return '(未设置)';
+function maskSecret(secret: string | undefined, locale: DoctorLocale): string {
+  if (!secret) return T[locale].notSet;
   if (secret.length <= 4) return '****';
   return secret.slice(0, 4) + '****';
 }
@@ -86,7 +294,9 @@ function maskSecret(secret?: string): string {
 async function checkBasicInfo(
   account: ConfiguredLarkAccount,
   config: OpenClawConfig,
+  locale: DoctorLocale,
 ): Promise<{ status: CheckStatus; markdown: string }> {
+  const t = T[locale];
   const lines: string[] = [];
   let status: CheckStatus = 'pass';
 
@@ -95,20 +305,13 @@ async function checkBasicInfo(
   const feishuEntry = (config as any).plugins?.entries?.feishu;
   if (feishuEntry && feishuEntry.enabled !== false) {
     status = 'fail';
-    lines.push(
-      '❌ **旧版插件**: 检测到旧版官方插件未禁用\n' +
-        '👉 请依次运行命令：\n' +
-        '```\n' +
-        'openclaw config set plugins.entries.feishu.enabled false --json\n' +
-        'openclaw gateway restart\n' +
-        '```',
-    );
+    lines.push(t.legacyNotDisabled);
   } else {
-    lines.push('✅ **旧版插件**: 已禁用');
+    lines.push(t.legacyDisabled);
   }
 
-  lines.push(`✅ **凭证完整性**: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret)}`);
-  lines.push(`✅ **账户启用**: 已启用`);
+  lines.push(`${t.credentials}: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret, locale)}`);
+  lines.push(t.accountEnabled);
 
   // API 连通性
   try {
@@ -120,14 +323,14 @@ async function checkBasicInfo(
     });
 
     if (probeResult.ok) {
-      lines.push(`✅ **API 连通性**: 连接成功`);
+      lines.push(t.apiOk);
     } else {
       status = 'fail';
-      lines.push(`❌ **API 连通性**: 连接失败 - ${probeResult.error}`);
+      lines.push(`${t.apiFail} - ${probeResult.error}`);
     }
   } catch (err) {
     status = 'fail';
-    lines.push(`❌ **API 连通性**: 探测异常 - ${err instanceof Error ? err.message : String(err)}`);
+    lines.push(`${t.apiError} - ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return {
@@ -142,7 +345,8 @@ async function checkBasicInfo(
 
 const INCOMPLETE_PROFILES = new Set(['minimal', 'coding', 'messaging']);
 
-function checkToolsProfile(config: OpenClawConfig): { status: CheckStatus; markdown: string } {
+function checkToolsProfile(config: OpenClawConfig, locale: DoctorLocale): { status: CheckStatus; markdown: string } {
+  const t = T[locale];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools = (config as any).tools;
   const profile: string | undefined = tools?.profile;
@@ -150,7 +354,7 @@ function checkToolsProfile(config: OpenClawConfig): { status: CheckStatus; markd
   if (!profile) {
     return {
       status: 'pass',
-      markdown: '✅ 飞书工具加载暂未发现异常',
+      markdown: t.toolsOk,
     };
   }
 
@@ -158,19 +362,19 @@ function checkToolsProfile(config: OpenClawConfig): { status: CheckStatus; markd
     return {
       status: 'warn',
       markdown:
-        `⚠️ **工具基础允许列表**: 当前为 \`${profile}\`，飞书工具可能无法加载。可以按需修改配置：\n` +
+        `${t.toolsWarnProfile(profile)}\n` +
         '```\n' +
         'openclaw config set tools.profile "full"\n' +
         'openclaw gateway restart\n' +
         '```\n' +
-        '📖 参考文档: https://docs.openclaw.ai/zh-CN/tools',
+        `${t.toolsDocRef}: https://docs.openclaw.ai/zh-CN/tools`,
     };
   }
 
   // profile === "full" 或其他未知值
   return {
     status: 'pass',
-    markdown: `✅ 飞书工具加载暂未发现异常`,
+    markdown: t.toolsOk,
   };
 }
 
@@ -184,8 +388,11 @@ function checkToolsProfile(config: OpenClawConfig): { status: CheckStatus; markd
 async function checkAppPermissions(
   account: ConfiguredLarkAccount,
   sdk: Lark.Client,
+  locale: DoctorLocale,
 ): Promise<{ status: CheckStatus; markdown: string; missingScopes: string[] }> {
+  const t = T[locale];
   const { appId } = account;
+  const openDomain = openPlatformDomain(account.brand);
 
   try {
     // 获取应用已开通的权限（tenant token）
@@ -198,18 +405,18 @@ async function checkAppPermissions(
       // 全部权限已开通
       return {
         status: 'pass',
-        markdown: `全部 ${REQUIRED_APP_SCOPES.length} 个必需权限已开通`,
+        markdown: t.allPermsGranted(REQUIRED_APP_SCOPES.length),
         missingScopes: [],
       };
     }
 
     // 缺少必需权限
     const lines: string[] = [];
-    let applyUrl = `https://open.feishu.cn/app/${appId}/auth?op_from=feishu-openclaw&token_type=tenant`;
+    let applyUrl = `${openDomain}/app/${appId}/auth?op_from=feishu-openclaw&token_type=tenant`;
     if (requiredMissing.length < 20) {
-      applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=${encodeURIComponent(requiredMissing.join(','))}&op_from=feishu-openclaw&token_type=tenant`;
+      applyUrl = `${openDomain}/app/${appId}/auth?q=${encodeURIComponent(requiredMissing.join(','))}&op_from=feishu-openclaw&token_type=tenant`;
     }
-    lines.push(`缺少 ${requiredMissing.length} 个必需权限。需应用管理员申请开通 [申请](${applyUrl})`);
+    lines.push(`${t.missingPermsPrefix} ${requiredMissing.length} ${t.missingPermsSuffix} [${t.apply}](${applyUrl})`);
     lines.push('');
     for (const scope of requiredMissing) {
       lines.push(`- ${scope}`);
@@ -222,19 +429,19 @@ async function checkAppPermissions(
     };
   } catch (err) {
     // API 调用失败（通常是缺少 application:application:self_manage 权限）
-    const applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const applyUrl = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
 
     if (err instanceof AppScopeCheckFailedError) {
       return {
         status: 'fail',
-        markdown: `无法查询应用权限状态。原因：未开通 application:application:self_manage 权限\n\n需应用管理员申请开通 [申请](${applyUrl})`,
+        markdown: `${t.cannotQueryPerms}\n\n${t.adminApply} [${t.apply}](${applyUrl})`,
         missingScopes: [],
       };
     }
 
     return {
       status: 'fail',
-      markdown: `无法查询应用权限状态。${err instanceof Error ? err.message : String(err)}\n\n建议检查 application:application:self_manage 权限 [申请](${applyUrl})`,
+      markdown: `${t.cannotQueryPermsGeneric}${err instanceof Error ? err.message : String(err)}\n\n${t.suggestCheckPerm} [${t.apply}](${applyUrl})`,
       missingScopes: [],
     };
   }
@@ -251,6 +458,7 @@ function generatePermissionTable(
   appGrantedScopes: string[],
   userGrantedScopes: string[],
   hasValidUser: boolean,
+  locale: DoctorLocale,
 ): string {
   let allScopes = getAllToolScopes();
   allScopes = filterSensitiveScopes(allScopes);
@@ -258,7 +466,7 @@ function generatePermissionTable(
   const userSet = new Set(userGrantedScopes);
 
   const lines: string[] = [];
-  lines.push('| 权限名称 | 应用已开通 | 用户已授权 |');
+  lines.push(T[locale].permTableHeader);
   lines.push('|----------|-----------|-----------|');
 
   for (const scope of allScopes) {
@@ -277,6 +485,7 @@ function generatePermissionTable(
 async function checkUserPermissions(
   account: ConfiguredLarkAccount,
   sdk: Lark.Client,
+  locale: DoctorLocale,
 ): Promise<{
   status: CheckStatus;
   markdown: string;
@@ -284,7 +493,9 @@ async function checkUserPermissions(
   tokenExpired: boolean;
   missingUserScopes: string[];
 }> {
+  const t = T[locale];
   const { appId } = account;
+  const openDomain = openPlatformDomain(account.brand);
   const lines: string[] = [];
 
   try {
@@ -307,7 +518,8 @@ async function checkUserPermissions(
 
     // 获取应用开通的支持 user token 的权限
     const appUserScopes = await getAppGrantedScopes(sdk, appId, 'user');
-    const allScopes = getAllToolScopes();
+    let  allScopes = getAllToolScopes();
+    allScopes = filterSensitiveScopes(allScopes);
     const appGrantedCount = appUserScopes.filter((s) => allScopes.includes(s)).length;
 
     if (hasUserAuth) {
@@ -323,7 +535,7 @@ async function checkUserPermissions(
       const authEmoji = authStatus === 'pass' ? '✅' : '⚠️';
 
       lines.push(
-        `${authEmoji} **授权状态**: 共 1 个用户 | ✓ 有效: ${validCount}, ⟳ 需刷新: ${needsRefreshCount}, ✗ 已过期: ${expiredCount}`,
+        `${authEmoji} ${t.authStatusLabel}: ${t.userTotal} | ✓ ${t.valid}: ${validCount}, ⟳ ${t.needRefresh}: ${needsRefreshCount}, ✗ ${t.expired}: ${expiredCount}`,
       );
 
       // Token 自动刷新检查
@@ -332,13 +544,13 @@ async function checkUserPermissions(
       const refreshEmoji = refreshStatus === 'pass' ? '✅' : '⚠️';
 
       lines.push(
-        `${refreshEmoji} **Token 自动刷新**: ${hasOfflineAccess ? '✓ 已开启自动刷新 (1/1 个用户)' : '✗ 未开启自动刷新，Token 将在 2 小时后过期'}`,
+        `${refreshEmoji} ${t.tokenRefreshLabel}: ${hasOfflineAccess ? t.tokenRefreshOn : t.tokenRefreshOff}`,
       );
     } else {
       // 没有用户授权
-      lines.push('⚠️ **暂无用户授权**');
+      lines.push(t.noUserAuth);
       lines.push('');
-      lines.push('尚未有用户通过 OAuth 授权。用户首次使用需以用户身份的功能时，会自动触发授权流程。');
+      lines.push(t.noUserAuthDesc);
       lines.push('');
     }
 
@@ -361,14 +573,14 @@ async function checkUserPermissions(
     const tableEmoji = tableStatus === 'pass' ? '✅' : tableStatus === 'warn' ? '⚠️' : '❌';
 
     if (validCount === 0) {
-      lines.push(`**权限对照**: 应用 **${appGrantedCount}/${allScopes.length}** 已开通，用户 **暂无授权**`);
+      lines.push(`${t.permCompareLabel}: ${t.permCompareSummary(appGrantedCount, allScopes.length, t.noAuthLabel)}`);
     } else if (userGrantedCount < allScopes.length) {
       lines.push(
-        `${tableEmoji} **用户身份权限不足**: 应用 **${appGrantedCount}/${allScopes.length}** 已开通，用户 **${userGrantedCount}/${allScopes.length}** 已授权`,
+        `${tableEmoji} ${t.permInsufficient}: ${t.permCompareSummary(appGrantedCount, allScopes.length, `${userGrantedCount}/${allScopes.length} ${t.userCountLabel}`)}`,
       );
     } else {
       lines.push(
-        `${tableEmoji} **权限对照**: 应用 **${appGrantedCount}/${allScopes.length}** 已开通，用户 **${userGrantedCount}/${allScopes.length}** 已授权`,
+        `${tableEmoji} ${t.permCompareLabel}: ${t.permCompareSummary(appGrantedCount, allScopes.length, `${userGrantedCount}/${allScopes.length} ${t.userCountLabel}`)}`,
       );
     }
     lines.push('');
@@ -377,24 +589,23 @@ async function checkUserPermissions(
     if (appGrantedCount < allScopes.length) {
       // 计算缺失的应用权限
       const appMissingScopes = allScopes.filter((s) => !appUserScopes.includes(s));
-      let appApplyUrl = `https://open.feishu.cn/app/${appId}/auth?op_from=feishu-openclaw&token_type=user`;
+      let appApplyUrl = `${openDomain}/app/${appId}/auth?op_from=feishu-openclaw&token_type=user`;
       if (appMissingScopes.length < 20) {
-        appApplyUrl = `https://open.feishu.cn/app/${appId}/auth?q=${encodeURIComponent(appMissingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`;
+        appApplyUrl = `${openDomain}/app/${appId}/auth?q=${encodeURIComponent(appMissingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`;
       }
 
-      lines.push(`💡 应用缺少 ${appMissingScopes.length} 个用户身份权限。需应用管理员申请开通 [申请](${appApplyUrl})`);
-      // lines.push("");
+      lines.push(`${t.appMissingUserPerms(appMissingScopes.length)} [${t.apply}](${appApplyUrl})`);
     }
     if (userGrantedCount < allScopes.length && validCount > 0) {
-      lines.push(`💡 用户需要重新授权以获得完整权限，可以向机器人发送消息 "**/feishu auth**"`);
+      lines.push(t.userReauth);
       lines.push('');
     } else if (!hasUserAuth) {
-      lines.push(`💡 用户需要进行 OAuth 授权，可以向机器人发送消息 "**/feishu auth**"`);
+      lines.push(t.userNeedsOAuth);
       lines.push('');
     }
 
     // 生成详细权限对照表
-    const table = generatePermissionTable(appUserScopes, validCount === 1 ? scopes : [], validCount === 1);
+    const table = generatePermissionTable(appUserScopes, validCount === 1 ? scopes : [], validCount === 1, locale);
     lines.push(table);
 
     // 计算总体状态
@@ -413,12 +624,12 @@ async function checkUserPermissions(
       missingUserScopes: userMissing,
     };
   } catch (err) {
-    const applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const applyUrl = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
 
     if (err instanceof AppScopeCheckFailedError) {
       return {
         status: 'warn',
-        markdown: `用户权限检查失败：无法查询应用权限。原因：未开通 application:application:self_manage 权限\n\n需应用管理员申请开通 [申请](${applyUrl})`,
+        markdown: `${t.userPermFailedNoSelfManage}\n\n${t.adminApply} [${t.apply}](${applyUrl})`,
         hasAuth: false,
         tokenExpired: false,
         missingUserScopes: [],
@@ -427,7 +638,7 @@ async function checkUserPermissions(
 
     return {
       status: 'warn',
-      markdown: `用户权限检查失败: ${err instanceof Error ? err.message : String(err)}`,
+      markdown: `${t.userPermFailed}: ${err instanceof Error ? err.message : String(err)}`,
       hasAuth: false,
       tokenExpired: false,
       missingUserScopes: [],
@@ -444,8 +655,14 @@ async function checkUserPermissions(
  *
  * @param config - OpenClaw 配置
  * @param currentAccountId - 当前发送命令的机器人账号 ID（若有则只诊断该账号）
+ * @param locale - 输出语言，默认 zh_cn
  */
-export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?: string): Promise<string> {
+export async function runFeishuDoctor(
+  config: OpenClawConfig,
+  currentAccountId?: string,
+  locale: DoctorLocale = 'zh_cn',
+): Promise<string> {
+  const t = T[locale];
   const lines: string[] = [];
 
   // 1. 获取目标账户
@@ -454,27 +671,27 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
   const globalCfg = resolveGlobalConfig(config);
   const allAccounts = getEnabledLarkAccounts(globalCfg);
   if (allAccounts.length === 0) {
-    return '❌ **错误**: 未找到已启用的飞书账户\n\n请在 OpenClaw 配置文件中配置飞书账户并启用。';
+    return t.noAccounts;
   }
 
   // 若指定了 accountId，只诊断该账号
   const accounts = currentAccountId ? allAccounts.filter((a) => a.accountId === currentAccountId) : allAccounts;
 
   if (accounts.length === 0) {
-    return `❌ **错误**: 未找到账户 "${currentAccountId}"\n\n当前已启用的账户: ${allAccounts.map((a) => a.accountId).join(', ')}`;
+    return `${t.accountNotFoundPrefix} "${currentAccountId}"\n\n${t.enabledAccountsLabel}: ${allAccounts.map((a) => a.accountId).join(', ')}`;
   }
 
   // 2. 生成报告头部
-  lines.push('### 飞书插件诊断');
+  lines.push(t.reportTitle);
   lines.push('');
-  lines.push(`插件版本: ${getPluginVersion()}  |  诊断时间: ${formatTimestamp(new Date())}`);
+  lines.push(`${t.pluginVersionLabel}: ${getPluginVersion()}  |  ${t.diagTimeLabel}: ${formatTimestamp(new Date())}`);
   lines.push('');
   lines.push('---');
   lines.push('');
 
   // 3. 工具配置（全局，不区分账户）
-  const toolsResult = checkToolsProfile(config);
-  const toolsTitle = toolsResult.status === 'pass' ? '#### ✅ 工具配置检查通过' : '#### ⚠️ 工具配置检查异常';
+  const toolsResult = checkToolsProfile(config, locale);
+  const toolsTitle = toolsResult.status === 'pass' ? t.toolsCheckPass : t.toolsCheckWarn;
   lines.push(toolsTitle);
   lines.push('');
   lines.push(toolsResult.markdown);
@@ -500,13 +717,13 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
     const accountLabel = account.accountId || account.appId;
 
     if (accounts.length > 1) {
-      lines.push(`### 账户 ${i + 1}: ${accountLabel}`);
+      lines.push(`${t.accountPrefix} ${i + 1}: ${accountLabel}`);
       lines.push('');
     }
 
     // 4a. 环境信息
-    const basicInfoResult = await checkBasicInfo(account, config);
-    const basicTitle = basicInfoResult.status === 'pass' ? '#### ✅ 环境信息检查通过' : '#### ❌ 环境信息检查未通过';
+    const basicInfoResult = await checkBasicInfo(account, config, locale);
+    const basicTitle = basicInfoResult.status === 'pass' ? t.envCheckPass : t.envCheckFail;
     lines.push(basicTitle);
     lines.push('');
     lines.push(basicInfoResult.markdown);
@@ -515,8 +732,8 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
     lines.push('');
 
     // 4b. 应用权限
-    const appResult = await checkAppPermissions(account, sdk);
-    const appTitle = appResult.status === 'pass' ? '#### ✅ 应用身份权限检查通过' : '#### ❌ 应用身份权限检查未通过';
+    const appResult = await checkAppPermissions(account, sdk, locale);
+    const appTitle = appResult.status === 'pass' ? t.appPermPass : t.appPermFail;
     lines.push(appTitle);
     lines.push('');
     lines.push(appResult.markdown);
@@ -525,8 +742,8 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
     lines.push('');
 
     // 4c. 用户权限
-    const userResult = await checkUserPermissions(account, sdk);
-    const userTitle = userResult.status === 'pass' ? '#### ✅ 用户身份权限检查通过' : '#### ❌ 用户身份权限检查未通过';
+    const userResult = await checkUserPermissions(account, sdk, locale);
+    const userTitle = userResult.status === 'pass' ? t.userPermPass : t.userPermFail;
     lines.push(userTitle);
     lines.push('');
     lines.push(userResult.markdown);
@@ -539,4 +756,19 @@ export async function runFeishuDoctor(config: OpenClawConfig, currentAccountId?:
   }
 
   return lines.join('\n');
+}
+
+/**
+ * 运行飞书插件诊断，同时生成中英双语 Markdown 报告。
+ * 用于飞书 channel 的多语言 post 发送。
+ */
+export async function runFeishuDoctorI18n(
+  config: OpenClawConfig,
+  currentAccountId?: string,
+): Promise<Record<DoctorLocale, string>> {
+  const [zh_cn, en_us] = await Promise.all([
+    runFeishuDoctor(config, currentAccountId, 'zh_cn'),
+    runFeishuDoctor(config, currentAccountId, 'en_us'),
+  ]);
+  return { zh_cn, en_us };
 }

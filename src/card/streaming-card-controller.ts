@@ -24,6 +24,7 @@ import {
 } from './cardkit';
 import { buildCardContent, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2 } from './builder';
 import { optimizeMarkdownStyle } from './markdown-style';
+import { ImageResolver } from './image-resolver';
 import { registerShutdownHook } from '../core/shutdown-hooks';
 import { FlushController } from './flush-controller';
 import { UnavailableGuard } from './unavailable-guard';
@@ -51,7 +52,11 @@ const STREAMING_THINKING_CARD = {
   schema: '2.0',
   config: {
     streaming_mode: true,
-    summary: { content: '思考中...' },
+    locales: ['zh_cn', 'en_us'],
+    summary: {
+      content: 'Thinking...',
+      i18n_content: { zh_cn: '思考中...', en_us: 'Thinking...' },
+    },
   },
   body: {
     elements: [
@@ -108,6 +113,7 @@ export class StreamingCardController {
   // ---- Sub-controllers ----
   private readonly flush: FlushController;
   private readonly guard: UnavailableGuard;
+  private readonly imageResolver: ImageResolver;
 
   // ---- Lifecycle ----
   private createEpoch = 0;
@@ -136,6 +142,16 @@ export class StreamingCardController {
     });
 
     this.flush = new FlushController(() => this.performFlush());
+
+    this.imageResolver = new ImageResolver({
+      cfg: deps.cfg,
+      accountId: deps.accountId,
+      onImageResolved: () => {
+        if (!this.isTerminalPhase && this.cardKit.cardMessageId) {
+          void this.throttledCardUpdate();
+        }
+      },
+    });
   }
 
   // ------------------------------------------------------------------
@@ -356,9 +372,10 @@ export class StreamingCardController {
     const errorEffectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
     if (this.cardKit.cardMessageId) {
       try {
-        const errorText = this.text.accumulatedText
+        const rawErrorText = this.text.accumulatedText
           ? `${this.text.accumulatedText}\n\n---\n**Error**: An error occurred while generating the response.`
           : '**Error**: An error occurred while generating the response.';
+        const errorText = this.imageResolver.resolveImages(rawErrorText);
         const errorCard = buildCardContent('complete', {
           text: errorText,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
@@ -426,8 +443,10 @@ export class StreamingCardController {
           log.warn('reply completed without visible text, using empty-reply fallback');
         }
 
+        const resolvedDisplayText = await this.imageResolver.resolveImagesAwait(displayText, 15_000);
+
         const completeCard = buildCardContent('complete', {
-          text: displayText,
+          text: resolvedDisplayText,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
@@ -491,7 +510,7 @@ export class StreamingCardController {
       const effectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
       if (effectiveCardId) {
         const elapsedMs = Date.now() - this.dispatchStartTime;
-        const abortText = this.text.accumulatedText || 'Aborted.';
+        const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCardContent = buildCardContent('complete', {
           text: abortText,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
@@ -505,7 +524,7 @@ export class StreamingCardController {
       } else if (this.cardKit.cardMessageId) {
         // IM fallback: 卡片不是通过 CardKit 发的，用 im.message.patch 更新
         const elapsedMs = Date.now() - this.dispatchStartTime;
-        const abortText = this.text.accumulatedText || 'Aborted.';
+        const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCard = buildCardContent('complete', {
           text: abortText,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
@@ -671,6 +690,7 @@ export class StreamingCardController {
 
     try {
       const displayText = this.buildDisplayText();
+      const resolvedText = this.imageResolver.resolveImages(displayText);
 
       if (this.cardKit.cardKitCardId) {
         // CardKit streaming — typewriter effect
@@ -684,14 +704,14 @@ export class StreamingCardController {
           cfg: this.deps.cfg,
           cardId: this.cardKit.cardKitCardId,
           elementId: STREAMING_ELEMENT_ID,
-          content: optimizeMarkdownStyle(displayText),
+          content: optimizeMarkdownStyle(resolvedText),
           sequence: this.cardKit.cardKitSequence,
           accountId: this.deps.accountId,
         });
       } else {
         log.debug('flushCardUpdate: IM patch fallback');
         const card = buildCardContent('streaming', {
-          text: this.reasoning.isReasoningPhase ? '' : displayText,
+          text: this.reasoning.isReasoningPhase ? '' : resolvedText,
           reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
         });
         await updateCardFeishu({

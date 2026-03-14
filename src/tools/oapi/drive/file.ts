@@ -24,6 +24,8 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
+  StringEnum,
 } from '../helpers';
 import type { DriveFileListData, DriveFileData, DriveTaskData } from '../sdk-types';
 import * as fs from 'fs/promises';
@@ -59,12 +61,12 @@ const FeishuDriveFileSchema = Type.Union([
       }),
     ),
     order_by: Type.Optional(
-      Type.Union([Type.Literal('EditedTime'), Type.Literal('CreatedTime')], {
+      StringEnum(['EditedTime', 'CreatedTime'], {
         description: '排序方式：EditedTime（编辑时间）、CreatedTime（创建时间）',
       }),
     ),
     direction: Type.Optional(
-      Type.Union([Type.Literal('ASC'), Type.Literal('DESC')], {
+      StringEnum(['ASC', 'DESC'], {
         description: '排序方向：ASC（升序）、DESC（降序）',
       }),
     ),
@@ -300,7 +302,8 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_drive_file');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_drive_file',
       label: 'Feishu Drive Files',
@@ -741,5 +744,4 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
     { name: 'feishu_drive_file' },
   );
 
-  api.logger.info?.('feishu_drive_file: Registered feishu_drive_file tool');
 }

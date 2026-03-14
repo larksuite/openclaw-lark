@@ -36,7 +36,7 @@ import { getStoredToken, setStoredToken, tokenStatus, type StoredUAToken } from 
 import { revokeUAT } from '../core/uat-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
 import { buildAuthCard, buildAuthSuccessCard, buildAuthFailedCard, buildAuthIdentityMismatchCard } from './oauth-cards';
-import { json } from './oapi/helpers';
+import { json, registerTool } from './oapi/helpers';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -139,7 +139,8 @@ export function registerFeishuOAuthTool(api: OpenClawPluginApi) {
 
   const cfg = api.config;
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_oauth',
       label: 'Feishu OAuth',
@@ -409,7 +410,8 @@ export async function executeAuthorize(
 
         if (availableScopes.length === 0) {
           // 所有 scope 都未开通，直接返回错误
-          const permissionUrl = `https://open.feishu.cn/app/${appId}/permission`;
+          const openDomain = brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
+          const permissionUrl = `${openDomain}/app/${appId}/permission`;
           return json({
             error: 'app_scopes_not_granted',
             message: `应用未开通任何请求的用户权限，无法发起授权。请先在开放平台开通以下权限：\n${unavailableScopes.map((s) => `- ${s}`).join('\n')}\n\n权限管理地址：${permissionUrl}`,
@@ -448,6 +450,7 @@ export async function executeAuthorize(
     filteredScopes: unavailableScopes.length > 0 ? unavailableScopes : undefined,
     appId,
     showBatchAuthHint,
+    brand,
   });
 
   let cardId: string;
@@ -556,7 +559,7 @@ export async function executeAuthorize(
             await updateCardKitCardForAuth({
               cfg,
               cardId,
-              card: buildAuthIdentityMismatchCard(),
+              card: buildAuthIdentityMismatchCard(brand),
               sequence: ++seq,
               accountId,
             });
@@ -589,7 +592,7 @@ export async function executeAuthorize(
           await updateCardKitCardForAuth({
             cfg,
             cardId,
-            card: buildAuthSuccessCard(),
+            card: buildAuthSuccessCard(brand),
             sequence: ++seq,
             accountId,
           });
@@ -721,15 +724,17 @@ export async function executeAuthorize(
 
   // 如果有被过滤的 scope，添加提示信息
   if (unavailableScopes.length > 0) {
-    const permissionUrl = `https://open.feishu.cn/app/${appId}/permission`;
+    const openDomain = brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
+    const permissionUrl = `${openDomain}/app/${appId}/permission`;
     message += `\n\n⚠️ **注意**：以下权限因应用未开通而被跳过，如需使用请先在开放平台开通：\n${unavailableScopes.map((s) => `- ${s}`).join('\n')}\n\n权限管理地址：${permissionUrl}`;
   }
 
+  const openDomainForResult = brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
   return json({
     success: true,
     message,
     awaiting_authorization: true,
     filtered_scopes: unavailableScopes.length > 0 ? unavailableScopes : undefined,
-    app_permission_url: unavailableScopes.length > 0 ? `https://open.feishu.cn/app/${appId}/permission` : undefined,
+    app_permission_url: unavailableScopes.length > 0 ? `${openDomainForResult}/app/${appId}/permission` : undefined,
   });
 }

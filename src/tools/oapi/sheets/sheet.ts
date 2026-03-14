@@ -21,9 +21,12 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
+  StringEnum,
 } from '../helpers';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { wwwDomain } from '../../../core/domains';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -396,7 +399,7 @@ const FeishuSheetSchema = Type.Union([
     action: Type.Literal('export'),
     url: UrlOrToken[0],
     spreadsheet_token: UrlOrToken[1],
-    file_extension: Type.Union([Type.Literal('xlsx'), Type.Literal('csv')], {
+    file_extension: StringEnum(['xlsx', 'csv'], {
       description: '导出格式：xlsx 或 csv',
     }),
     output_path: Type.Optional(
@@ -475,7 +478,8 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_sheet');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_sheet',
       label: 'Feishu Spreadsheet',
@@ -496,6 +500,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
         const p = params as FeishuSheetParams;
         try {
           const client = toolClient();
+          const brand = client.account.brand;
 
           switch (p.action) {
             // -----------------------------------------------------------------
@@ -537,7 +542,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
               return json({
                 title: spreadsheet?.title,
                 spreadsheet_token: token,
-                url: `https://www.feishu.cn/sheets/${token}`,
+                url: `${wwwDomain(brand)}/sheets/${token}`,
                 sheets,
               });
             }
@@ -776,7 +781,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
                 return json({ error: 'failed to create spreadsheet: no token returned' });
               }
 
-              const url = `https://www.feishu.cn/sheets/${token}`;
+              const url = `${wwwDomain(brand)}/sheets/${token}`;
               log.info(`create: token=${token}`);
 
               // Step 2: 如果有 headers 或 data，写入初始数据
@@ -951,5 +956,4 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
     { name: 'feishu_sheet' },
   );
 
-  api.logger.info?.('feishu_sheet: Registered feishu_sheet tool');
 }

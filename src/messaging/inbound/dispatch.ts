@@ -39,8 +39,13 @@ import {
   buildEnvelopeWithHistory,
 } from './dispatch-builders';
 import { dispatchPermissionNotification, dispatchSystemCommand } from './dispatch-commands';
+import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
+import { runFeishuDoctorI18n } from '../../commands/doctor';
+import { runFeishuAuthI18n } from '../../commands/auth';
+import { runFeishuStartI18n, getFeishuHelpI18n } from '../../commands/index';
+import { sendCardFeishu, buildI18nMarkdownCard, sendMessageFeishu } from '../outbound/send';
 
 const log = larkLogger('inbound/dispatch');
 
@@ -227,11 +232,20 @@ export async function dispatchToAgent(params: {
   const groupSystemPrompt = dc.isGroup
     ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
     : undefined;
+  const originatingTo =
+    isBareNewOrReset && dc.isThread
+      ? encodeFeishuRouteTarget({
+          target: dc.feishuTo,
+          replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
+          threadId: dc.ctx.threadId,
+        })
+      : undefined;
   const ctxPayload = buildInboundPayload(dc, {
     body: combinedBody,
     bodyForAgent,
     rawBody: params.ctx.content,
     commandBody: params.ctx.content,
+    originatingTo,
     senderName: params.ctx.senderName ?? params.ctx.senderId,
     senderId: params.ctx.senderId,
     messageSid: params.ctx.messageId,
@@ -244,6 +258,64 @@ export async function dispatchToAgent(params: {
       ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
     },
   });
+
+  // 8a. Intercept /feishu commands for i18n multi-locale card dispatch
+  //     Must run BEFORE the SDK command check — the SDK does not recognise
+  //     plugin-registered commands via isControlCommandMessage, so
+  //     /feishu_* falls through to the AI agent otherwise.
+  const contentTrimmed = (params.ctx.content ?? '').trim();
+  const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
+  const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
+  const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
+  const isHelpCommand = /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
+
+  const i18nCommandName = isDoctorCommand
+    ? 'doctor'
+    : isAuthCommand
+      ? 'auth'
+      : isStartCommand
+        ? 'start'
+        : isHelpCommand
+          ? 'help'
+          : null;
+
+  if (i18nCommandName) {
+    dc.log(`feishu[${dc.account.accountId}]: ${i18nCommandName} command detected, using i18n dispatch`);
+    log.info(`${i18nCommandName} command detected, using i18n dispatch`);
+    try {
+      let i18nTexts: Record<string, string>;
+      if (isDoctorCommand) {
+        i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
+      } else if (isAuthCommand) {
+        i18nTexts = await runFeishuAuthI18n(dc.accountScopedCfg);
+      } else if (isStartCommand) {
+        i18nTexts = runFeishuStartI18n(dc.accountScopedCfg);
+      } else {
+        i18nTexts = getFeishuHelpI18n();
+      }
+      const card = buildI18nMarkdownCard(i18nTexts);
+      await sendCardFeishu({
+        cfg: dc.accountScopedCfg,
+        to: dc.ctx.chatId,
+        card,
+        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+        accountId: dc.account.accountId,
+        replyInThread: dc.isThread,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      dc.error(`feishu[${dc.account.accountId}]: ${i18nCommandName} i18n dispatch failed: ${errMsg}`);
+      await sendMessageFeishu({
+        cfg: dc.accountScopedCfg,
+        to: dc.ctx.chatId,
+        text: `${i18nCommandName} failed: ${errMsg}`,
+        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+        accountId: dc.account.accountId,
+        replyInThread: dc.isThread,
+      });
+    }
+    return;
+  }
 
   // 8. Dispatch: system command vs. normal message
   const isCommand = dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);

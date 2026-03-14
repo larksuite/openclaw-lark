@@ -16,7 +16,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -35,12 +35,7 @@ const FeishuCalendarEventAttendeeSchema = Type.Union([
     }),
     attendees: Type.Array(
       Type.Object({
-        type: Type.Union([
-          Type.Literal('user'),
-          Type.Literal('chat'),
-          Type.Literal('resource'),
-          Type.Literal('third_party'),
-        ]),
+        type: StringEnum(['user', 'chat', 'resource', 'third_party']),
         attendee_id: Type.String({
           description:
             '参会人 ID。type=user 时为 open_id，type=chat 时为 chat_id，type=resource 时为会议室 ID，type=third_party 时为邮箱地址',
@@ -56,12 +51,7 @@ const FeishuCalendarEventAttendeeSchema = Type.Union([
       }),
     ),
     attendee_ability: Type.Optional(
-      Type.Union([
-        Type.Literal('none'),
-        Type.Literal('can_see_others'),
-        Type.Literal('can_invite_others'),
-        Type.Literal('can_modify_event'),
-      ]),
+      StringEnum(['none', 'can_see_others', 'can_invite_others', 'can_modify_event']),
     ),
   }),
 
@@ -85,7 +75,7 @@ const FeishuCalendarEventAttendeeSchema = Type.Union([
       }),
     ),
     user_id_type: Type.Optional(
-      Type.Union([Type.Literal('open_id'), Type.Literal('union_id'), Type.Literal('user_id')]),
+      StringEnum(['open_id', 'union_id', 'user_id']),
     ),
   }),
 
@@ -153,7 +143,8 @@ export function registerFeishuCalendarEventAttendeeTool(api: OpenClawPluginApi) 
 
   const { toolClient, log } = createToolContext(api, 'feishu_calendar_event_attendee');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_calendar_event_attendee',
       label: 'Feishu Calendar Event Attendees',
@@ -399,5 +390,4 @@ export function registerFeishuCalendarEventAttendeeTool(api: OpenClawPluginApi) 
     { name: 'feishu_calendar_event_attendee' },
   );
 
-  api.logger.info?.('feishu_calendar_event_attendee: Registered feishu_calendar_event_attendee tool');
 }

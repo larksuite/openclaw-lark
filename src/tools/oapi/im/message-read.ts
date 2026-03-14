@@ -14,7 +14,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import type { ToolClient } from '../helpers';
-import { assertLarkOk, createToolContext, getFirstAccount, handleInvokeErrorWithAutoAuth, json } from '../helpers';
+import { assertLarkOk, createToolContext, getFirstAccount, handleInvokeErrorWithAutoAuth, json, registerTool, StringEnum } from '../helpers';
 import { dateTimeToSecondsString, parseTimeRangeToSeconds } from './time-utils';
 import { formatMessageList, type FormattedMessage } from './format-messages';
 import { getUATUserName, batchResolveUserNamesAsUser } from './user-name-uat';
@@ -104,7 +104,7 @@ const GetMessagesSchema = Type.Object({
     }),
   ),
   sort_rule: Type.Optional(
-    Type.Union([Type.Literal('create_time_asc'), Type.Literal('create_time_desc')], {
+    StringEnum(['create_time_asc', 'create_time_desc'], {
       description: '排序方式，默认 create_time_desc（最新消息在前）',
     }),
   ),
@@ -144,7 +144,8 @@ function registerGetMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
@@ -228,7 +229,7 @@ function registerGetMessages(api: OpenClawPluginApi) {
 const GetThreadMessagesSchema = Type.Object({
   thread_id: Type.String({ description: '话题 ID（omt_xxx 格式）' }),
   sort_rule: Type.Optional(
-    Type.Union([Type.Literal('create_time_asc'), Type.Literal('create_time_desc')], {
+    StringEnum(['create_time_asc', 'create_time_desc'], {
       description: '排序方式，默认 create_time_desc（最新消息在前）',
     }),
   ),
@@ -248,7 +249,8 @@ function registerGetThreadMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_thread_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
@@ -316,17 +318,17 @@ const SearchMessagesSchema = Type.Object({
     Type.Array(Type.String({ description: '被@用户的 open_id（ou_xxx）' }), { description: '被@用户的 open_id 列表' }),
   ),
   message_type: Type.Optional(
-    Type.Union([Type.Literal('file'), Type.Literal('image'), Type.Literal('media')], {
+    StringEnum(['file', 'image', 'media'], {
       description: '消息类型过滤：file / image / media。为空则搜索所有类型',
     }),
   ),
   sender_type: Type.Optional(
-    Type.Union([Type.Literal('user'), Type.Literal('bot'), Type.Literal('all')], {
+    StringEnum(['user', 'bot', 'all'], {
       description: '发送者类型：user / bot / all。默认 user',
     }),
   ),
   chat_type: Type.Optional(
-    Type.Union([Type.Literal('group'), Type.Literal('p2p')], {
+    StringEnum(['group', 'p2p'], {
       description: '会话类型：group（群聊）/ p2p（单聊）',
     }),
   ),
@@ -482,7 +484,8 @@ function registerSearchMessages(api: OpenClawPluginApi) {
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_search_messages');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_im_user_search_messages',
       label: 'Feishu: Search Messages',

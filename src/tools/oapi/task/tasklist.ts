@@ -22,7 +22,7 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ const FeishuTaskTasklistSchema = Type.Union([
       Type.Array(
         Type.Object({
           id: Type.String({ description: '成员 open_id' }),
-          role: Type.Optional(Type.Union([Type.Literal('editor'), Type.Literal('viewer')])),
+          role: Type.Optional(StringEnum(['editor', 'viewer'])),
         }),
         {
           description:
@@ -92,7 +92,7 @@ const FeishuTaskTasklistSchema = Type.Union([
     members: Type.Array(
       Type.Object({
         id: Type.String({ description: '成员 open_id' }),
-        role: Type.Optional(Type.Union([Type.Literal('editor'), Type.Literal('viewer')])),
+        role: Type.Optional(StringEnum(['editor', 'viewer'])),
       }),
       { description: '要添加的成员列表' },
     ),
@@ -105,7 +105,7 @@ const FeishuTaskTasklistSchema = Type.Union([
     members: Type.Array(
       Type.Object({
         id: Type.String({ description: '成员 open_id' }),
-        type: Type.Optional(Type.Union([Type.Literal('user'), Type.Literal('chat'), Type.Literal('app')])),
+        type: Type.Optional(StringEnum(['user', 'chat', 'app'])),
       }),
       {
         description: '要移除的成员列表。注意：移除成员时不需要传 role 字段',
@@ -170,7 +170,8 @@ export function registerFeishuTaskTasklistTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_task_tasklist');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_task_tasklist',
       label: 'Feishu Task Lists',
@@ -502,5 +503,4 @@ export function registerFeishuTaskTasklistTool(api: OpenClawPluginApi) {
     { name: 'feishu_task_tasklist' },
   );
 
-  api.logger.info?.('feishu_task_tasklist: Registered feishu_task_tasklist tool');
 }

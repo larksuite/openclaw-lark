@@ -19,7 +19,8 @@ import { LarkClient } from '../core/lark-client';
 import { executeAuthorize } from './oauth';
 import { formatLarkError } from '../core/api-error';
 import { filterSensitiveScopes } from '../core/tool-scopes';
-import { json } from './oapi/helpers';
+import { json, registerTool } from './oapi/helpers';
+import { openPlatformDomain } from '../core/domains';
 
 const FeishuOAuthBatchAuthSchema = Type.Object(
   {},
@@ -36,7 +37,8 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
 
   const cfg = api.config;
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_oauth_batch_auth',
       label: 'Feishu: OAuth Batch Authorization',
@@ -76,7 +78,7 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
                 message:
                   `应用缺少核心权限 application:application:self_manage，无法查询可授权 scope 列表。\n\n` +
                   `请管理员在飞书开放平台开通此权限后重试。`,
-                permission_link: `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage`,
+                permission_link: `${openPlatformDomain(account.brand)}/app/${appId}/auth?q=application:application:self_manage`,
                 app_id: appId,
               });
             }

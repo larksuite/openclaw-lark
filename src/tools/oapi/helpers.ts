@@ -23,6 +23,8 @@ export {
   getFirstAccount,
   validateRequiredParams,
   validateEnum,
+  checkToolRegistration,
+  registerTool,
 } from '../helpers';
 
 export type { ToolResult, ClientGetter, ToolContext } from '../helpers';
@@ -431,3 +433,21 @@ export function isInvokeError(err: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 export { handleInvokeErrorWithAutoAuth } from '../auto-auth';
+
+// ---------------------------------------------------------------------------
+// Schema 辅助：LLM 友好的字符串枚举
+// ---------------------------------------------------------------------------
+
+import { Type } from '@sinclair/typebox';
+import type { SchemaOptions } from '@sinclair/typebox';
+
+/**
+ * 创建 LLM 友好的字符串枚举 schema。
+ *
+ * 与 `Type.Union([Type.Literal('a'), Type.Literal('b')])` 不同，
+ * 本函数生成 `{ type: 'string', enum: ['a', 'b'] }` 格式，
+ * 兼容性更好。
+ */
+export function StringEnum<T extends string>(values: T[], options?: SchemaOptions) {
+  return Type.Unsafe<T>({ type: 'string', enum: values, ...options });
+}

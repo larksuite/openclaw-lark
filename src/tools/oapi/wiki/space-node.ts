@@ -23,6 +23,8 @@ import {
   createToolContext,
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
+  registerTool,
+  StringEnum,
 } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
@@ -62,20 +64,9 @@ const FeishuWikiSpaceNodeSchema = Type.Union([
       description: 'node token',
     }),
     obj_type: Type.Optional(
-      Type.Union(
-        [
-          Type.Literal('doc'),
-          Type.Literal('sheet'),
-          Type.Literal('mindnote'),
-          Type.Literal('bitable'),
-          Type.Literal('file'),
-          Type.Literal('docx'),
-          Type.Literal('slides'),
-          Type.Literal('wiki'),
-        ],
-        {
-          description: 'obj_type',
-        },
+      StringEnum(
+        ['doc', 'sheet', 'mindnote', 'bitable', 'file', 'docx', 'slides', 'wiki'],
+        { description: 'obj_type' },
       ),
     ),
   }),
@@ -86,19 +77,9 @@ const FeishuWikiSpaceNodeSchema = Type.Union([
     space_id: Type.String({
       description: 'space_id',
     }),
-    obj_type: Type.Union(
-      [
-        Type.Literal('doc'),
-        Type.Literal('sheet'),
-        Type.Literal('mindnote'),
-        Type.Literal('bitable'),
-        Type.Literal('file'),
-        Type.Literal('docx'),
-        Type.Literal('slides'),
-      ],
-      {
-        description: 'obj_type',
-      },
+    obj_type: StringEnum(
+      ['doc', 'sheet', 'mindnote', 'bitable', 'file', 'docx', 'slides'],
+      { description: 'obj_type' },
     ),
     parent_node_token: Type.Optional(
       Type.String({
@@ -106,7 +87,7 @@ const FeishuWikiSpaceNodeSchema = Type.Union([
       }),
     ),
     node_type: Type.Optional(
-      Type.Union([Type.Literal('origin'), Type.Literal('shortcut')], {
+      StringEnum(['origin', 'shortcut'], {
         description: 'node_type',
       }),
     ),
@@ -216,7 +197,8 @@ export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
 
   const { toolClient, log } = createToolContext(api, 'feishu_wiki_space_node');
 
-  api.registerTool(
+  registerTool(
+    api,
     {
       name: 'feishu_wiki_space_node',
       label: 'Feishu Wiki Space Nodes',
@@ -409,5 +391,4 @@ export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
     { name: 'feishu_wiki_space_node' },
   );
 
-  api.logger.info?.('feishu_wiki_space_node: Registered feishu_wiki_space_node tool');
 }

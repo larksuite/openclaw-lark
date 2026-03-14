@@ -30,7 +30,7 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import type { ConfiguredLarkAccount } from '../core/types';
+import type { ConfiguredLarkAccount, LarkBrand } from '../core/types';
 import type { LarkTicket } from '../core/lark-ticket';
 import { getTicket } from '../core/lark-ticket';
 import { larkLogger } from '../core/lark-logger';
@@ -438,112 +438,98 @@ function addToDeferredUserAuth(
 }
 
 // ---------------------------------------------------------------------------
-// Card builders — CardKit v2 格式
+// Card builders — CardKit v2 格式 + i18n_content 多语言
 // ---------------------------------------------------------------------------
+
+/** v2 卡片 i18n 配置 */
+const I18N_CONFIG = {
+  update_multi: true,
+  locales: ['zh_cn', 'en_us'],
+};
 
 /**
  * 构建应用权限引导卡片。
  *
- * 蓝色 header，列出缺失的 scope，提供权限管理链接和"我已完成，继续授权"按钮。
+ * 橙色 header，列出缺失的 scope，提供权限管理链接和"已完成"按钮。
  */
 function buildAppScopeMissingCard(params: {
   missingScopes: string[];
   appId?: string;
   operationId: string;
+  brand?: LarkBrand;
 }): Record<string, unknown> {
-  const { missingScopes, appId, operationId } = params;
+  const { missingScopes, appId, operationId, brand } = params;
+  const openDomain = brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
   const authUrl = appId
-    ? `https://open.feishu.cn/app/${appId}/auth?q=${encodeURIComponent(missingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`
-    : 'https://open.feishu.cn/';
-  const multiUrl = { url: authUrl, pc_url: authUrl, android_url: authUrl, ios_url: authUrl };
+    ? `${openDomain}/app/${appId}/auth?q=${encodeURIComponent(missingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`
+    : `${openDomain}/`;
+  const multiUrl = { url: authUrl, pc_url: '', android_url: '', ios_url: '' };
 
   const scopeList = missingScopes.map((s) => `• ${s}`).join('\n');
 
   return {
     schema: '2.0',
-    config: { wide_screen_mode: true },
+    config: { wide_screen_mode: true, ...I18N_CONFIG },
     header: {
-      title: { tag: 'plain_text', content: '🔐 需要申请权限才能继续' },
+      title: {
+        tag: 'plain_text',
+        content: '🔐 Permissions required to continue',
+        i18n_content: {
+          zh_cn: '🔐 需要申请权限才能继续',
+          en_us: '🔐 Permissions required to continue',
+        },
+      },
       template: 'orange',
     },
     body: {
       elements: [
         {
           tag: 'markdown',
-          content: '调用前，请你先申请以下**所有**权限：',
+          content: `Please request **all** the following permissions to proceed:\n\n${scopeList}`,
+          i18n_content: {
+            zh_cn: `调用前，请你先申请以下**所有**权限：\n\n${scopeList}`,
+            en_us: `Please request **all** the following permissions to proceed:\n\n${scopeList}`,
+          },
           text_size: 'normal',
-        },
-        {
-          tag: 'column_set',
-          flex_mode: 'none',
-          background_style: 'grey',
-          horizontal_spacing: 'default',
-          columns: [
-            {
-              tag: 'column',
-              width: 'weighted',
-              weight: 1,
-              vertical_align: 'center',
-              elements: [{ tag: 'markdown', content: scopeList }],
-            },
-          ],
         },
         { tag: 'hr' },
         {
-          tag: 'column_set',
-          flex_mode: 'none',
-          horizontal_spacing: 'default',
-          columns: [
-            {
-              tag: 'column',
-              width: 'weighted',
-              weight: 3,
-              vertical_align: 'center',
-              elements: [{ tag: 'markdown', content: '**第一步：申请所有权限**' }],
-            },
-            {
-              tag: 'column',
-              width: 'weighted',
-              weight: 1,
-              vertical_align: 'center',
-              elements: [
-                {
-                  tag: 'button',
-                  text: { tag: 'plain_text', content: '去申请' },
-                  type: 'primary',
-                  multi_url: multiUrl,
-                },
-              ],
-            },
-          ],
+          tag: 'markdown',
+          content: '**Step 1: Request all permissions**',
+          i18n_content: {
+            zh_cn: '**第一步：申请所有权限**',
+            en_us: '**Step 1: Request all permissions**',
+          },
+          text_size: 'normal',
         },
         {
-          tag: 'column_set',
-          flex_mode: 'none',
-          horizontal_spacing: 'default',
-          columns: [
-            {
-              tag: 'column',
-              width: 'weighted',
-              weight: 3,
-              vertical_align: 'center',
-              elements: [{ tag: 'markdown', content: '**第二步：创建版本并审核通过**' }],
-            },
-            {
-              tag: 'column',
-              width: 'weighted',
-              weight: 1,
-              vertical_align: 'center',
-              elements: [
-                {
-                  tag: 'button',
-                  text: { tag: 'plain_text', content: '已完成' },
-                  type: 'default',
-                  value: { action: 'app_auth_done', operation_id: operationId },
-                },
-              ],
-            },
-          ],
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: 'Request Now',
+            i18n_content: { zh_cn: '去申请', en_us: 'Request Now' },
+          },
+          type: 'primary',
+          multi_url: multiUrl,
+        },
+        {
+          tag: 'markdown',
+          content: '**Step 2: Create version and get approval**',
+          i18n_content: {
+            zh_cn: '**第二步：创建版本并审核通过**',
+            en_us: '**Step 2: Create version and get approval**',
+          },
+          text_size: 'normal',
+        },
+        {
+          tag: 'button',
+          text: {
+            tag: 'plain_text',
+            content: 'Done',
+            i18n_content: { zh_cn: '已完成', en_us: 'Done' },
+          },
+          type: 'default',
+          value: { action: 'app_auth_done', operation_id: operationId },
         },
       ],
     },
@@ -556,9 +542,16 @@ function buildAppScopeMissingCard(params: {
 function buildAppAuthProgressCard(): Record<string, unknown> {
   return {
     schema: '2.0',
-    config: { wide_screen_mode: false },
+    config: { wide_screen_mode: false, ...I18N_CONFIG },
     header: {
-      title: { tag: 'plain_text', content: '应用权限已开通' },
+      title: {
+        tag: 'plain_text',
+        content: 'Permissions enabled',
+        i18n_content: {
+          zh_cn: '应用权限已开通',
+          en_us: 'Permissions enabled',
+        },
+      },
       subtitle: { tag: 'plain_text', content: '' },
       template: 'green',
       padding: '12px 12px 12px 12px',
@@ -568,7 +561,11 @@ function buildAppAuthProgressCard(): Record<string, unknown> {
       elements: [
         {
           tag: 'markdown',
-          content: '您的应用权限已开通，正在为您发起用户授权',
+          content: 'App permissions ready. Starting user authorization...',
+          i18n_content: {
+            zh_cn: '你的应用权限已开通，正在为你发起用户授权',
+            en_us: 'App permissions ready. Starting user authorization...',
+          },
           text_size: 'normal',
         },
       ],
@@ -622,7 +619,7 @@ async function sendAppScopeCard(params: {
     const { operationId: activeOpId, flow: activeFlow } = activeEntry;
     // 更新已有卡片的内容（合并后的 scope）
     const newOperationId = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    const card = buildAppScopeMissingCard({ missingScopes, appId, operationId: newOperationId });
+    const card = buildAppScopeMissingCard({ missingScopes, appId, operationId: newOperationId, brand: account.brand });
     const newSeq = activeFlow.sequence + 1;
 
     // TOCTOU 修复：先原子迁移（同步操作），再 await 更新卡片
@@ -671,7 +668,7 @@ async function sendAppScopeCard(params: {
 
   const operationId = Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-  const card = buildAppScopeMissingCard({ missingScopes, appId, operationId });
+  const card = buildAppScopeMissingCard({ missingScopes, appId, operationId, brand: account.brand });
 
   // 创建 CardKit 卡片实体
   const cardId = await createCardEntity({ cfg, card, accountId });
@@ -683,7 +680,7 @@ async function sendAppScopeCard(params: {
       message:
         `应用缺少以下权限：${missingScopes.join(', ')}，` +
         `请管理员在开放平台开通后重试。` +
-        (appId ? `\n权限管理：https://open.feishu.cn/app/${appId}/permission` : ''),
+        (appId ? `\n权限管理：${account.brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn'}/app/${appId}/permission` : ''),
     });
   }
 
