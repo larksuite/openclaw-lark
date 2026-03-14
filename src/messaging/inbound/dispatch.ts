@@ -43,6 +43,8 @@ import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
 import { runFeishuDoctorI18n } from '../../commands/doctor';
+import { runFeishuAuthI18n } from '../../commands/auth';
+import { runFeishuStartI18n, getFeishuHelpI18n } from '../../commands/index';
 import { sendCardFeishu, buildI18nMarkdownCard, sendMessageFeishu } from '../outbound/send';
 
 const log = larkLogger('inbound/dispatch');
@@ -257,18 +259,40 @@ export async function dispatchToAgent(params: {
     },
   });
 
-  // 8a. Intercept /feishu_doctor and /feishu doctor for i18n multi-locale post
+  // 8a. Intercept /feishu commands for i18n multi-locale card dispatch
   //     Must run BEFORE the SDK command check — the SDK does not recognise
   //     plugin-registered commands via isControlCommandMessage, so
-  //     /feishu_doctor falls through to the AI agent otherwise.
+  //     /feishu_* falls through to the AI agent otherwise.
   const contentTrimmed = (params.ctx.content ?? '').trim();
   const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
+  const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
+  const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
+  const isHelpCommand = /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
 
-  if (isDoctorCommand) {
-    dc.log(`feishu[${dc.account.accountId}]: doctor command detected, using i18n dispatch`);
-    log.info('doctor command detected, using i18n dispatch');
+  const i18nCommandName = isDoctorCommand
+    ? 'doctor'
+    : isAuthCommand
+      ? 'auth'
+      : isStartCommand
+        ? 'start'
+        : isHelpCommand
+          ? 'help'
+          : null;
+
+  if (i18nCommandName) {
+    dc.log(`feishu[${dc.account.accountId}]: ${i18nCommandName} command detected, using i18n dispatch`);
+    log.info(`${i18nCommandName} command detected, using i18n dispatch`);
     try {
-      const i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
+      let i18nTexts: Record<string, string>;
+      if (isDoctorCommand) {
+        i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
+      } else if (isAuthCommand) {
+        i18nTexts = await runFeishuAuthI18n(dc.accountScopedCfg);
+      } else if (isStartCommand) {
+        i18nTexts = runFeishuStartI18n(dc.accountScopedCfg);
+      } else {
+        i18nTexts = getFeishuHelpI18n();
+      }
       const card = buildI18nMarkdownCard(i18nTexts);
       await sendCardFeishu({
         cfg: dc.accountScopedCfg,
@@ -280,11 +304,11 @@ export async function dispatchToAgent(params: {
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      dc.error(`feishu[${dc.account.accountId}]: doctor i18n dispatch failed: ${errMsg}`);
+      dc.error(`feishu[${dc.account.accountId}]: ${i18nCommandName} i18n dispatch failed: ${errMsg}`);
       await sendMessageFeishu({
         cfg: dc.accountScopedCfg,
         to: dc.ctx.chatId,
-        text: `诊断执行失败: ${errMsg}`,
+        text: `${i18nCommandName} failed: ${errMsg}`,
         replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
         accountId: dc.account.accountId,
         replyInThread: dc.isThread,
