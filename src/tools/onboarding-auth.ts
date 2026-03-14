@@ -26,7 +26,7 @@ const log = larkLogger('tools/onboarding-auth');
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_SCOPES_PER_BATCH = 100;
+const MAX_SCOPES_PER_BATCH = 50;
 
 // ---------------------------------------------------------------------------
 // Trigger onboarding
