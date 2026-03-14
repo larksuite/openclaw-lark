@@ -16,6 +16,7 @@ import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { sendTextLark, sendMediaLark, sendCardLark } from './deliver';
 import { larkLogger } from '../../core/lark-logger';
+import { parseFeishuRouteTarget } from '../../core/targets';
 
 const log = larkLogger('outbound/outbound');
 
@@ -110,6 +111,7 @@ export interface FeishuChannelData {
  */
 interface FeishuSendContext {
   cfg: ClawdbotConfig;
+  to: string;
   replyToMessageId?: string;
   replyInThread: boolean;
   accountId?: string;
@@ -123,14 +125,27 @@ interface FeishuSendContext {
  */
 function resolveFeishuSendContext(params: {
   cfg: ClawdbotConfig;
+  to: string;
   accountId?: string | null;
   replyToId?: string | null;
   threadId?: string | number | null;
 }): FeishuSendContext {
+  const routeTarget = parseFeishuRouteTarget(params.to);
+  const explicitThreadId =
+    params.threadId != null && String(params.threadId).trim() !== '' ? String(params.threadId).trim() : undefined;
+  const explicitReplyToId = params.replyToId?.trim() || undefined;
+  const replyToMessageId = explicitReplyToId ?? routeTarget.replyToMessageId;
+  const replyInThread = Boolean(explicitThreadId ?? routeTarget.threadId);
+
+  if (!explicitReplyToId && routeTarget.replyToMessageId) {
+    log.info('resolved reply target from encoded originating route');
+  }
+
   return {
     cfg: params.cfg,
-    replyToMessageId: params.replyToId ?? undefined,
-    replyInThread: Boolean(params.threadId),
+    to: routeTarget.target,
+    replyToMessageId,
+    replyInThread,
     accountId: params.accountId ?? undefined,
   };
 }
@@ -150,28 +165,28 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
   sendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {
     log.info(`sendText: target=${to}, textLength=${text.length}`);
-    const ctx = resolveFeishuSendContext({ cfg, accountId, replyToId, threadId });
-    const result = await sendTextLark({ ...ctx, to, text });
+    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+    const result = await sendTextLark({ ...ctx, to: ctx.to, text });
     return { channel: 'feishu', ...result };
   },
 
   sendMedia: async ({ cfg, to, text, mediaUrl, mediaLocalRoots, accountId, replyToId, threadId }) => {
     log.info(`sendMedia: target=${to}, ` + `hasText=${Boolean(text?.trim())}, mediaUrl=${mediaUrl ?? '(none)'}`);
-    const ctx = resolveFeishuSendContext({ cfg, accountId, replyToId, threadId });
+    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // Feishu media messages do not support inline captions — send text first.
     if (text?.trim()) {
-      await sendTextLark({ ...ctx, to, text });
+      await sendTextLark({ ...ctx, to: ctx.to, text });
     }
 
     // No mediaUrl — text-only fallback.
     if (!mediaUrl) {
       log.info('sendMedia: no mediaUrl provided, falling back to text-only');
-      const result = await sendTextLark({ ...ctx, to, text: text ?? '' });
+      const result = await sendTextLark({ ...ctx, to: ctx.to, text: text ?? '' });
       return { channel: 'feishu', ...result };
     }
 
-    const result = await sendMediaLark({ ...ctx, to, mediaUrl, mediaLocalRoots });
+    const result = await sendMediaLark({ ...ctx, to: ctx.to, mediaUrl, mediaLocalRoots });
     return {
       channel: 'feishu',
       messageId: result.messageId,
@@ -181,7 +196,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   },
 
   sendPayload: async ({ cfg, to, payload, mediaLocalRoots, accountId, replyToId, threadId }) => {
-    const ctx = resolveFeishuSendContext({ cfg, accountId, replyToId, threadId });
+    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // --- channelData.feishu: card message support ---
     const feishuData = payload.channelData?.feishu as FeishuChannelData | undefined;
@@ -201,14 +216,14 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     // text and media must be sent as separate messages around the card.
     if (feishuData?.card) {
       if (text.trim()) {
-        await sendTextLark({ ...ctx, to, text });
+        await sendTextLark({ ...ctx, to: ctx.to, text });
       }
 
-      const cardResult = await sendCardLark({ ...ctx, to, card: feishuData.card });
+      const cardResult = await sendCardLark({ ...ctx, to: ctx.to, card: feishuData.card });
 
       const warnings: string[] = [];
       for (const mediaUrl of mediaUrls) {
-        const mediaResult = await sendMediaLark({ ...ctx, to, mediaUrl, mediaLocalRoots });
+        const mediaResult = await sendMediaLark({ ...ctx, to: ctx.to, mediaUrl, mediaLocalRoots });
         if (mediaResult.warning) {
           warnings.push(mediaResult.warning);
         }
@@ -226,19 +241,19 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
     // No media: text-only
     if (mediaUrls.length === 0) {
-      const result = await sendTextLark({ ...ctx, to, text });
+      const result = await sendTextLark({ ...ctx, to: ctx.to, text });
       return { channel: 'feishu', ...result };
     }
 
     // Has media: send leading text, then loop media URLs
     if (text.trim()) {
-      await sendTextLark({ ...ctx, to, text });
+      await sendTextLark({ ...ctx, to: ctx.to, text });
     }
 
     const warnings: string[] = [];
     let lastResult: FeishuSendResult | undefined;
     for (const mediaUrl of mediaUrls) {
-      lastResult = await sendMediaLark({ ...ctx, to, mediaUrl, mediaLocalRoots });
+      lastResult = await sendMediaLark({ ...ctx, to: ctx.to, mediaUrl, mediaLocalRoots });
       if (lastResult.warning) {
         warnings.push(lastResult.warning);
       }

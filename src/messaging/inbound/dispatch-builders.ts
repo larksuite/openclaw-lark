@@ -109,6 +109,7 @@ export function buildInboundPayload(
     bodyForAgent: string;
     rawBody: string;
     commandBody: string;
+    originatingTo?: string;
     senderName: string;
     senderId: string;
     messageSid: string;
@@ -142,7 +143,7 @@ export function buildInboundPayload(
     WasMentioned: opts.wasMentioned,
     CommandAuthorized: dc.commandAuthorized,
     OriginatingChannel: 'feishu' as const,
-    OriginatingTo: dc.feishuTo,
+    OriginatingTo: opts.originatingTo ?? dc.feishuTo,
   });
 }
 

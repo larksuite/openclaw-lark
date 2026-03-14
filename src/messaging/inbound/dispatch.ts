@@ -39,6 +39,7 @@ import {
   buildEnvelopeWithHistory,
 } from './dispatch-builders';
 import { dispatchPermissionNotification, dispatchSystemCommand } from './dispatch-commands';
+import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
 import { runFeishuDoctorI18n } from '../../commands/doctor';
@@ -229,11 +230,20 @@ export async function dispatchToAgent(params: {
   const groupSystemPrompt = dc.isGroup
     ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
     : undefined;
+  const originatingTo =
+    isBareNewOrReset && dc.isThread
+      ? encodeFeishuRouteTarget({
+          target: dc.feishuTo,
+          replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
+          threadId: dc.ctx.threadId,
+        })
+      : undefined;
   const ctxPayload = buildInboundPayload(dc, {
     body: combinedBody,
     bodyForAgent,
     rawBody: params.ctx.content,
     commandBody: params.ctx.content,
+    originatingTo,
     senderName: params.ctx.senderName ?? params.ctx.senderId,
     senderId: params.ctx.senderId,
     messageSid: params.ctx.messageId,
