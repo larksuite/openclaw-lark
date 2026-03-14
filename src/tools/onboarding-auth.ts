@@ -26,7 +26,9 @@ const log = larkLogger('tools/onboarding-auth');
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_SCOPES_PER_BATCH = 100;
+// Feishu Device Flow rejects requests with too many scopes (~50+ triggers
+// "invalid_scope" / error 20084). Use 45 to stay safely under the limit.
+const MAX_SCOPES_PER_BATCH = 45;
 
 // ---------------------------------------------------------------------------
 // Trigger onboarding
