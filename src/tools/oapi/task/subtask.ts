@@ -21,6 +21,7 @@ import {
   assertLarkOk,
   handleInvokeErrorWithAutoAuth,
   registerTool,
+  StringEnum,
 } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
 
@@ -55,7 +56,7 @@ const FeishuTaskSubtaskSchema = Type.Union([
       Type.Array(
         Type.Object({
           id: Type.String({ description: '成员 open_id' }),
-          role: Type.Optional(Type.Union([Type.Literal('assignee'), Type.Literal('follower')])),
+          role: Type.Optional(StringEnum(['assignee', 'follower'])),
         }),
         { description: '子任务成员列表（assignee=负责人，follower=关注人）' },
       ),

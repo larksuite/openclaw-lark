@@ -11,7 +11,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
-import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth , registerTool } from '../helpers';
+import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -23,7 +23,7 @@ const GetUserSchema = Type.Object({
       description: '用户 ID（格式如 ou_xxx）。若不传入，则获取当前用户自己的信息',
     }),
   ),
-  user_id_type: Type.Optional(Type.Union([Type.Literal('open_id'), Type.Literal('union_id'), Type.Literal('user_id')])),
+  user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
 });
 
 // ---------------------------------------------------------------------------
