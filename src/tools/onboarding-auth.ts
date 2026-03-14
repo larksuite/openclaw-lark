@@ -119,6 +119,9 @@ export async function triggerOnboarding(params: {
 
     const ticket = {
       messageId: `onboarding:${Date.now()}`,
+      // Note: chatId is set to userOpenId (ou_xxx) for DM delivery.
+      // sendCardByCardId's create path resolves ou_xxx → receive_id_type=open_id,
+      // which correctly sends a DM to the user.
       chatId: userOpenId,
       accountId,
       startTime: Date.now(),
@@ -126,7 +129,10 @@ export async function triggerOnboarding(params: {
       chatType: 'p2p' as const,
     };
 
-    log.info(`starting batch ${batchIndex + 1}/${batches.length}, scopes=${batch.length}`);
+    log.info(
+      `starting batch ${batchIndex + 1}/${batches.length}, ` +
+      `scopes=${batch.length}, chatId=${ticket.chatId}, userOpenId=${userOpenId}`,
+    );
 
     try {
       await executeAuthorize({
@@ -145,6 +151,7 @@ export async function triggerOnboarding(params: {
           await startBatch(batchIndex + 1);
         },
       });
+      log.info(`batch ${batchIndex + 1}/${batches.length} executeAuthorize returned`);
     } catch (err) {
       log.error(`batch ${batchIndex + 1} failed: ${err}`);
     }

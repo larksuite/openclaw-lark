@@ -966,6 +966,46 @@ export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotC
     });
   }
 
+  // --- Path 0.5: Cross-tenant errors should NOT trigger auto-auth ---
+  // In multi-account setups, tools may accidentally use account A's credentials
+  // to access account B's resources. These cross-tenant errors are NOT
+  // authorization issues — re-authorizing would not help and may destroy
+  // the account's WebSocket connection (SDK recreation side-effect).
+  {
+    const errObj = err as { code?: number; msg?: string; message?: string; response?: { data?: { code?: number; msg?: string } } };
+    const errCode = errObj?.code ?? errObj?.response?.data?.code;
+    const errMsg = (errObj?.msg || errObj?.message || errObj?.response?.data?.msg || String(err)).toLowerCase();
+
+    // Well-known cross-tenant error codes from Feishu IM API
+    const crossTenantCodes = new Set([233007, 233009, 233010, 233011]);
+
+    // Pattern-based detection for error messages
+    const crossTenantPatterns = [
+      'different tenant',
+      'can not be in different tenant',
+      'not in the chat',
+      'out of the chat',
+      'cross-tenant',
+      'bot ability is not activated for the chat',
+    ];
+
+    const isCrossTenant =
+      (typeof errCode === 'number' && crossTenantCodes.has(errCode)) ||
+      crossTenantPatterns.some(p => errMsg.includes(p));
+
+    if (isCrossTenant) {
+      log.info(`cross-tenant error detected, skipping auto-auth to preserve WebSocket: code=${errCode}, msg=${errMsg.slice(0, 200)}`);
+      return json({
+        error: 'cross_tenant',
+        message:
+          'This resource belongs to a different Feishu tenant. ' +
+          'The requested operation cannot be completed with the current account context. ' +
+          'Please ensure the correct account is used for this resource.',
+        original_error: formatLarkError(err),
+      });
+    }
+  }
+
   if (ticket) {
     const senderOpenId = ticket.senderOpenId;
 
