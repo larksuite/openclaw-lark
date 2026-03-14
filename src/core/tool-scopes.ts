@@ -118,6 +118,8 @@ export type ToolActionKey =
   | 'feishu_drive_file.upload'
   | 'feishu_fetch_doc.default'
   | 'feishu_get_user.default'
+  | 'feishu_im_pin.create'
+  | 'feishu_im_pin.delete'
   | 'feishu_im_user_fetch_resource.default'
   | 'feishu_im_user_get_messages.default'
   | 'feishu_im_user_message.reply'
@@ -271,6 +273,8 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_wiki_space_node.create': ['wiki:node:create'],
   'feishu_wiki_space_node.move': ['wiki:node:move'],
   'feishu_wiki_space_node.copy': ['wiki:node:copy'],
+  'feishu_im_pin.create': ['im:message.pins:write_only'],
+  'feishu_im_pin.delete': ['im:message.pins:write_only'],
   'feishu_im_user_message.send': ['im:message', 'im:message.send_as_user'],
   'feishu_im_user_message.reply': ['im:message', 'im:message.send_as_user'],
   'feishu_im_user_fetch_resource.default': [
