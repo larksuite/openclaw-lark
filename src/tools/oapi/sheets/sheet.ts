@@ -26,6 +26,7 @@ import {
 } from '../helpers';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { wwwDomain } from '../../../core/domains';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -499,6 +500,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
         const p = params as FeishuSheetParams;
         try {
           const client = toolClient();
+          const brand = client.account.brand;
 
           switch (p.action) {
             // -----------------------------------------------------------------
@@ -540,7 +542,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
               return json({
                 title: spreadsheet?.title,
                 spreadsheet_token: token,
-                url: `https://www.feishu.cn/sheets/${token}`,
+                url: `${wwwDomain(brand)}/sheets/${token}`,
                 sheets,
               });
             }
@@ -779,7 +781,7 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
                 return json({ error: 'failed to create spreadsheet: no token returned' });
               }
 
-              const url = `https://www.feishu.cn/sheets/${token}`;
+              const url = `${wwwDomain(brand)}/sheets/${token}`;
               log.info(`create: token=${token}`);
 
               // Step 2: 如果有 headers 或 data，写入初始数据

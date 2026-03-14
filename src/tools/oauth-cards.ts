@@ -9,6 +9,7 @@
  */
 
 import type { LarkBrand } from '../core/types';
+import { applinkDomain } from '../core/domains';
 
 // ---------------------------------------------------------------------------
 // i18n config helper
@@ -95,19 +96,6 @@ function i18nPlainText(zh: string, en: string) {
   return { tag: 'plain_text' as const, content: en, i18n_content: i18nContent(zh, en) };
 }
 
-// ---------------------------------------------------------------------------
-// Brand-aware URL helpers
-// ---------------------------------------------------------------------------
-
-/** 根据品牌返回开放平台域名 */
-function openPlatformDomain(brand?: LarkBrand): string {
-  return brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
-}
-
-/** 根据品牌返回 applink 域名 */
-function applinkDomain(brand?: LarkBrand): string {
-  return brand === 'lark' ? 'https://applink.larksuite.com' : 'https://applink.feishu.cn';
-}
 
 // ---------------------------------------------------------------------------
 // Card builders

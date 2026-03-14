@@ -17,6 +17,7 @@ import { getAppInfo, getAppGrantedScopes } from '../core/app-scope-checker';
 import { getStoredToken } from '../core/token-store';
 import { filterSensitiveScopes } from '../core/tool-scopes';
 import { assertOwnerAccessStrict, OwnerAccessDeniedError } from '../core/owner-policy';
+import { openPlatformDomain } from '../core/domains';
 
 import type { FeishuLocale } from './locale';
 
@@ -124,10 +125,12 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
   const sdk = LarkClient.fromAccount(acct).sdk;
   const { appId } = acct;
 
+  const openDomain = openPlatformDomain(acct.brand);
+
   try {
     await getAppInfo(sdk, appId);
   } catch {
-    const link = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const link = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
     return { kind: 'missing_self_manage', link };
   }
 
@@ -146,14 +149,14 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
   try {
     appScopes = await getAppGrantedScopes(sdk, appId, 'user');
   } catch {
-    const link = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const link = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
     return { kind: 'missing_self_manage', link };
   }
 
   // offline_access 预检 — OAuth 必须的前提权限
   const allScopes = await getAppGrantedScopes(sdk, appId);
   if (allScopes.length > 0 && !allScopes.includes('offline_access')) {
-    const link = `https://open.feishu.cn/app/${appId}/auth?q=offline_access&op_from=feishu-openclaw&token_type=user`;
+    const link = `${openDomain}/app/${appId}/auth?q=offline_access&op_from=feishu-openclaw&token_type=user`;
     return { kind: 'missing_offline_access', link };
   }
 

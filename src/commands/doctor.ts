@@ -34,6 +34,7 @@ import { filterSensitiveScopes, REQUIRED_APP_SCOPES, TOOL_SCOPES } from '../core
 import { probeFeishu } from '../channel/probe';
 import { AppScopeCheckFailedError } from '../core/tool-client';
 import { getPluginVersion } from '../core/version';
+import { openPlatformDomain } from '../core/domains';
 // TODO: 暂时注释掉，等产品策略明确后再放开
 // import { checkMultiAccountIsolation, formatIsolationWarning } from "../core/security-check";
 
@@ -391,6 +392,7 @@ async function checkAppPermissions(
 ): Promise<{ status: CheckStatus; markdown: string; missingScopes: string[] }> {
   const t = T[locale];
   const { appId } = account;
+  const openDomain = openPlatformDomain(account.brand);
 
   try {
     // 获取应用已开通的权限（tenant token）
@@ -410,9 +412,9 @@ async function checkAppPermissions(
 
     // 缺少必需权限
     const lines: string[] = [];
-    let applyUrl = `https://open.feishu.cn/app/${appId}/auth?op_from=feishu-openclaw&token_type=tenant`;
+    let applyUrl = `${openDomain}/app/${appId}/auth?op_from=feishu-openclaw&token_type=tenant`;
     if (requiredMissing.length < 20) {
-      applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=${encodeURIComponent(requiredMissing.join(','))}&op_from=feishu-openclaw&token_type=tenant`;
+      applyUrl = `${openDomain}/app/${appId}/auth?q=${encodeURIComponent(requiredMissing.join(','))}&op_from=feishu-openclaw&token_type=tenant`;
     }
     lines.push(`${t.missingPermsPrefix} ${requiredMissing.length} ${t.missingPermsSuffix} [${t.apply}](${applyUrl})`);
     lines.push('');
@@ -427,7 +429,7 @@ async function checkAppPermissions(
     };
   } catch (err) {
     // API 调用失败（通常是缺少 application:application:self_manage 权限）
-    const applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const applyUrl = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
 
     if (err instanceof AppScopeCheckFailedError) {
       return {
@@ -493,6 +495,7 @@ async function checkUserPermissions(
 }> {
   const t = T[locale];
   const { appId } = account;
+  const openDomain = openPlatformDomain(account.brand);
   const lines: string[] = [];
 
   try {
@@ -586,9 +589,9 @@ async function checkUserPermissions(
     if (appGrantedCount < allScopes.length) {
       // 计算缺失的应用权限
       const appMissingScopes = allScopes.filter((s) => !appUserScopes.includes(s));
-      let appApplyUrl = `https://open.feishu.cn/app/${appId}/auth?op_from=feishu-openclaw&token_type=user`;
+      let appApplyUrl = `${openDomain}/app/${appId}/auth?op_from=feishu-openclaw&token_type=user`;
       if (appMissingScopes.length < 20) {
-        appApplyUrl = `https://open.feishu.cn/app/${appId}/auth?q=${encodeURIComponent(appMissingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`;
+        appApplyUrl = `${openDomain}/app/${appId}/auth?q=${encodeURIComponent(appMissingScopes.join(','))}&op_from=feishu-openclaw&token_type=user`;
       }
 
       lines.push(`${t.appMissingUserPerms(appMissingScopes.length)} [${t.apply}](${appApplyUrl})`);
@@ -621,7 +624,7 @@ async function checkUserPermissions(
       missingUserScopes: userMissing,
     };
   } catch (err) {
-    const applyUrl = `https://open.feishu.cn/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
+    const applyUrl = `${openDomain}/app/${appId}/auth?q=application:application:self_manage&op_from=feishu-openclaw&token_type=tenant`;
 
     if (err instanceof AppScopeCheckFailedError) {
       return {
