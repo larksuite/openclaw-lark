@@ -116,8 +116,8 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi) {
             });
           }
 
-          // 6. 飞书限制：单次最多请求 100 个 scope
-          const MAX_SCOPES_PER_BATCH = 100;
+          // 6. 飞书限制：单次最多请求 50 个 scope
+          const MAX_SCOPES_PER_BATCH = 50;
           let scopesToAuthorize = missingScopes;
           let batchInfo = '';
 
