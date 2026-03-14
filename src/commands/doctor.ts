@@ -43,7 +43,9 @@ import { getPluginVersion } from '../core/version';
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
-export type DoctorLocale = 'zh_cn' | 'en_us';
+export type { FeishuLocale } from './locale';
+/** @deprecated Use FeishuLocale instead */
+export type DoctorLocale = import('./locale').FeishuLocale;
 
 // ---------------------------------------------------------------------------
 // I18n text map
