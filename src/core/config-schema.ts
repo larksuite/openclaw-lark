@@ -140,6 +140,7 @@ export const FeishuGroupSchema = z.object({
   enabled: z.boolean().optional(),
   allowFrom: AllowFromSchema,
   systemPrompt: z.string().optional(),
+  replyInThread: z.enum(['enabled', 'disabled']).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -182,6 +183,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  replyInThread: z.enum(['enabled', 'disabled']).optional(),
   uat: UATConfigSchema,
 });
 
