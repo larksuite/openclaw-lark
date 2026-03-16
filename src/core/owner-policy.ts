@@ -38,10 +38,14 @@ export class OwnerAccessDeniedError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * 校验用户是否为应用 owner（fail-close 版本）。
+ * 校验用户是否有权执行 owner-level 操作（fail-close 版本）。
+ *
+ * 授权条件（满足任一即可）：
+ * 1. 用户是应用 owner
+ * 2. 用户在该账号的 `allowFrom` 列表中（已被管理员显式信任）
  *
  * - 获取 owner 失败时 → 拒绝（安全优先）
- * - owner 不匹配时 → 拒绝
+ * - owner 不匹配且不在 allowFrom 中 → 拒绝
  *
  * 适用于：`executeAuthorize`（OAuth 授权发起）、`commands/auth.ts`（批量授权）等
  * 赋予实质性权限的入口。
@@ -58,7 +62,18 @@ export async function assertOwnerAccessStrict(
     throw new OwnerAccessDeniedError(userOpenId, 'unknown');
   }
 
-  if (ownerOpenId !== userOpenId) {
-    throw new OwnerAccessDeniedError(userOpenId, ownerOpenId);
+  // Owner 直接放行
+  if (ownerOpenId === userOpenId) {
+    return;
   }
+
+  // allowFrom 中的用户也视为可信用户，允许 OAuth 授权。
+  // 这些用户已被管理员显式添加到信任列表中，适用于家庭/小团队等
+  // 多人共用同一应用的场景。每个用户仍使用自己的 UAT，数据隔离不受影响。
+  const allowFrom: string[] = account.config?.allowFrom ?? [];
+  if (allowFrom.some((entry) => String(entry) === userOpenId)) {
+    return;
+  }
+
+  throw new OwnerAccessDeniedError(userOpenId, ownerOpenId);
 }
