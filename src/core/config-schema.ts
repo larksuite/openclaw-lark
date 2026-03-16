@@ -182,6 +182,14 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  subagent: z
+    .object({
+      /** Merge subagent output into the main agent's streaming card (default: true). */
+      mergeToMain: z.boolean().optional(),
+      /** When not merging, how to deliver the subagent result: 'card' | 'text' (default: 'text'). */
+      deliveryType: z.enum(['card', 'text']).optional(),
+    })
+    .optional(),
   uat: UATConfigSchema,
 });
 

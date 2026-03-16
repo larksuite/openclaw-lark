@@ -27,6 +27,8 @@ import { resolveReplyMode, expandAutoMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
+import { registerCompletedCard } from './card-registry';
+import { hasActiveSubagents } from './subagent-tracker';
 
 const log = larkLogger('card/reply-dispatcher');
 
@@ -288,7 +290,43 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       }
 
       if (controller) {
-        await controller.onIdle();
+        const mergeEnabled = feishuCfg?.subagent?.mergeToMain !== false;
+        const subagentsActive = mergeEnabled && hasActiveSubagents(chatId, accountId);
+
+        if (subagentsActive && controller.cardMessageId) {
+          // SubAgents still running — do NOT finalize the streaming card.
+          // Keep it visually "loading" so the user knows work is in progress.
+          // The outbound sendText will close streaming + update content later.
+          log.info('deferring card finalization (subagents active)');
+
+          registerCompletedCard({
+            chatId,
+            accountId,
+            messageId: controller.cardMessageId,
+            cardKitCardId: controller.cardKitCardId,
+            cardKitSequence: controller.cardKitSequence,
+            completedText: controller.completedText,
+            streamingOpen: true,
+            startedAt: controller.startTime,
+            footer: resolvedFooter,
+          });
+        } else {
+          // No active subagents — finalize normally.
+          await controller.onIdle();
+
+          if (mergeEnabled && controller.cardMessageId) {
+            registerCompletedCard({
+              chatId,
+              accountId,
+              messageId: controller.cardMessageId,
+              cardKitCardId: controller.cardKitCardId,
+              cardKitSequence: controller.cardKitSequence,
+              completedText: controller.completedText,
+              startedAt: controller.startTime,
+              footer: resolvedFooter,
+            });
+          }
+        }
       }
 
       typingCallbacks.onIdle?.();

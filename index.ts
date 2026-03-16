@@ -26,6 +26,8 @@ import {
 import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
 import { emitSecurityWarnings } from './src/core/security-check';
+import { trackSubagentSpawned, trackSubagentEnded } from './src/card/subagent-tracker';
+import { normalizeFeishuTarget } from './src/core/targets';
 
 const log = larkLogger('plugin');
 
@@ -132,6 +134,25 @@ const plugin = {
         log.error(`tool fail: ${event.toolName} ${event.error} (${event.durationMs ?? 0}ms)`);
       } else {
         log.info(`tool done: ${event.toolName} ok (${event.durationMs ?? 0}ms)`);
+      }
+    });
+
+    // ---- Subagent lifecycle hooks (card status tracking) ----
+
+    api.on('subagent_spawned', (event) => {
+      const chatId = event.requester?.to ? normalizeFeishuTarget(event.requester.to) : undefined;
+      if (chatId) {
+        trackSubagentSpawned({
+          runId: event.runId,
+          chatId,
+          accountId: event.requester?.accountId,
+        });
+      }
+    });
+
+    api.on('subagent_ended', (event) => {
+      if (event.runId) {
+        trackSubagentEnded(event.runId);
       }
     });
 
