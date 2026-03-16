@@ -57,8 +57,13 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   });
   const useStreamingCards = replyMode === 'streaming';
 
-  // ---- Block streaming for static mode ----
-  const enableBlockStreaming = feishuCfg?.blockStreaming === true && !useStreamingCards;
+  // ---- Block streaming ----
+  // Keep block streaming enabled whenever the channel/account enables it.
+  // Some Anthropic-compatible providers (e.g. MiniMax) surface visible text
+  // primarily through block-level streaming callbacks. Disabling block streaming
+  // in card-streaming mode causes Feishu to receive only the final aggregated
+  // deliver() payload, which appears as "not streaming" in chat.
+  const enableBlockStreaming = feishuCfg?.blockStreaming === true;
 
   const resolvedFooter = resolveFooterConfig(feishuCfg?.footer);
 
@@ -66,6 +71,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     effectiveReplyMode,
     replyMode,
     chatType,
+    useStreamingCards,
+    enableBlockStreaming,
   });
 
   // ---- Chunk & render settings (static mode only) ----
@@ -307,6 +314,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     replyOptions: {
       ...replyOptions,
       onModelSelected: prefixContext.onModelSelected,
+      // `true` means the SDK should NOT use block streaming. We only disable
+      // it when the account/channel has not enabled block streaming.
       disableBlockStreaming: !enableBlockStreaming,
       ...(controller
         ? {
