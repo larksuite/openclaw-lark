@@ -178,6 +178,7 @@ export const FeishuAccountConfigSchema = z.object({
   footer: FeishuFooterSchema,
   markdown: MarkdownConfigSchema,
   configWrites: z.boolean().optional(),
+  ownerOnlyUserAuth: z.boolean().optional(),
   capabilities: CapabilitiesSchema,
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,

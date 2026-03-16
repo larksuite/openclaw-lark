@@ -86,7 +86,7 @@ interface LarkAccountBase {
   encryptKey?: string;
   verificationToken?: string;
   brand: LarkBrand;
-  config: FeishuConfig;
+  config: FeishuAccountConfig;
 }
 
 /** An account with both `appId` and `appSecret` present. */

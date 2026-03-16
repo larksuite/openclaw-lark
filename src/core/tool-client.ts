@@ -37,7 +37,6 @@ import { getTicket } from './lark-ticket';
 import { callWithUAT } from './uat-client';
 import { getStoredToken } from './token-store';
 import { getAppGrantedScopes, invalidateAppScopeCache, missingScopes } from './app-scope-checker';
-import { getAppOwnerFallback } from './app-owner-fallback';
 import { larkLogger } from './lark-logger';
 import { type ToolActionKey, getRequiredScopes } from './scope-manager';
 import { rawLarkRequest } from './raw-request';
@@ -231,20 +230,14 @@ export class ToolClient {
       return this.invokeAsTenant(toolAction, fn, requiredScopes);
     }
 
-    // 5.1 获取 userOpenId，支持兜底逻辑
+    // 5.1 获取 userOpenId。用户态调用必须绑定到明确用户，不再回退到 app owner。
     let userOpenId = options?.userOpenId ?? this.senderOpenId;
 
-    // 5.2 兜底逻辑：如果没有 senderOpenId，尝试使用应用所有者
     if (!userOpenId) {
-      const fallbackUserId = await getAppOwnerFallback(this.account, this.sdk);
-      if (fallbackUserId) {
-        userOpenId = fallbackUserId;
-        tcLog.info(`Using app owner as fallback user`, {
-          toolAction,
-          appId: this.account.appId,
-          ownerId: fallbackUserId,
-        });
-      }
+      throw new Error(
+        `User identity required for ${toolAction} but senderOpenId is missing. ` +
+          `This usually means the tool was called outside a message context.`,
+      );
     }
 
     return this.invokeAsUser(toolAction, fn, requiredScopes, userOpenId, appScopeVerified);

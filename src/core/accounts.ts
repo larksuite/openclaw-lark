@@ -13,7 +13,14 @@ import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from 'openclaw/plugin-sdk';
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 
-import type { FeishuConfig, LarkBrand, LarkAccount, LarkCredentials, ConfiguredLarkAccount } from './types';
+import type {
+  FeishuConfig,
+  FeishuAccountConfig,
+  LarkBrand,
+  LarkAccount,
+  LarkCredentials,
+  ConfiguredLarkAccount,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -25,21 +32,21 @@ function getLarkConfig(cfg: ClawdbotConfig): FeishuConfig | undefined {
 }
 
 /** Return the per-account override map, if present. */
-function getAccountMap(section: FeishuConfig): Record<string, Partial<FeishuConfig>> | undefined {
-  return (section as FeishuConfig & { accounts?: Record<string, Partial<FeishuConfig>> }).accounts;
+function getAccountMap(section: FeishuConfig): Record<string, Partial<FeishuAccountConfig>> | undefined {
+  return (section as FeishuConfig & { accounts?: Record<string, Partial<FeishuAccountConfig>> }).accounts;
 }
 
 /** Strip the `accounts` key and return the remaining top-level config. */
-function baseConfig(section: FeishuConfig): Omit<FeishuConfig, 'accounts'> {
+function baseConfig(section: FeishuConfig): FeishuAccountConfig {
   const { accounts: _ignored, ...rest } = section as FeishuConfig & {
     accounts?: Record<string, unknown>;
   };
-  return rest;
+  return rest as FeishuAccountConfig;
 }
 
 /** Merge base config with account override (account fields take precedence). */
-function mergeAccountConfig(base: Omit<FeishuConfig, 'accounts'>, override: Partial<FeishuConfig>): FeishuConfig {
-  return { ...base, ...override } as FeishuConfig;
+function mergeAccountConfig(base: FeishuAccountConfig, override: Partial<FeishuAccountConfig>): FeishuAccountConfig {
+  return { ...base, ...override } as FeishuAccountConfig;
 }
 
 /** Coerce a domain string to `LarkBrand`, defaulting to `"feishu"`. */
@@ -103,7 +110,7 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
       enabled: false,
       configured: false,
       brand: 'feishu',
-      config: {} as FeishuConfig,
+      config: {} as FeishuAccountConfig,
     };
   }
 
@@ -111,12 +118,12 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
   const accountMap = getAccountMap(section);
   const accountOverride =
     accountMap && requestedId !== DEFAULT_ACCOUNT_ID
-      ? (accountMap[requestedId] as Partial<FeishuConfig> | undefined)
+      ? (accountMap[requestedId] as Partial<FeishuAccountConfig> | undefined)
       : undefined;
 
-  const merged: FeishuConfig = accountOverride
+  const merged: FeishuAccountConfig = accountOverride
     ? mergeAccountConfig(base, accountOverride)
-    : ({ ...base } as FeishuConfig);
+    : ({ ...base } as FeishuAccountConfig);
 
   const appId = merged.appId;
   const appSecret = merged.appSecret;

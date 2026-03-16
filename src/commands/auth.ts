@@ -5,7 +5,8 @@
  * feishu_auth command — 飞书用户权限批量授权命令实现
  *
  * 直接复用 onboarding-auth.ts 的 triggerOnboarding() 函数。
- * 注意：此命令仅限应用 owner 执行（与 onboarding 逻辑一致）
+ * 当 `ownerOnlyUserAuth=true` 时，此命令仅限应用 owner 执行；
+ * 当 `ownerOnlyUserAuth=false` 时，允许当前用户为自己发起授权。
  */
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
