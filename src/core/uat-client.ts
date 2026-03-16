@@ -23,7 +23,7 @@ import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/uat-client');
 import { feishuFetch } from './feishu-fetch';
-import { REFRESH_TOKEN_IRRECOVERABLE, TOKEN_RETRY_CODES, NeedAuthorizationError } from './auth-errors';
+import { REFRESH_TOKEN_RETRYABLE, TOKEN_RETRY_CODES, NeedAuthorizationError } from './auth-errors';
 
 // Re-export for backward compatibility
 export { NeedAuthorizationError };
@@ -75,19 +75,23 @@ async function doRefreshToken(opts: UATCallOptions, stored: StoredUAToken): Prom
   }
 
   const endpoints = resolveOAuthEndpoints(opts.domain);
+  const requestBody = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: stored.refreshToken,
+    client_id: opts.appId,
+    client_secret: opts.appSecret,
+  }).toString();
 
-  const resp = await feishuFetch(endpoints.token, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: stored.refreshToken,
-      client_id: opts.appId,
-      client_secret: opts.appSecret,
-    }).toString(),
-  });
+  const callEndpoint = async () => {
+    const resp = await feishuFetch(endpoints.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: requestBody,
+    });
+    return (await resp.json()) as Record<string, unknown>;
+  };
 
-  const data = (await resp.json()) as Record<string, unknown>;
+  let data = await callEndpoint();
 
   // Feishu v2 token endpoint returns `code: 0` on success.
   // Some responses use `error` field instead (standard OAuth).
@@ -96,16 +100,25 @@ async function doRefreshToken(opts: UATCallOptions, stored: StoredUAToken): Prom
 
   if ((code !== undefined && code !== 0) || error) {
     const errCode = code ?? error;
-    const errMsg = (data.error_description as string) ?? (data.msg as string) ?? 'unknown';
 
-    // Known irrecoverable codes: invalid/expired/missing refresh_token
-    if (REFRESH_TOKEN_IRRECOVERABLE.has(code as number)) {
+    // Transient server error: retry once, then clear.
+    if (REFRESH_TOKEN_RETRYABLE.has(code as number)) {
+      log.warn(`refresh transient error (code=${errCode}) for ${opts.userOpenId}, retrying once`);
+      data = await callEndpoint();
+      const retryCode = data.code as number | undefined;
+      const retryError = data.error as string | undefined;
+      if ((retryCode !== undefined && retryCode !== 0) || retryError) {
+        const retryErrCode = retryCode ?? retryError;
+        log.warn(`refresh failed after retry (code=${retryErrCode}), clearing token for ${opts.userOpenId}`);
+        await removeStoredToken(opts.appId, opts.userOpenId);
+        return null;
+      }
+    } else {
+      // Any other error (invalid/expired/revoked token, or unknown): clear and force re-auth.
       log.warn(`refresh failed (code=${errCode}), clearing token for ${opts.userOpenId}`);
       await removeStoredToken(opts.appId, opts.userOpenId);
       return null;
     }
-
-    throw new Error(`Token refresh failed (code=${errCode}): ${errMsg}`);
   }
 
   if (!data.access_token) {
