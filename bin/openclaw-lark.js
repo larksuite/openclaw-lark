@@ -22,3 +22,4 @@ try {
 } catch (error) {
   process.exit(error.status ?? 1);
 }
+
