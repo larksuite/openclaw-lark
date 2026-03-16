@@ -9,9 +9,15 @@
  * dependencies needed to process the event.
  */
 
-import type { FeishuMessageEvent, FeishuBotAddedEvent, FeishuReactionCreatedEvent } from '../messaging/types';
+import type {
+  FeishuMessageEvent,
+  FeishuBotAddedEvent,
+  FeishuReactionCreatedEvent,
+  FeishuBitableRecordChangedEvent,
+} from '../messaging/types';
 import { handleFeishuMessage } from '../messaging/inbound/handler';
 import { handleFeishuReaction, resolveReactionContext } from '../messaging/inbound/reaction-handler';
+import { handleFeishuBitableRecordChanged } from '../messaging/inbound/bitable-handler';
 import { isMessageExpired } from '../messaging/inbound/dedup';
 import { withTicket } from '../core/lark-ticket';
 import { larkLogger } from '../core/lark-logger';
@@ -242,5 +248,56 @@ export async function handleCardActionEvent(ctx: MonitorContext, data: unknown):
     return await handleCardAction(data, ctx.cfg, ctx.accountId);
   } catch (err) {
     elog.warn(`card.action.trigger handler error: ${err}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bitable record-changed handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle a `drive.file.bitable_record_changed_v1` event.
+ *
+ * The SDK's EventDispatcher delivers the inner `event` object directly as
+ * handler data, so `data` here maps to the `event` field of the raw
+ * webhook body.  The outer v2 envelope `app_id` is injected by the SDK
+ * into the data object alongside the inner fields.
+ *
+ * The handler uses `bitableNotifications` config to resolve which chats
+ * should receive the notification, then dispatches a synthetic message
+ * to the agent for each matching target.
+ */
+export async function handleBitableRecordChangedEvent(ctx: MonitorContext, data: unknown): Promise<void> {
+  if (!isEventOwnershipValid(ctx, data)) return;
+  const { accountId, log, error } = ctx;
+  try {
+    const event = data as FeishuBitableRecordChangedEvent;
+
+    // Basic sanity check — must have a file_token to be useful
+    if (!event.file_token) {
+      log(`feishu[${accountId}]: bitable_record_changed missing file_token, skipping`);
+      return;
+    }
+
+    // Dedup: use a composite key so reconnect-replayed events are suppressed
+    const actionCount = event.action_list?.length ?? 0;
+    const firstRecordId = event.action_list?.[0]?.record_id ?? '';
+    const dedupKey = `bitable:${event.file_token}:${event.table_id}:${event.revision ?? event.update_time ?? Date.now()}:${firstRecordId}:${actionCount}`;
+    if (!ctx.messageDedup.tryRecord(dedupKey, accountId)) {
+      log(`feishu[${accountId}]: duplicate bitable_record_changed ${dedupKey}, skipping`);
+      return;
+    }
+
+    log(`feishu[${accountId}]: bitable_record_changed file=${event.file_token} table=${event.table_id} actions=${actionCount}`);
+
+    await handleFeishuBitableRecordChanged({
+      cfg: ctx.cfg,
+      event,
+      runtime: ctx.runtime,
+      chatHistories: ctx.chatHistories,
+      accountId,
+    });
+  } catch (err) {
+    error(`feishu[${accountId}]: error handling bitable_record_changed: ${String(err)}`);
   }
 }

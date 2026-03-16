@@ -21,6 +21,7 @@ import {
   handleReactionEvent,
   handleBotMembershipEvent,
   handleCardActionEvent,
+  handleBitableRecordChangedEvent,
 } from './event-handlers';
 
 const mlog = larkLogger('channel/monitor');
@@ -102,6 +103,10 @@ async function monitorSingleAccount(params: {
       'card.action.trigger': ((data: unknown) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         handleCardActionEvent(ctx, data)) as any,
+      // drive.file.bitable_record_changed_v1 在 node-sdk 类型定义中缺失，需要 as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      'drive.file.bitable_record_changed_v1': ((data: unknown) =>
+        handleBitableRecordChangedEvent(ctx, data)) as any,
     },
     abortSignal,
   });
