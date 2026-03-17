@@ -2,7 +2,7 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 以用户身份获取/搜索飞书消息
+ * 消息读取工具集 -- 会话历史与搜索均以用户身份调用，话题历史走 thread message.list
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -150,15 +150,16 @@ function registerGetMessages(api: OpenClawPluginApi) {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
       description:
-        '【以用户身份】获取群聊或单聊的历史消息。' +
+        '【以用户身份】获取群聊或单聊的历史消息。chat_id / open_id 路径通过搜索接口按会话过滤获取消息。' +
         '\n\n用法：' +
         '\n- 通过 chat_id 获取群聊/单聊消息' +
-        '\n- 通过 open_id 获取与指定用户的单聊消息（自动解析 chat_id）' +
+        '\n- 通过 open_id 获取与指定用户的单聊消息（会先以用户身份解析 chat_id）' +
         '\n- 支持时间范围过滤：relative_time（如 today、last_3_days）或 start_time/end_time（ISO 8601 格式）' +
         '\n- 支持分页：page_size + page_token' +
         '\n\n【参数约束】' +
         '\n- open_id 和 chat_id 必须二选一，不能同时提供' +
         '\n- relative_time 和 start_time/end_time 不能同时使用' +
+        '\n- 当前仅支持 create_time_desc 排序' +
         '\n- page_size 范围 1-50，默认 50' +
         '\n\n返回消息列表，每条消息包含 message_id、msg_type、content（AI 可读文本）、sender、create_time 等字段。',
       parameters: GetMessagesSchema,
@@ -174,9 +175,11 @@ function registerGetMessages(api: OpenClawPluginApi) {
           if (p.relative_time && (p.start_time || p.end_time)) {
             return json({ error: 'cannot use both relative_time and start_time/end_time' });
           }
+          if (p.sort_rule === 'create_time_asc') {
+            return json({ error: 'create_time_asc is not supported for chat history yet, please use create_time_desc' });
+          }
 
           const client = toolClient();
-
           let chatId = p.chat_id ?? '';
           if (p.open_id) {
             log.info(`resolving P2P chat for open_id=${p.open_id}`);
@@ -184,35 +187,68 @@ function registerGetMessages(api: OpenClawPluginApi) {
           }
 
           const time = resolveTimeRange(p, log.info);
-          log.info(
-            `list: chat_id=${chatId}, sort=${p.sort_rule ?? 'create_time_desc'}, page_size=${p.page_size ?? 50}`,
+          const searchData = buildSearchData(
+            {
+              query: '',
+              chat_id: chatId,
+            },
+            {
+              start: time.start ?? '978307200',
+              end: time.end ?? Math.floor(Date.now() / 1000).toString(),
+            },
           );
+          log.info(`history search: chat_id=${chatId}, page_size=${p.page_size ?? 50}`);
 
-          const res = await client.invoke(
-            'feishu_im_user_get_messages.default',
+          const searchRes = await client.invoke(
+            'feishu_im_user_search_messages.default',
             (sdk, opts) =>
-              sdk.im.v1.message.list(
+              sdk.search.message.create(
                 {
+                  data: searchData as any,
                   params: {
-                    container_id_type: 'chat',
-                    container_id: chatId,
-                    start_time: time.start,
-                    end_time: time.end,
-                    sort_type: sortRuleToSortType(p.sort_rule),
+                    user_id_type: 'open_id',
                     page_size: p.page_size ?? 50,
                     page_token: p.page_token,
-                    card_msg_content_type: 'raw_card_content',
-                  } as any,
+                  },
                 },
-                opts,
+                opts!,
               ),
             {
               as: 'user',
             },
           );
-          assertLarkOk(res);
+          assertLarkOk(searchRes as any);
 
-          return formatAndReturn(res, config, log, client);
+          const messageIds: string[] = (searchRes as any).data?.items ?? [];
+          const hasMore: boolean = (searchRes as any).data?.has_more ?? false;
+          const pageToken: string | undefined = (searchRes as any).data?.page_token;
+          log.info(`history search: found ${messageIds.length} IDs, has_more=${hasMore}`);
+
+          if (messageIds.length === 0) {
+            return json({ messages: [], has_more: hasMore, page_token: pageToken });
+          }
+
+          const queryStr = messageIds.map((id) => `message_ids=${encodeURIComponent(id)}`).join('&');
+          const mgetRes = await client.invokeByPath<{
+            code?: number;
+            msg?: string;
+            data?: { items?: any[] };
+          }>('feishu_im_user_search_messages.default', `/open-apis/im/v1/messages/mget?${queryStr}`, {
+            method: 'GET',
+            query: { user_id_type: 'open_id', card_msg_content_type: 'raw_card_content' },
+            as: 'user',
+          });
+
+          const items = mgetRes.data?.items ?? [];
+          const account = getFirstAccount(config);
+          const messages = await formatMessageList(
+            items,
+            account,
+            (...args: unknown[]) => log.info(args.map(String).join(' ')),
+            client,
+          );
+
+          return json({ messages, has_more: hasMore, page_token: pageToken });
         } catch (err) {
           return await handleInvokeErrorWithAutoAuth(err, config);
         }
