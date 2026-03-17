@@ -14,7 +14,7 @@ import { getTicket } from '../core/lark-ticket';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { getAppInfo, getAppGrantedScopes } from '../core/app-scope-checker';
-import { getStoredToken } from '../core/token-store';
+import { getStoredToken, tokenStatus } from '../core/token-store';
 import { filterSensitiveScopes } from '../core/tool-scopes';
 import { assertOwnerAccessStrict, OwnerAccessDeniedError } from '../core/owner-policy';
 import { openPlatformDomain } from '../core/domains';
@@ -167,7 +167,8 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
   }
 
   const existing = await getStoredToken(appId, senderOpenId);
-  const grantedScopes = new Set(existing?.scope?.split(/\s+/).filter(Boolean) ?? []);
+  const tokenValid = existing && tokenStatus(existing) !== 'expired';
+  const grantedScopes = new Set(tokenValid ? (existing.scope?.split(/\s+/).filter(Boolean) ?? []) : []);
   const missingScopes = appScopes.filter((s) => !grantedScopes.has(s));
 
   if (missingScopes.length === 0) {

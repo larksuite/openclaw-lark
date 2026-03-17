@@ -50,16 +50,15 @@ const FeishuOAuthSchema = Type.Object(
         Type.Literal('revoke'),
       ],
       {
-        description: 'revoke: 撤销当前用户的授权',
+        description: 'revoke: 撤销当前用户已保存的授权凭据',
       },
     ),
   },
   {
     description:
-      '飞书用户授权管理工具。' +
-      '【注意】授权流程由系统自动发起，不要主动调用此工具触发授权！' +
-      '此工具仅用于撤销授权（revoke）。' +
-      '不需要传入 user_open_id，系统自动识别当前用户。',
+      '飞书用户撤销授权工具。' +
+      '仅在用户明确说"撤销授权"、"取消授权"、"退出登录"、"清除授权"时调用。' +
+      '【严禁调用场景】用户说"重新授权"、"发起授权"、"重新发起"、"授权失败"、"授权过期"时，绝对不要调用此工具，授权流程由系统自动处理。',
   },
 );
 
@@ -145,11 +144,10 @@ export function registerFeishuOAuthTool(api: OpenClawPluginApi) {
       name: 'feishu_oauth',
       label: 'Feishu OAuth',
       description:
-        '飞书用户授权（OAuth）管理工具。' +
-        '【注意】授权流程由系统自动发起，不要主动调用此工具触发授权！' +
-        '此工具仅用于 revoke（撤销当前用户的授权）。' +
-        '不需要传入 user_open_id，系统自动从消息上下文获取当前用户。' +
-        '【Token 过期处理】当返回 token_expired 错误时，调用 revoke 撤销后，系统会自动重新发起授权流程。',
+        '飞书用户撤销授权工具。' +
+        '仅在用户明确说"撤销授权"、"取消授权"、"退出登录"、"清除授权"时调用 revoke。' +
+        '【严禁调用场景】用户说"重新授权"、"发起授权"、"重新发起"、"授权失败"、"授权过期"时，绝对不要调用此工具，授权流程由系统自动处理，无需人工干预。' +
+        '不需要传入 user_open_id，系统自动从消息上下文获取当前用户。',
       parameters: FeishuOAuthSchema,
 
       async execute(_toolCallId: string, params: unknown) {
