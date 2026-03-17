@@ -10,12 +10,13 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
-import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk';
+import { getSessionBindingService, resolveThreadSessionKeys } from 'openclaw/plugin-sdk';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
+import { buildFeishuConversationRef } from '../../channel/thread-bindings';
 
 const log = larkLogger('inbound/dispatch-context');
 
@@ -39,6 +40,8 @@ export interface DispatchContext {
   envelopeFrom: string;
   envelopeOptions: ReturnType<typeof LarkClient.runtime.channel.reply.resolveEnvelopeFormatOptions>;
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
+  boundSessionKey?: string;
+  boundAgentId?: string;
   threadSessionKey?: string;
   commandAuthorized?: boolean;
 }
@@ -102,6 +105,23 @@ export function buildDispatchContext(params: {
     },
   });
 
+  const boundConversation = buildFeishuConversationRef({
+    accountId: account.accountId,
+    chatId: ctx.chatId,
+    rootId: ctx.rootId,
+    threadId: ctx.threadId,
+  });
+  const binding = boundConversation ? getSessionBindingService().resolveByConversation(boundConversation) : null;
+  const boundSessionKey = binding?.status === 'active' ? binding.targetSessionKey : undefined;
+  const boundAgentId = boundSessionKey ? extractAgentIdFromSessionKey(boundSessionKey) : undefined;
+  const effectiveRoute = boundSessionKey
+    ? {
+        ...route,
+        sessionKey: boundSessionKey,
+        agentId: boundAgentId ?? route.agentId,
+      }
+    : route;
+
   // ---- System event ----
   const sender = ctx.senderName ? `${ctx.senderName} (${ctx.senderId})` : ctx.senderId;
   const location = isGroup ? `group ${ctx.chatId}` : 'DM';
@@ -118,7 +138,7 @@ export function buildDispatchContext(params: {
   const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
 
   core.system.enqueueSystemEvent(`Feishu[${account.accountId}] ${location} | ${sender}${tagStr}`, {
-    sessionKey: route.sessionKey,
+    sessionKey: effectiveRoute.sessionKey,
     contextKey: `feishu:message:${ctx.chatId}:${ctx.messageId}`,
   });
 
@@ -136,10 +156,17 @@ export function buildDispatchContext(params: {
     feishuTo,
     envelopeFrom,
     envelopeOptions,
-    route,
+    route: effectiveRoute,
+    boundSessionKey,
+    boundAgentId,
     threadSessionKey: undefined,
     commandAuthorized: params.commandAuthorized,
   };
+}
+
+function extractAgentIdFromSessionKey(sessionKey: string): string | undefined {
+  const match = sessionKey.match(/^agent:([^:]+):/);
+  return typeof match?.[1] === 'string' && match[1].trim() ? match[1].trim() : undefined;
 }
 
 // ---------------------------------------------------------------------------

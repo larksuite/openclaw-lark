@@ -130,7 +130,7 @@ export function buildInboundPayload(
     CommandBody: opts.commandBody,
     From: dc.feishuFrom,
     To: dc.feishuTo,
-    SessionKey: dc.threadSessionKey ?? dc.route.sessionKey,
+        SessionKey: dc.boundSessionKey ?? dc.threadSessionKey ?? dc.route.sessionKey,
     AccountId: dc.route.accountId,
     ChatType: dc.isGroup ? 'group' : 'direct',
     GroupSubject: dc.isGroup ? dc.ctx.chatId : undefined,

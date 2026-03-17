@@ -122,7 +122,7 @@ async function dispatchNormalMessage(
 
   const { dispatcher, replyOptions, markDispatchIdle, markFullyComplete, abortCard } = createFeishuReplyDispatcher({
     cfg: dc.accountScopedCfg,
-    agentId: dc.route.agentId,
+    agentId: dc.boundAgentId ?? dc.route.agentId,
     chatId: dc.ctx.chatId,
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
@@ -140,7 +140,7 @@ async function dispatchNormalMessage(
   const queueKey = buildQueueKey(dc.account.accountId, dc.ctx.chatId, dc.ctx.threadId);
   registerActiveDispatcher(queueKey, { abortCard, abortController });
 
-  const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
+  const effectiveSessionKey = dc.boundSessionKey ?? dc.threadSessionKey ?? dc.route.sessionKey;
   dc.log(`feishu[${dc.account.accountId}]: dispatching to agent (session=${effectiveSessionKey})`);
   log.info(`dispatching to agent (session=${effectiveSessionKey})`);
 
@@ -217,7 +217,7 @@ export async function dispatchToAgent(params: {
   const dc = buildDispatchContext(params);
 
   // 1b. Resolve thread session isolation (async: may query group info API)
-  if (dc.isThread && dc.ctx.threadId) {
+  if (!dc.boundSessionKey && dc.isThread && dc.ctx.threadId) {
     dc.threadSessionKey = await resolveThreadSessionKey({
       accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,
