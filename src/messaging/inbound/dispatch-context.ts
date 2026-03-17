@@ -114,6 +114,15 @@ export function buildDispatchContext(params: {
   const binding = boundConversation ? getSessionBindingService().resolveByConversation(boundConversation) : null;
   const boundSessionKey = binding?.status === 'active' ? binding.targetSessionKey : undefined;
   const boundAgentId = boundSessionKey ? extractAgentIdFromSessionKey(boundSessionKey) : undefined;
+  if (boundSessionKey) {
+    log.info(
+      `resolved Feishu bound session ${boundSessionKey} for chat=${ctx.chatId} thread=${ctx.rootId ?? ctx.threadId ?? '-'} message=${ctx.messageId}`,
+    );
+  } else if (boundConversation) {
+    log.info(
+      `no Feishu bound session for chat=${ctx.chatId} conversation=${boundConversation.conversationId} parent=${boundConversation.parentConversationId ?? '-'} message=${ctx.messageId}`,
+    );
+  }
   const effectiveRoute = boundSessionKey
     ? {
         ...route,

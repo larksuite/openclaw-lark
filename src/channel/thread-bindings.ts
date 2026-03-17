@@ -19,6 +19,9 @@ import {
   registerSessionBindingAdapter,
   unregisterSessionBindingAdapter,
 } from 'openclaw/plugin-sdk';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';
 import { larkLogger } from '../core/lark-logger';
 import { normalizeFeishuTarget } from '../core/targets';
@@ -39,7 +42,17 @@ interface FeishuBindingEntry {
 
 interface FeishuBindingState {
   bindingsByAccountConversation: Map<string, FeishuBindingEntry>;
+  loadedFromDisk: boolean;
+  dirty: boolean;
 }
+
+interface PersistedFeishuBindingState {
+  version: 1;
+  bindings: FeishuBindingEntry[];
+}
+
+const FEISHU_BINDING_STATE_PATH = join(homedir(), '.openclaw', 'state', 'openclaw-lark', 'feishu-thread-bindings.json');
+const OPENCLAW_CODEX_SESSION_STORE_PATH = join(homedir(), '.openclaw', 'agents', 'codex', 'sessions', 'sessions.json');
 
 function getBindingState(): FeishuBindingState {
   const globalState = globalThis as typeof globalThis & {
@@ -47,8 +60,143 @@ function getBindingState(): FeishuBindingState {
   };
   globalState[FEISHU_BINDING_STATE_SYMBOL] ??= {
     bindingsByAccountConversation: new Map<string, FeishuBindingEntry>(),
+    loadedFromDisk: false,
+    dirty: false,
   };
-  return globalState[FEISHU_BINDING_STATE_SYMBOL]!;
+  const state = globalState[FEISHU_BINDING_STATE_SYMBOL]!;
+  ensureBindingStateLoaded(state);
+  return state;
+}
+
+function ensureBindingStateLoaded(state: FeishuBindingState): void {
+  if (state.loadedFromDisk) return;
+  state.loadedFromDisk = true;
+
+  try {
+    const raw = readFileSync(FEISHU_BINDING_STATE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as PersistedFeishuBindingState;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.bindings)) {
+      log.warn(`ignored invalid Feishu binding state file at ${FEISHU_BINDING_STATE_PATH}`);
+      return;
+    }
+
+    for (const entry of parsed.bindings) {
+      const accountId = normalizeAccountId(entry.accountId);
+      const conversationId = normalizeConversationId(entry.conversationId);
+      const targetSessionKey = entry.targetSessionKey?.trim();
+      if (!conversationId || !targetSessionKey) continue;
+
+      state.bindingsByAccountConversation.set(toBindingKey(accountId, conversationId), {
+        ...entry,
+        accountId,
+        conversationId,
+        parentConversationId: normalizeConversationId(entry.parentConversationId),
+        targetSessionKey,
+        boundAt: Number.isFinite(entry.boundAt) ? Math.floor(entry.boundAt) : Date.now(),
+        lastActivityAt: Number.isFinite(entry.lastActivityAt) ? Math.floor(entry.lastActivityAt) : Date.now(),
+      });
+    }
+
+    if (state.bindingsByAccountConversation.size > 0) {
+      log.info(`loaded ${state.bindingsByAccountConversation.size} persisted Feishu thread binding(s)`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if ((error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') {
+      log.warn(`failed to load persisted Feishu thread bindings: ${message}`);
+    }
+  }
+
+  bootstrapBindingsFromSessionStore(state);
+}
+
+interface BootstrapSessionStoreEntry {
+  updatedAt?: number;
+  spawnedBy?: string;
+  channel?: string;
+  lastChannel?: string;
+}
+
+function bootstrapBindingsFromSessionStore(state: FeishuBindingState): void {
+  try {
+    const raw = readFileSync(OPENCLAW_CODEX_SESSION_STORE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as Record<string, BootstrapSessionStoreEntry>;
+    const latestByChat = new Map<string, FeishuBindingEntry>();
+
+    for (const [sessionKey, entry] of Object.entries(parsed ?? {})) {
+      if (!sessionKey.startsWith('agent:')) continue;
+      if ((entry.channel ?? entry.lastChannel) !== 'feishu') continue;
+
+      const spawnedBy = entry.spawnedBy?.trim();
+      const match = spawnedBy?.match(/^agent:main:feishu:group:(.+)$/);
+      const chatId = normalizeConversationId(match?.[1]);
+      if (!chatId) continue;
+
+      const accountId = 'default';
+      const updatedAt = Number.isFinite(entry.updatedAt) ? Math.floor(entry.updatedAt!) : Date.now();
+      const nextEntry: FeishuBindingEntry = {
+        accountId,
+        conversationId: chatId,
+        parentConversationId: chatId,
+        targetSessionKey: sessionKey,
+        targetKind: 'subagent',
+        boundAt: updatedAt,
+        lastActivityAt: updatedAt,
+        metadata: {
+          recoveredBy: 'session-store-bootstrap',
+          placement: 'current',
+        },
+      };
+
+      const existing = latestByChat.get(toBindingKey(accountId, chatId));
+      if (!existing || nextEntry.lastActivityAt > existing.lastActivityAt) {
+        latestByChat.set(toBindingKey(accountId, chatId), nextEntry);
+      }
+    }
+
+    let inserted = 0;
+    for (const entry of latestByChat.values()) {
+      const key = toBindingKey(entry.accountId, entry.conversationId);
+      const existing = state.bindingsByAccountConversation.get(key);
+      if (existing && existing.lastActivityAt >= entry.lastActivityAt) continue;
+      state.bindingsByAccountConversation.set(key, entry);
+      inserted += 1;
+    }
+
+    if (inserted > 0) {
+      log.info(`bootstrapped ${inserted} Feishu thread binding(s) from session store`);
+      state.dirty = true;
+      persistBindingState(state);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if ((error as NodeJS.ErrnoException | undefined)?.code !== 'ENOENT') {
+      log.warn(`failed to bootstrap Feishu thread bindings from session store: ${message}`);
+    }
+  }
+}
+
+function persistBindingState(state: FeishuBindingState): void {
+  if (!state.loadedFromDisk) return;
+  const payload: PersistedFeishuBindingState = {
+    version: 1,
+    bindings: [...state.bindingsByAccountConversation.values()].sort((left, right) =>
+      left.accountId === right.accountId
+        ? left.conversationId.localeCompare(right.conversationId)
+        : left.accountId.localeCompare(right.accountId),
+    ),
+  };
+
+  try {
+    mkdirSync(dirname(FEISHU_BINDING_STATE_PATH), { recursive: true });
+    const tempPath = `${FEISHU_BINDING_STATE_PATH}.tmp`;
+    writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    renameSync(tempPath, FEISHU_BINDING_STATE_PATH);
+    state.dirty = false;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`failed to persist Feishu thread bindings: ${message}`);
+  }
 }
 
 function normalizeAccountId(input: string | undefined | null): string {
@@ -112,6 +260,8 @@ function getBindingByConversation(accountId: string, conversationId: string): Fe
 function setBinding(entry: FeishuBindingEntry): FeishuBindingEntry {
   const state = getBindingState();
   state.bindingsByAccountConversation.set(toBindingKey(entry.accountId, entry.conversationId), entry);
+  state.dirty = true;
+  persistBindingState(state);
   return entry;
 }
 
@@ -121,6 +271,8 @@ function deleteBinding(accountId: string, conversationId: string): FeishuBinding
   const existing = state.bindingsByAccountConversation.get(key) ?? null;
   if (existing) {
     state.bindingsByAccountConversation.delete(key);
+    state.dirty = true;
+    persistBindingState(state);
   }
   return existing;
 }
@@ -179,7 +331,12 @@ function createFeishuSessionBindingAdapter(accountId: string): SessionBindingAda
       const conversationId = normalizeConversationId(ref.conversationId);
       if (!conversationId) return null;
       const binding = getBindingByConversation(accountId, conversationId);
-      if (binding) return toSessionBindingRecord(binding);
+      if (binding) {
+        log.info(
+          `resolved Feishu binding by conversation ${conversationId} -> ${binding.targetSessionKey} (account=${accountId})`,
+        );
+        return toSessionBindingRecord(binding);
+      }
 
       // Some Feishu follow-up messages only carry chat-level context even when
       // the original ACP session was bound to a topic/root thread. In that
@@ -188,7 +345,16 @@ function createFeishuSessionBindingAdapter(accountId: string): SessionBindingAda
       const fallbackBinding = parentConversationId
         ? findLatestBindingByParentConversation(accountId, parentConversationId)
         : null;
-      return fallbackBinding ? toSessionBindingRecord(fallbackBinding) : null;
+      if (fallbackBinding) {
+        log.info(
+          `resolved Feishu binding by parent conversation ${parentConversationId} -> ${fallbackBinding.targetSessionKey} (account=${accountId})`,
+        );
+        return toSessionBindingRecord(fallbackBinding);
+      }
+      log.info(
+        `no Feishu binding resolved for conversation ${conversationId} (parent=${parentConversationId ?? '-'}) (account=${accountId}, bindings=${listBindingsForAccount(accountId).length})`,
+      );
+      return null;
     },
     touch: (bindingId, at) => {
       const prefix = `${accountId}:`;
@@ -266,6 +432,7 @@ export function buildFeishuConversationRef(params: {
 
 function registerFeishuSessionBindingAdapterForAccount(accountId: string): void {
   try {
+    getBindingState();
     registerSessionBindingAdapter(createFeishuSessionBindingAdapter(accountId));
     log.info(`registered Feishu session binding adapter for ${accountId}`);
   } catch (error) {
