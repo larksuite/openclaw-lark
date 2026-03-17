@@ -119,6 +119,8 @@ export function buildInboundPayload(
     extraFields?: Record<string, unknown>;
   },
 ): ReturnType<typeof LarkClient.runtime.channel.reply.finalizeInboundContext> {
+  const originatingTo = opts.originatingTo ?? (dc.isGroup ? `channel:${dc.ctx.chatId}` : dc.feishuTo);
+
   return dc.core.channel.reply.finalizeInboundContext({
     // extraFields first — fixed fields below always take precedence
     ...opts.extraFields,
@@ -143,7 +145,8 @@ export function buildInboundPayload(
     WasMentioned: opts.wasMentioned,
     CommandAuthorized: dc.commandAuthorized,
     OriginatingChannel: 'feishu' as const,
-    OriginatingTo: opts.originatingTo ?? dc.feishuTo,
+    OriginatingTo: originatingTo,
+    ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.rootId ?? dc.ctx.threadId } : {}),
   });
 }
 
