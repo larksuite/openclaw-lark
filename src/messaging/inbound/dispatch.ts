@@ -45,9 +45,48 @@ import { LarkClient } from '../../core/lark-client';
 import { runFeishuDoctorI18n } from '../../commands/doctor';
 import { runFeishuAuthI18n } from '../../commands/auth';
 import { runFeishuStartI18n, getFeishuHelpI18n } from '../../commands/index';
+import { buildCodexThreadSpawnPrompt, parseCodexThreadSpawnRequest } from '../../commands/session';
 import { sendCardFeishu, buildI18nMarkdownCard, sendMessageFeishu } from '../outbound/send';
 
 const log = larkLogger('inbound/dispatch');
+
+async function dispatchCodexThreadSpawn(
+  dc: DispatchContext,
+  params: {
+    trigger: 'command' | 'intent';
+    source: string;
+    task: string;
+    replyToMessageId?: string;
+  },
+): Promise<void> {
+  const prompt = buildCodexThreadSpawnPrompt(params.task);
+  const body = dc.core.channel.reply.formatAgentEnvelope({
+    channel: 'Feishu',
+    from: dc.envelopeFrom,
+    timestamp: new Date(),
+    envelope: dc.envelopeOptions,
+    body: prompt,
+  });
+
+  const ctxPayload = buildInboundPayload(dc, {
+    body,
+    bodyForAgent: prompt,
+    rawBody: params.source,
+    commandBody: prompt,
+    senderName: dc.ctx.senderName ?? dc.ctx.senderId,
+    senderId: dc.ctx.senderId,
+    messageSid: dc.ctx.messageId,
+    wasMentioned: false,
+    extraFields: {
+      ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.rootId ?? dc.ctx.threadId } : {}),
+    },
+  });
+
+  dc.log(`feishu[${dc.account.accountId}]: codex thread spawn ${params.trigger} detected, dispatching stable sessions_spawn request`);
+  log.info(`codex thread spawn ${params.trigger} detected, dispatching stable sessions_spawn request`);
+
+  await dispatchSystemCommand(dc, ctxPayload, false, params.replyToMessageId);
+}
 
 // ---------------------------------------------------------------------------
 // Internal: normal message dispatch
@@ -264,6 +303,18 @@ export async function dispatchToAgent(params: {
   //     plugin-registered commands via isControlCommandMessage, so
   //     /feishu_* falls through to the AI agent otherwise.
   const contentTrimmed = (params.ctx.content ?? '').trim();
+  const codexThreadSpawnRequest = parseCodexThreadSpawnRequest(contentTrimmed);
+
+  if (codexThreadSpawnRequest) {
+    await dispatchCodexThreadSpawn(dc, {
+      trigger: codexThreadSpawnRequest.trigger,
+      source: codexThreadSpawnRequest.source,
+      task: codexThreadSpawnRequest.task,
+      replyToMessageId: params.replyToMessageId,
+    });
+    return;
+  }
+
   const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
   const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
   const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
