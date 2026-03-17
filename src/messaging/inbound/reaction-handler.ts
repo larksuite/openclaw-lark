@@ -114,13 +114,13 @@ export async function resolveReactionContext(params: {
     return null;
   }
 
-  // The mget API returns app_id (cli_xxx) as sender.id for bot messages,
-  // not the bot's open_id (ou_xxx). Match against the account's appId.
+  // mget API returns app_id (cli_xxx) as sender.id for bot messages.
   const isBotMessage = msg.senderType === 'app' && msg.senderId === account.appId;
-  if (reactionMode === 'own' && !isBotMessage) {
-    log(
-      `feishu[${accountId}]: reaction on non-bot message ${messageId}, skipping (senderId=${msg.senderId}, senderType=${msg.senderType}, botOpenId=${botOpenId}, appId=${account.appId})`,
-    );
+  const isOtherBotMessage = msg.senderType === 'app' && account.appId && msg.senderId !== account.appId;
+
+  // 'own': only react to this bot's messages; 'all': also skip other bots' messages.
+  if ((reactionMode === 'own' && !isBotMessage) || (reactionMode === 'all' && isOtherBotMessage)) {
+    log(`feishu[${accountId}]: reaction on ${isOtherBotMessage ? 'other bot' : 'non-bot'} message ${messageId}, skipping`);
     return null;
   }
 

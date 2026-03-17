@@ -1,9 +1,13 @@
 {
   "name": "@larksuite/openclaw-lark",
-  "version": "2026.3.14",
+  "version": "2026.3.16",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "type": "module",
+  "bin": {
+    "openclaw-lark": "bin/openclaw-lark.js"
+  },
   "files": [
+    "bin/",
     "dist/",
     "README.md",
     "LICENSE"
@@ -17,6 +21,7 @@
     "format:check": "prettier --check src/**/*.ts"
   },
   "dependencies": {
+    "@larksuite/openclaw-lark-tools": "^1.0.23",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@sinclair/typebox": "0.34.48",
     "image-size": "^2.0.2",
