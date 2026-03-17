@@ -93,6 +93,7 @@ export class LarkClient {
   private _botName: string | undefined;
   private _lastProbeResult: FeishuProbeResult | null = null;
   private _lastProbeAt = 0;
+  private _lastEventAt: number = 0;
 
   /** Attached message deduplicator — disposed together with the client. */
   messageDedup: MessageDedup | null = null;
@@ -293,6 +294,19 @@ export class LarkClient {
     }
   }
 
+  /**
+   * Timestamp (ms) of the last event received via WebSocket.
+   * Returns 0 if no events have been received yet.
+   */
+  get lastEventAt(): number {
+    return this._lastEventAt;
+  }
+
+  /** Mark the current time as the last event timestamp. */
+  touchEvent(): void {
+    this._lastEventAt = Date.now();
+  }
+
   /** Cached bot open_id (available after `probe()` or `startWS()`). */
   get botOpenId(): string | undefined {
     return this._botOpenId;
@@ -317,6 +331,9 @@ export class LarkClient {
     autoProbe?: boolean;
   }): Promise<void> {
     const { handlers, abortSignal, autoProbe = true } = opts;
+
+    // Reset event timestamp for this connection cycle.
+    this._lastEventAt = 0;
 
     if (autoProbe) await this.probe();
 
@@ -360,6 +377,13 @@ export class LarkClient {
         return origHandleEventData(patchedData);
       }
       return origHandleEventData(data);
+    };
+
+    // Wrap handleEventData once more to track event timestamps for health monitoring.
+    const patchedHandleEventData = wsClientAny.handleEventData;
+    wsClientAny.handleEventData = (data: any) => {
+      this.touchEvent();
+      return patchedHandleEventData(data);
     };
 
     await this.waitForAbort(dispatcher, abortSignal);
