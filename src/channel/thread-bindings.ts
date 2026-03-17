@@ -93,6 +93,17 @@ function listBindingsForAccount(accountId: string): FeishuBindingEntry[] {
   return [...state.bindingsByAccountConversation.values()].filter((entry) => entry.accountId === accountId);
 }
 
+function findLatestBindingByParentConversation(accountId: string, parentConversationId: string): FeishuBindingEntry | null {
+  const normalizedParentConversationId = normalizeConversationId(parentConversationId);
+  if (!normalizedParentConversationId) return null;
+
+  const candidates = listBindingsForAccount(accountId)
+    .filter((entry) => entry.parentConversationId === normalizedParentConversationId)
+    .sort((left, right) => right.lastActivityAt - left.lastActivityAt);
+
+  return candidates[0] ?? null;
+}
+
 function getBindingByConversation(accountId: string, conversationId: string): FeishuBindingEntry | null {
   const state = getBindingState();
   return state.bindingsByAccountConversation.get(toBindingKey(accountId, conversationId)) ?? null;
@@ -168,7 +179,16 @@ function createFeishuSessionBindingAdapter(accountId: string): SessionBindingAda
       const conversationId = normalizeConversationId(ref.conversationId);
       if (!conversationId) return null;
       const binding = getBindingByConversation(accountId, conversationId);
-      return binding ? toSessionBindingRecord(binding) : null;
+      if (binding) return toSessionBindingRecord(binding);
+
+      // Some Feishu follow-up messages only carry chat-level context even when
+      // the original ACP session was bound to a topic/root thread. In that
+      // case, fall back to the latest active binding in the same chat.
+      const parentConversationId = normalizeConversationId(ref.parentConversationId) ?? conversationId;
+      const fallbackBinding = parentConversationId
+        ? findLatestBindingByParentConversation(accountId, parentConversationId)
+        : null;
+      return fallbackBinding ? toSessionBindingRecord(fallbackBinding) : null;
     },
     touch: (bindingId, at) => {
       const prefix = `${accountId}:`;
