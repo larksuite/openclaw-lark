@@ -23,7 +23,9 @@ const EXPLICIT_COMMAND_PATTERNS = [
 const START_PATTERN = /(开启|启动|创建|发起|开一个|开个|拉起|spawn|start|open|create)/i;
 const SESSION_PATTERN = /(acp|codex|persistent|persist|持久|session|会话)/i;
 const THREAD_PATTERN = /(thread|话题|线程|当前话题|当前线程|绑定到当前|绑定当前|在这个会话里|在当前会话里)/i;
-const EXECUTION_PATTERN = /(实际调用|实际创建|真的创建|立即创建|must call|actually call|call sessions_spawn|使用\s*codex\s*开|用\s*codex\s*开)/i;
+const STRICT_EXECUTION_PATTERN =
+  /(实际调用\s*sessions_spawn|call\s+sessions_spawn|must call\s+sessions_spawn|actually call\s+sessions_spawn|使用\s*codex\s*开\s*(?:一个)?\s*(?:persistent|持久)?\s*(?:acp)?\s*会话|用\s*codex\s*开\s*(?:一个)?\s*(?:persistent|持久)?\s*(?:acp)?\s*会话)/i;
+const CONTINUATION_PATTERN = /^(继续|继续吧|接着|然后|下一步|先实现|继续实现|开始实现)/i;
 
 function normalizeWhitespace(input: string): string {
   return input.replace(/\s+/g, ' ').trim();
@@ -51,11 +53,13 @@ export function parseCodexThreadSpawnRequest(text: string): CodexThreadSpawnRequ
     };
   }
 
+  if (CONTINUATION_PATTERN.test(trimmed)) return null;
+
   if (
+    STRICT_EXECUTION_PATTERN.test(trimmed) &&
     START_PATTERN.test(trimmed) &&
     SESSION_PATTERN.test(trimmed) &&
-    THREAD_PATTERN.test(trimmed) &&
-    (EXECUTION_PATTERN.test(trimmed) || /sessions_spawn/i.test(trimmed))
+    THREAD_PATTERN.test(trimmed)
   ) {
     return {
       task: truncateTask(trimmed),
