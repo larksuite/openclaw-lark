@@ -212,7 +212,8 @@ export function buildCardContent(
     elapsedMs?: number;
     isError?: boolean;
     isAborted?: boolean;
-    footer?: { status?: boolean; elapsed?: boolean };
+    footer?: { status?: boolean; elapsed?: boolean; model?: boolean };
+    model?: { provider: string; model: string; thinkLevel?: string };
   } = {},
 ): FeishuCard {
   switch (state) {
@@ -304,9 +305,10 @@ function buildCompleteCard(params: {
   reasoningText?: string;
   reasoningElapsedMs?: number;
   isAborted?: boolean;
-  footer?: { status?: boolean; elapsed?: boolean };
+  footer?: { status?: boolean; elapsed?: boolean; model?: boolean };
+  model?: { provider: string; model: string; thinkLevel?: string };
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer } = params;
+  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer, model } = params;
   const elements: CardElement[] = [];
 
   // Collapsible reasoning panel (before main content)
@@ -390,6 +392,19 @@ function buildCompleteCard(params: {
     const d = formatElapsed(elapsedMs);
     zhParts.push(`耗时 ${d}`);
     enParts.push(`Elapsed ${d}`);
+  }
+
+  if (footer?.model && model && model.model) {
+    // Skip models ending with "off" (e.g., "claude-sonnet-4-6-off")
+    const modelName = model.model.toLowerCase();
+    if (!modelName.endsWith('off')) {
+      let modelDisplay = model.provider ? `${model.provider}/${model.model}` : model.model;
+      if (model.thinkLevel) {
+        modelDisplay += ` (${model.thinkLevel})`;
+      }
+      zhParts.push(modelDisplay);
+      enParts.push(modelDisplay);
+    }
   }
 
   if (zhParts.length > 0) {
