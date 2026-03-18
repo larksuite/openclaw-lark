@@ -16,6 +16,7 @@
 import type {
   ChannelMessageActionAdapter,
   ChannelMessageActionName,
+  ChannelMessageToolDiscovery,
   ChannelThreadingToolContext,
   OpenClawConfig,
 } from 'openclaw/plugin-sdk';
@@ -171,6 +172,22 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
   supportsCards: ({ cfg }) => getEnabledLarkAccounts(cfg).length > 0,
 
   extractToolSend: ({ args }) => extractToolSend(args, 'sendMessage'),
+
+  describeMessageTool: ({ cfg }) => {
+    const accounts = getEnabledLarkAccounts(cfg);
+    if (accounts.length === 0) {
+      return {
+        actions: [],
+        capabilities: [],
+        schema: null,
+      };
+    }
+    return {
+      actions: Array.from(SUPPORTED_ACTIONS),
+      capabilities: ['text', 'cards', 'media', 'reactions', 'delete'],
+      schema: null,
+    };
+  },
 
   handleAction: async (ctx) => {
     const { action, params, cfg, accountId, toolContext } = ctx;
