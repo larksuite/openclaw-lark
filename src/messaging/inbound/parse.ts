@@ -20,9 +20,49 @@ import { getUserNameCache } from './user-name-cache';
 import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
+import { getChatTypeFeishu } from '../../core/chat-info-cache';
 import { fetchCardContent, createFetchSubMessages, createParseResolveNames } from './parse-io';
 
 const log = larkLogger('inbound/parse');
+
+function normalizeRawChatType(chatType: string | undefined): 'group' | 'p2p' | undefined {
+  if (chatType === 'group') return 'group';
+  if (chatType === 'p2p' || chatType === 'private' || chatType === 'direct') return 'p2p';
+  return undefined;
+}
+
+async function resolveNormalizedChatType(
+  event: FeishuMessageEvent,
+  expandCtx?: {
+    cfg: ClawdbotConfig;
+    accountId?: string;
+  },
+): Promise<'group' | 'p2p'> {
+  const rawChatType = event.message.chat_type as string | undefined;
+  const normalized = normalizeRawChatType(rawChatType);
+  const chatId = event.message.chat_id;
+  const isSuspiciousRawType = rawChatType === 'private' || rawChatType === 'direct';
+
+  if (!expandCtx || !chatId || (normalized !== undefined && !isSuspiciousRawType)) {
+    return normalized ?? 'p2p';
+  }
+
+  try {
+    const resolved = await getChatTypeFeishu({
+      cfg: expandCtx.cfg,
+      chatId,
+      accountId: expandCtx.accountId,
+    });
+
+    if (resolved !== normalized) {
+      log.warn(`normalized chat_type for ${chatId}: raw=${String(rawChatType)} -> resolved=${resolved}`);
+    }
+
+    return resolved;
+  } catch {
+    return normalized ?? 'p2p';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -106,6 +146,7 @@ export async function parseMessageEvent(
     stripBotMentions: true,
   };
   const { content, resources } = await convertMessageContent(effectiveContent, event.message.message_type, convertCtx);
+  const chatType = await resolveNormalizedChatType(event, expandCtx);
 
   const createTimeStr = event.message.create_time;
   const createTime = createTimeStr ? parseInt(createTimeStr, 10) : undefined;
@@ -114,7 +155,7 @@ export async function parseMessageEvent(
     chatId: event.message.chat_id,
     messageId: event.message.message_id,
     senderId: event.sender.sender_id.open_id || '',
-    chatType: event.message.chat_type,
+    chatType,
     rootId: event.message.root_id || undefined,
     parentId: event.message.parent_id || undefined,
     threadId: event.message.thread_id || undefined,
