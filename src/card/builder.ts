@@ -231,6 +231,7 @@ export function buildCardContent(
         reasoningElapsedMs: data.reasoningElapsedMs,
         isAborted: data.isAborted,
         footer: data.footer,
+        model: data.model,
       });
     case 'confirm':
       return buildConfirmCard(data.confirmData!);
@@ -399,7 +400,7 @@ function buildCompleteCard(params: {
     const modelName = model.model.toLowerCase();
     if (!modelName.endsWith('off')) {
       let modelDisplay = model.provider ? `${model.provider}/${model.model}` : model.model;
-      if (model.thinkLevel) {
+      if (model.thinkLevel && !model.thinkLevel.toLowerCase().endsWith('off')) {
         modelDisplay += ` (${model.thinkLevel})`;
       }
       zhParts.push(modelDisplay);
