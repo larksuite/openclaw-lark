@@ -66,6 +66,22 @@ const DocCommentsSchema = Type.Object({
       description: '评论内容元素数组(action=create时必填)。' + '支持text(纯文本)、mention(@用户)、link(超链接)三种类型',
     }),
   ),
+  block_id: Type.Optional(
+    Type.String({
+      description: '文档块ID(action=create时可选，用于局部评论)。指定后评论将锚定到该块。与range互斥。',
+    }),
+  ),
+  range: Type.Optional(
+    Type.Object(
+      {
+        index: Type.Integer({ description: '范围起始位置(从0开始的字符索引)' }),
+        length: Type.Integer({ description: '范围长度(字符数)' }),
+      },
+      {
+        description: '文本范围定位(action=create时可选，用于局部评论)。指定评论锚定的字符范围。与block_id互斥。',
+      },
+    ),
+  ),
   // patch action参数
   comment_id: Type.Optional(
     Type.String({
@@ -220,7 +236,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
       description:
         '【以用户身份】管理云文档评论。支持: ' +
         '(1) list - 获取评论列表(含完整回复); ' +
-        '(2) create - 添加全文评论(支持文本、@用户、超链接); ' +
+        '(2) create - 添加全文评论或局部评论(支持文本、@用户、超链接；可通过block_id或range定位); ' +
         '(3) patch - 解决/恢复评论。' +
         '支持 wiki token。',
       parameters: DocCommentsSchema,
@@ -329,9 +345,42 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
               });
             }
 
-            log.info(`doc_comments.create: file_token="${actualFileToken}", elements=${p.elements.length}`);
+            // 验证 block_id 和 range 互斥
+            if (p.block_id && p.range) {
+              return json({
+                error: 'block_id 和 range 参数互斥，只能指定其中一个',
+              });
+            }
+
+            log.info(
+              `doc_comments.create: file_token="${actualFileToken}", elements=${p.elements.length}, block_id=${p.block_id || 'none'}, range=${p.range ? JSON.stringify(p.range) : 'none'}`,
+            );
 
             const sdkElements = convertElementsToSDKFormat(p.elements);
+
+            // 构建请求数据
+            const requestData: any = {
+              reply_list: {
+                replies: [
+                  {
+                    content: {
+                      elements: sdkElements,
+                    },
+                  },
+                ],
+              },
+            };
+
+            // 如果提供了 block_id 或 range，添加到请求中
+            if (p.block_id) {
+              requestData.block_id = p.block_id;
+            }
+            if (p.range) {
+              requestData.range = {
+                index: p.range.index,
+                length: p.range.length,
+              };
+            }
 
             const res = await client.invoke(
               'feishu_doc_comments.create',
@@ -343,17 +392,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
                       file_type: actualFileType,
                       user_id_type: userIdType,
                     },
-                    data: {
-                      reply_list: {
-                        replies: [
-                          {
-                            content: {
-                              elements: sdkElements,
-                            },
-                          },
-                        ],
-                      },
-                    },
+                    data: requestData,
                   },
                   opts,
                 ),

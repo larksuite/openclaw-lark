@@ -104,6 +104,8 @@ export type ToolActionKey =
   | 'feishu_chat.search'
   | 'feishu_chat_members.default'
   | 'feishu_create_doc.default'
+  | 'feishu_doc_blocks.get'
+  | 'feishu_doc_blocks.list'
   | 'feishu_doc_comments.create'
   | 'feishu_doc_comments.list'
   | 'feishu_doc_comments.patch'
@@ -261,6 +263,8 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_drive_file.download': ['drive:file:download'],
   'feishu_doc_media.download': ['board:whiteboard:node:read', 'docs:document.media:download'],
   'feishu_doc_media.insert': ['docx:document:write_only', 'docs:document.media:upload'],
+  'feishu_doc_blocks.list': ['wiki:node:read', 'docx:document:readonly'],
+  'feishu_doc_blocks.get': ['wiki:node:read', 'docx:document:readonly'],
   'feishu_doc_comments.list': ['wiki:node:read', 'docs:document.comment:read'],
   'feishu_doc_comments.create': ['wiki:node:read', 'docs:document.comment:create'],
   'feishu_doc_comments.patch': ['docs:document.comment:update'],
