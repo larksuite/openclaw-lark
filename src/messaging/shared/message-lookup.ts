@@ -13,6 +13,7 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { convertMessageContent, buildConvertContextFromItem } from '../converters/content-converter';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
+import { parseProxyBotHeader } from '../proxy-bot';
 
 const log = larkLogger('shared/message-lookup');
 import { getUserNameCache, createBatchResolveNames } from '../inbound/user-name-cache';
@@ -41,6 +42,10 @@ export interface FeishuMessageInfo {
   senderType?: string;
   /** The parsed text / content of the message. */
   content: string;
+  /** When present, the fetched message was proxied on behalf of another bot. */
+  proxyFromBotOpenId?: string;
+  /** Display name of the proxied source bot when available. */
+  proxyFromBotName?: string;
   /** Feishu content type indicator (text, post, image, interactive, ...). */
   contentType: string;
   /** Unix-millisecond timestamp of when the message was created. */
@@ -158,6 +163,7 @@ async function parseMessageItem(
     batchResolveNames: expandCtx?.batchResolveNames,
   };
   const { content } = await convertMessageContent(rawContent, msgType, ctx);
+  const proxyParse = parseProxyBotHeader(content);
 
   const senderId: string | undefined = msg.sender?.id ?? undefined;
   const senderType: string | undefined = msg.sender?.sender_type ?? undefined;
@@ -170,7 +176,9 @@ async function parseMessageItem(
     senderId,
     senderName,
     senderType,
-    content,
+    content: proxyParse.text,
+    proxyFromBotOpenId: proxyParse.metadata?.openId,
+    proxyFromBotName: proxyParse.metadata?.name,
     contentType: msgType,
     createTime: msg.create_time ? parseInt(String(msg.create_time), 10) : undefined,
     threadId: msg.thread_id || undefined,

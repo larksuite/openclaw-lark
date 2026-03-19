@@ -1,5 +1,5 @@
 {
-  "id": "openclaw-lark",
+  "id": "openclaw-lark-realguan",
   "channels": ["feishu"],
   "skills": ["./skills"],
   "configSchema": {

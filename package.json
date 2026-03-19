@@ -1,17 +1,32 @@
 {
-  "name": "@larksuite/openclaw-lark",
-  "version": "2026.3.17",
-  "description": "OpenClaw Lark/Feishu channel plugin",
+  "name": "@realguan/openclaw-lark",
+  "version": "2026.3.17-realguan.1",
+  "description": "OpenClaw Lark/Feishu channel plugin (realguan fork)",
   "type": "module",
   "bin": {
-    "openclaw-lark": "bin/openclaw-lark.js"
+    "openclaw-lark-realguan": "bin/openclaw-lark.js"
   },
   "files": [
     "bin/",
-    "dist/",
+    "index.ts",
+    "openclaw.plugin.json",
+    "skills/",
+    "src/",
     "README.md",
+    "README.zh.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/realguan/openclaw-lark.git"
+  },
+  "homepage": "https://github.com/realguan/openclaw-lark",
+  "bugs": {
+    "url": "https://github.com/realguan/openclaw-lark/issues"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "release": "node scripts/release.mjs",
@@ -46,9 +61,9 @@
       "./index.ts"
     ],
     "channel": {
-      "id": "openclaw-lark",
-      "label": "Feishu",
-      "selectionLabel": "Lark/Feishu (飞书)",
+      "id": "openclaw-lark-realguan",
+      "label": "Feishu (realguan)",
+      "selectionLabel": "Lark/Feishu (飞书, realguan fork)",
       "docsPath": "/channels/feishu",
       "docsLabel": "feishu",
       "blurb": "飞书/Lark enterprise messaging with doc/wiki/drive/task/calendar tools.",
@@ -59,8 +74,8 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@larksuite/openclaw-lark",
-      "localPath": "extensions/feishu",
+      "npmSpec": "@realguan/openclaw-lark",
+      "localPath": "extensions/feishu-realguan",
       "defaultChoice": "npm"
     }
   }

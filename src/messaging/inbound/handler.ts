@@ -136,7 +136,7 @@ export async function handleFeishuMessage(params: {
 
   // 6. Enrich (heavyweight, after gate — parallel where possible)
   const enrichParams = { ctx, accountScopedCfg, account, log };
-  const [mediaResult, quotedContent] = await Promise.all([
+  const [mediaResult, quotedResult] = await Promise.all([
     resolveMedia(enrichParams),
     resolveQuotedContent(enrichParams),
   ]);
@@ -148,6 +148,14 @@ export async function handleFeishuMessage(params: {
     ctx = {
       ...ctx,
       content: substituteMediaPaths(ctx.content, mediaResult.mediaList),
+    };
+  }
+
+  if (!ctx.proxyFromBotOpenId && quotedResult?.proxyFromBotOpenId) {
+    ctx = {
+      ...ctx,
+      proxyFromBotOpenId: quotedResult.proxyFromBotOpenId,
+      proxyFromBotName: quotedResult.proxyFromBotName,
     };
   }
 
@@ -208,7 +216,7 @@ export async function handleFeishuMessage(params: {
       ctx,
       permissionError,
       mediaPayload: mediaResult.payload,
-      quotedContent,
+      quotedContent: quotedResult?.text,
       account,
       accountScopedCfg,
       runtime,

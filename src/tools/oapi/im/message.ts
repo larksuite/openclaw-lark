@@ -16,6 +16,15 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
+import type { ToolClient } from '../../../core/tool-client';
+import type { ProxyBotMetadata } from '../../../messaging/proxy-bot';
+import {
+  buildProxyBotHeader,
+  parseProxyBotHeader,
+  resolveCurrentBotMetadata,
+  shouldProxyBotMention,
+} from '../../../messaging/proxy-bot';
+import { getMessageFeishu } from '../../../messaging/shared/message-lookup';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -103,11 +112,195 @@ type FeishuImMessageParams =
       uuid?: string;
     };
 
+const INLINE_MENTION_RE = /<at\s+(?:user_id|open_id|id)\s*=\s*"?([^">\s]+)"?\s*>/giu;
+
+function extractInlineMentionOpenIds(text: string): string[] {
+  const ids = new Set<string>();
+  for (const match of text.matchAll(INLINE_MENTION_RE)) {
+    const openId = match[1]?.trim();
+    if (!openId || openId === 'all') continue;
+    ids.add(openId);
+  }
+  return [...ids];
+}
+
+function collectMentionOpenIdsFromUnknown(value: unknown, ids: Set<string>): void {
+  if (typeof value === 'string') {
+    for (const openId of extractInlineMentionOpenIds(value)) ids.add(openId);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectMentionOpenIdsFromUnknown(item, ids);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+
+  const record = value as Record<string, unknown>;
+  if (record.tag === 'at' && typeof record.user_id === 'string' && record.user_id !== 'all') {
+    ids.add(record.user_id);
+  }
+  for (const nested of Object.values(record)) {
+    collectMentionOpenIdsFromUnknown(nested, ids);
+  }
+}
+
+function collectMentionOpenIdsFromToolMessage(msgType: string, content: string): string[] {
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const ids = new Set<string>();
+
+    if (msgType === 'text' && typeof parsed.text === 'string') {
+      for (const openId of extractInlineMentionOpenIds(parsed.text)) ids.add(openId);
+      return [...ids];
+    }
+
+    collectMentionOpenIdsFromUnknown(parsed, ids);
+    return [...ids];
+  } catch {
+    return [];
+  }
+}
+
+function prependImplicitTextMention(text: string, openId: string): string {
+  if (extractInlineMentionOpenIds(text).includes(openId)) return text;
+  return `<at user_id="${openId}"></at> ${text}`;
+}
+
+function buildImplicitPostMentionRow(openId: string, name?: string): Array<Record<string, string>> {
+  return [
+    { tag: 'at', user_id: openId, user_name: name ?? openId },
+    { tag: 'text', text: ' ' },
+  ];
+}
+
+function contentHasProxyHeader(value: unknown): boolean {
+  if (typeof value === 'string') return Boolean(parseProxyBotHeader(value).metadata);
+  if (Array.isArray(value)) return value.some((item) => contentHasProxyHeader(item));
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value as Record<string, unknown>).some((nested) => contentHasProxyHeader(nested));
+}
+
+function transformToolMessageContent(params: {
+  msgType: string;
+  content: string;
+  botMeta: ProxyBotMetadata;
+  implicitMentionOpenId?: string;
+  implicitMentionName?: string;
+}): string {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(params.content) as Record<string, unknown>;
+  } catch {
+    return params.content;
+  }
+
+  if (params.msgType === 'text' && typeof parsed.text === 'string') {
+    let text = parsed.text;
+    if (params.implicitMentionOpenId) {
+      text = prependImplicitTextMention(text, params.implicitMentionOpenId);
+    }
+    if (!parseProxyBotHeader(text).metadata) {
+      text = `${text}\n${buildProxyBotHeader(params.botMeta)}`;
+    }
+    parsed.text = text;
+    return JSON.stringify(parsed);
+  }
+
+  if (params.msgType === 'post') {
+    const headerText = buildProxyBotHeader(params.botMeta);
+    for (const localeValue of Object.values(parsed)) {
+      if (!localeValue || typeof localeValue !== 'object') continue;
+      const localeRecord = localeValue as Record<string, unknown>;
+      const contentRows = localeRecord.content;
+      if (!Array.isArray(contentRows)) continue;
+
+      if (params.implicitMentionOpenId) {
+        const alreadyMentioned = extractInlineMentionOpenIds(JSON.stringify(contentRows)).includes(
+          params.implicitMentionOpenId,
+        );
+        if (!alreadyMentioned) {
+          contentRows.unshift(buildImplicitPostMentionRow(params.implicitMentionOpenId, params.implicitMentionName));
+        }
+      }
+
+      if (!contentHasProxyHeader(contentRows)) {
+        contentRows.push([{ tag: 'text', text: headerText }]);
+      }
+    }
+    return JSON.stringify(parsed);
+  }
+
+  return params.content;
+}
+
+async function maybeApplyBotProxyProtocol(params: {
+  cfg: NonNullable<OpenClawPluginApi['config']>;
+  client: ToolClient;
+  log: { info: (message: string) => void };
+  payload: FeishuImMessageParams;
+}): Promise<FeishuImMessageParams> {
+  const { cfg, client, log, payload } = params;
+  const botMeta = await resolveCurrentBotMetadata(client.account);
+  if (!botMeta?.openId) return payload;
+
+  let targetChatId: string | undefined;
+  let implicitMentionOpenId: string | undefined;
+  let implicitMentionName: string | undefined;
+
+  if (payload.action === 'send' && payload.receive_id_type === 'chat_id') {
+    targetChatId = payload.receive_id;
+  }
+
+  if (payload.action === 'reply') {
+    const quotedMsg = await getMessageFeishu({
+      cfg,
+      messageId: payload.message_id,
+      accountId: client.account.accountId,
+      expandForward: true,
+    });
+    targetChatId = quotedMsg?.chatId;
+    if (quotedMsg?.proxyFromBotOpenId) {
+      implicitMentionOpenId = quotedMsg.proxyFromBotOpenId;
+      implicitMentionName = quotedMsg.proxyFromBotName;
+    }
+  }
+
+  let mentionOpenIds = collectMentionOpenIdsFromToolMessage(payload.msg_type, payload.content);
+  if (implicitMentionOpenId && !mentionOpenIds.includes(implicitMentionOpenId)) {
+    mentionOpenIds = [...mentionOpenIds, implicitMentionOpenId];
+  }
+
+  if (!targetChatId || mentionOpenIds.length === 0) return payload;
+
+  const shouldAppendHeader = await shouldProxyBotMention({
+    cfg,
+    to: targetChatId,
+    accountId: client.account.accountId,
+    mentionOpenIds,
+  });
+  if (!shouldAppendHeader) return payload;
+
+  const content = transformToolMessageContent({
+    msgType: payload.msg_type,
+    content: payload.content,
+    botMeta,
+    implicitMentionOpenId,
+    implicitMentionName,
+  });
+  if (content === payload.content) return payload;
+
+  log.info(
+    `proxy protocol injected: action=${payload.action}, msg_type=${payload.msg_type}, accountId=${client.account.accountId}, targetChatId=${targetChatId}`,
+  );
+
+  return { ...payload, content };
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuImUserMessageTool(api: OpenClawPluginApi) {
+export function registerFeishuImUserMessageTool(api: OpenClawPluginApi): void {
   if (!api.config) return;
   const cfg = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_message');
@@ -129,91 +322,99 @@ export function registerFeishuImUserMessageTool(api: OpenClawPluginApi) {
         '禁止在用户未明确同意的情况下自行发送消息。',
       parameters: FeishuImMessageSchema,
       async execute(_toolCallId: string, params: unknown) {
-        const p = params as FeishuImMessageParams;
+        let p = params as FeishuImMessageParams;
         try {
           const client = toolClient();
+          p = await maybeApplyBotProxyProtocol({
+            cfg,
+            client,
+            log,
+            payload: p,
+          });
 
-          switch (p.action) {
+          if (p.action === 'send') {
+            const sendPayload = p;
             // -----------------------------------------------------------------
             // SEND MESSAGE
             // -----------------------------------------------------------------
-            case 'send': {
-              log.info(
-                `send: receive_id_type=${p.receive_id_type}, receive_id=${p.receive_id}, msg_type=${p.msg_type}`,
-              );
+            log.info(
+              `send: receive_id_type=${sendPayload.receive_id_type}, receive_id=${sendPayload.receive_id}, msg_type=${sendPayload.msg_type}`,
+            );
 
-              const res = await client.invoke(
-                'feishu_im_user_message.send',
-                (sdk, opts) =>
-                  sdk.im.v1.message.create(
-                    {
-                      params: { receive_id_type: p.receive_id_type },
-                      data: {
-                        receive_id: p.receive_id,
-                        msg_type: p.msg_type,
-                        content: p.content,
-                        uuid: p.uuid,
-                      },
+            const res = await client.invoke(
+              'feishu_im_user_message.send',
+              (sdk, opts) =>
+                sdk.im.v1.message.create(
+                  {
+                    params: { receive_id_type: sendPayload.receive_id_type },
+                    data: {
+                      receive_id: sendPayload.receive_id,
+                      msg_type: sendPayload.msg_type,
+                      content: sendPayload.content,
+                      uuid: sendPayload.uuid,
                     },
-                    opts,
-                  ),
-                {
-                  as: 'user',
-                },
-              );
-              assertLarkOk(res);
+                  },
+                  opts,
+                ),
+              {
+                as: 'user',
+              },
+            );
+            assertLarkOk(res);
 
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const data = res.data as any;
-              log.info(`send: message sent, message_id=${data?.message_id}`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const data = res.data as any;
+            log.info(`send: message sent, message_id=${data?.message_id}`);
 
-              return json({
-                message_id: data?.message_id,
-                chat_id: data?.chat_id,
-                create_time: data?.create_time,
-              });
-            }
+            return json({
+              message_id: data?.message_id,
+              chat_id: data?.chat_id,
+              create_time: data?.create_time,
+            });
+          }
 
+          if (p.action === 'reply') {
+            const replyPayload = p;
             // -----------------------------------------------------------------
             // REPLY MESSAGE
             // -----------------------------------------------------------------
-            case 'reply': {
-              log.info(
-                `reply: message_id=${p.message_id}, msg_type=${p.msg_type}, reply_in_thread=${p.reply_in_thread ?? false}`,
-              );
+            log.info(
+              `reply: message_id=${replyPayload.message_id}, msg_type=${replyPayload.msg_type}, reply_in_thread=${replyPayload.reply_in_thread ?? false}`,
+            );
 
-              const res = await client.invoke(
-                'feishu_im_user_message.reply',
-                (sdk, opts) =>
-                  sdk.im.v1.message.reply(
-                    {
-                      path: { message_id: p.message_id },
-                      data: {
-                        content: p.content,
-                        msg_type: p.msg_type,
-                        reply_in_thread: p.reply_in_thread,
-                        uuid: p.uuid,
-                      },
+            const res = await client.invoke(
+              'feishu_im_user_message.reply',
+              (sdk, opts) =>
+                sdk.im.v1.message.reply(
+                  {
+                    path: { message_id: replyPayload.message_id },
+                    data: {
+                      content: replyPayload.content,
+                      msg_type: replyPayload.msg_type,
+                      reply_in_thread: replyPayload.reply_in_thread,
+                      uuid: replyPayload.uuid,
                     },
-                    opts,
-                  ),
-                {
-                  as: 'user',
-                },
-              );
-              assertLarkOk(res);
+                  },
+                  opts,
+                ),
+              {
+                as: 'user',
+              },
+            );
+            assertLarkOk(res);
 
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const data = res.data as any;
-              log.info(`reply: message sent, message_id=${data?.message_id}`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const data = res.data as any;
+            log.info(`reply: message sent, message_id=${data?.message_id}`);
 
-              return json({
-                message_id: data?.message_id,
-                chat_id: data?.chat_id,
-                create_time: data?.create_time,
-              });
-            }
+            return json({
+              message_id: data?.message_id,
+              chat_id: data?.chat_id,
+              create_time: data?.create_time,
+            });
           }
+
+          return json({ error: `unsupported action: ${(p as { action?: string }).action ?? 'unknown'}` });
         } catch (err) {
           return await handleInvokeErrorWithAutoAuth(err, cfg);
         }

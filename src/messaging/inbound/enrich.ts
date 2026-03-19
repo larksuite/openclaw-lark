@@ -252,7 +252,14 @@ export async function resolveQuotedContent(params: {
   accountScopedCfg: ClawdbotConfig;
   account: LarkAccount;
   log: (...args: unknown[]) => void;
-}): Promise<string | undefined> {
+}): Promise<
+  | {
+      text: string;
+      proxyFromBotOpenId?: string;
+      proxyFromBotName?: string;
+    }
+  | undefined
+> {
   const { ctx, accountScopedCfg, account, log } = params;
 
   if (!ctx.parentId) return undefined;
@@ -272,9 +279,17 @@ export async function resolveQuotedContent(params: {
     // file_key / image_key with the source message for resource download.
     const prefix = `[message_id=${ctx.parentId}]`;
     if (quotedMsg.senderName) {
-      return `${prefix} ${quotedMsg.senderName}: ${quotedMsg.content}`;
+      return {
+        text: `${prefix} ${quotedMsg.senderName}: ${quotedMsg.content}`,
+        proxyFromBotOpenId: quotedMsg.proxyFromBotOpenId,
+        proxyFromBotName: quotedMsg.proxyFromBotName,
+      };
     }
-    return `${prefix} ${quotedMsg.content}`;
+    return {
+      text: `${prefix} ${quotedMsg.content}`,
+      proxyFromBotOpenId: quotedMsg.proxyFromBotOpenId,
+      proxyFromBotName: quotedMsg.proxyFromBotName,
+    };
   } catch (err) {
     log(`feishu[${account.accountId}]: failed to fetch quoted message: ${String(err)}`);
     return undefined;

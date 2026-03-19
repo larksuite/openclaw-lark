@@ -28,7 +28,7 @@ import { buildAuthCard } from '../tools/oauth-cards';
 
 const log = larkLogger('messaging/proxy-bot');
 
-const PROXY_HEADER_PREFIX = 'OpenClaw-Proxy';
+const PROXY_HEADER_PREFIX = 'Bot2Bot-Proxy';
 const PROXY_AUTH_SCOPES = ['offline_access', 'im:message', 'im:message.send_as_user'] as const;
 const BOT_ID_CACHE_TTL_MS = 5 * 60 * 1000;
 const CHAT_MEMBER_CACHE_TTL_MS = 60 * 1000;
@@ -63,6 +63,10 @@ export class ProxySendPausedError extends Error {
 
 function jsonStringValue(value: string): string {
   return JSON.stringify(value);
+}
+
+function normalizeAtMentions(text: string): string {
+  return text.replace(/<at\s+(?:id|open_id|user_id)\s*=\s*"?([^">\s]+)"?\s*>/gi, '<at user_id="$1">');
 }
 
 function dedupeMentions(mentions: MentionInfo[]): MentionInfo[] {
@@ -114,23 +118,36 @@ function truncateForProxy(text: string, maxLength = 4000): string {
 export function buildProxyBotHeader(meta: ProxyBotMetadata): string {
   const trimmedName = meta.name?.trim();
   const namePart = trimmedName ? ` name=${jsonStringValue(trimmedName)}` : '';
-  return `[${PROXY_HEADER_PREFIX}: from_bot=${meta.openId}${namePart}]`;
+  return `—— ${PROXY_HEADER_PREFIX}: from_bot=${meta.openId}${namePart}`;
 }
 
 export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata; text: string } {
   if (!text.trim()) return { text };
 
-  const newlineIndex = text.search(/\r?\n/u);
-  const firstLine = newlineIndex >= 0 ? text.slice(0, newlineIndex) : text;
-  const remaining = newlineIndex >= 0 ? text.slice(newlineIndex).replace(/^\r?\n/u, '') : '';
+  const lines = text.split(/\r?\n/u);
+  const candidates = [
+    { index: 0, line: lines[0] ?? '' },
+    { index: lines.length - 1, line: lines[lines.length - 1] ?? '' },
+  ];
+  const headerRe =
+    /^(?:\[(?:OpenClaw-Proxy|Bot2Bot-Proxy):\s+from_bot=([^\s\]]+)(?:\s+name=("(?:\\.|[^"\\])*"))?\]|——\s+Bot2Bot-Proxy:\s+from_bot=([^\s]+)(?:\s+name=("(?:\\.|[^"\\])*"))?)$/u;
 
-  const match = firstLine.match(/^\[OpenClaw-Proxy:\s+from_bot=([^\s\]]+)(?:\s+name=("(?:\\.|[^"\\])*"))?\]$/u);
-  if (!match) return { text };
+  let matchedIndex = -1;
+  let match: RegExpMatchArray | null = null;
+  for (const candidate of candidates) {
+    match = candidate.line.match(headerRe);
+    if (match) {
+      matchedIndex = candidate.index;
+      break;
+    }
+  }
+  if (!match || matchedIndex < 0) return { text };
 
   let name: string | undefined;
-  if (match[2]) {
+  const rawName = match[2] ?? match[4];
+  if (rawName) {
     try {
-      name = JSON.parse(match[2]) as string;
+      name = JSON.parse(rawName) as string;
     } catch {
       name = undefined;
     }
@@ -138,15 +155,18 @@ export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata
 
   return {
     metadata: {
-      openId: match[1],
+      openId: match[1] ?? match[3],
       name,
     },
-    text: remaining,
+    text: lines
+      .filter((_, index) => index !== matchedIndex)
+      .join('\n')
+      .trim(),
   };
 }
 
-function prependProxyHeader(text: string, meta: ProxyBotMetadata): string {
-  return `${buildProxyBotHeader(meta)}\n${text}`;
+function appendProxyHeader(text: string, meta: ProxyBotMetadata): string {
+  return `${text}\n${buildProxyBotHeader(meta)}`;
 }
 
 function extractInlineMentionOpenIds(text: string): string[] {
@@ -352,24 +372,58 @@ async function shouldProxyBotMention(params: {
   accountId?: string;
   mentionOpenIds: string[];
 }): Promise<boolean> {
-  if (params.mentionOpenIds.length === 0) return false;
+  if (params.mentionOpenIds.length === 0) {
+    log.info('proxy-send decision: skipped (no mention open_ids)');
+    return false;
+  }
 
   const knownBotIds = await resolveKnownBotOpenIds(params.cfg);
-  if (params.mentionOpenIds.some((openId) => knownBotIds.has(openId))) {
+  const knownBotHits = params.mentionOpenIds.filter((openId) => knownBotIds.has(openId));
+  if (knownBotHits.length > 0) {
+    log.info('proxy-send decision: proxy via known bot hit', {
+      target: params.to,
+      accountId: params.accountId,
+      mentionOpenIds: params.mentionOpenIds,
+      knownBotHits,
+    });
     return true;
   }
 
   const target = normalizeFeishuTarget(params.to);
-  if (!target?.startsWith('oc_')) return false;
+  if (!target?.startsWith('oc_')) {
+    log.info('proxy-send decision: skipped (target is not a group chat)', {
+      target: params.to,
+      normalizedTarget: target,
+      accountId: params.accountId,
+      mentionOpenIds: params.mentionOpenIds,
+    });
+    return false;
+  }
 
   const humanMemberIds = await resolveHumanMemberOpenIds({
     cfg: params.cfg,
     chatId: target,
     accountId: params.accountId,
   });
-  if (!humanMemberIds) return false;
+  if (!humanMemberIds) {
+    log.info('proxy-send decision: proxy via fallback (group member API unavailable)', {
+      target,
+      accountId: params.accountId,
+      mentionOpenIds: params.mentionOpenIds,
+    });
+    return true;
+  }
 
-  return params.mentionOpenIds.some((openId) => !humanMemberIds.has(openId));
+  const nonHumanMentionOpenIds = params.mentionOpenIds.filter((openId) => !humanMemberIds.has(openId));
+  log.info('proxy-send decision: group-member fallback evaluated', {
+    target,
+    accountId: params.accountId,
+    mentionOpenIds: params.mentionOpenIds,
+    humanMemberCount: humanMemberIds.size,
+    nonHumanMentionOpenIds,
+  });
+
+  return nonHumanMentionOpenIds.length > 0;
 }
 
 function hasRequiredProxyScopes(scope: string | undefined): boolean {
@@ -491,7 +545,7 @@ async function promptOwnerForProxyAuthorization(params: {
 }
 
 function preparePostText(text: string, mentions?: MentionInfo[]): string {
-  let processed = text;
+  let processed = normalizeAtMentions(text);
 
   if (mentions && mentions.length > 0) {
     processed = buildMentionedMessage(mentions, processed);
@@ -545,12 +599,14 @@ async function resolveCurrentBotMetadata(account: ConfiguredLarkAccount): Promis
   try {
     const probe = await LarkClient.fromAccount(account).probe({ maxAgeMs: BOT_ID_CACHE_TTL_MS });
     if (!probe.ok || !probe.botOpenId) return null;
-    return { openId: probe.botOpenId, name: probe.botName };
+    return { openId: probe.botOpenId, name: probe.botName ?? account.name ?? probe.botOpenId };
   } catch (err) {
     log.warn(`failed to resolve current bot metadata: ${String(err)}`);
     return null;
   }
 }
+
+export { shouldProxyBotMention, resolveCurrentBotMetadata };
 
 export interface PreparedProxyPostSend {
   account: ConfiguredLarkAccount;
@@ -615,10 +671,10 @@ export async function sendPreparedProxyPostMessage(params: {
 }): Promise<FeishuSendResult> {
   const { prepared } = params;
   const mentions = resolveEffectiveMentions(params.mentions);
-  const proxiedText = prependProxyHeader(params.text, prepared.botMeta);
+  const proxiedText = appendProxyHeader(params.text, prepared.botMeta);
   const proxiedI18nTexts = params.i18nTexts
     ? Object.fromEntries(
-        Object.entries(params.i18nTexts).map(([locale, localeText]) => [locale, prependProxyHeader(localeText, prepared.botMeta)]),
+        Object.entries(params.i18nTexts).map(([locale, localeText]) => [locale, appendProxyHeader(localeText, prepared.botMeta)]),
       )
     : undefined;
   const contentPayload = buildPostContentPayload({
@@ -732,13 +788,37 @@ export async function maybeSendProxyPostMessage(params: {
     mentions,
     i18nTexts: params.i18nTexts,
   });
+  log.info('proxy-send candidate detected', {
+    target: params.to,
+    accountId: params.accountId,
+    replyToMessageId: params.replyToMessageId,
+    mentionOpenIds,
+    mentionCount: mentions.length,
+    hasI18nTexts: Boolean(params.i18nTexts && Object.keys(params.i18nTexts).length > 0),
+    textPreview: params.text.slice(0, 120),
+  });
   const prepared = await prepareProxyPostMessage({
     cfg: params.cfg,
     to: params.to,
     accountId: params.accountId,
     mentionOpenIds,
   });
-  if (!prepared) return null;
+  if (!prepared) {
+    log.info('proxy-send candidate not proxied', {
+      target: params.to,
+      accountId: params.accountId,
+      mentionOpenIds,
+    });
+    return null;
+  }
+
+  log.info('proxy-send candidate approved', {
+    target: params.to,
+    accountId: params.accountId,
+    mentionOpenIds,
+    ownerOpenId: prepared.ownerOpenId,
+    sourceBotOpenId: prepared.botMeta.openId,
+  });
 
   return sendPreparedProxyPostMessage({
     prepared,
