@@ -116,6 +116,8 @@ export type ToolActionKey =
   | 'feishu_drive_file.list'
   | 'feishu_drive_file.move'
   | 'feishu_drive_file.upload'
+  | 'feishu_drive_file.rename'
+  | 'feishu_drive_file.create_folder'
   | 'feishu_fetch_doc.default'
   | 'feishu_get_user.basic_batch'
   | 'feishu_get_user.default'
@@ -259,6 +261,8 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_drive_file.delete': ['space:document:delete'],
   'feishu_drive_file.upload': ['drive:file:upload'],
   'feishu_drive_file.download': ['drive:file:download'],
+  'feishu_drive_file.rename': ['space:document:update'],
+  'feishu_drive_file.create_folder': ['drive:drive:manage'],
   'feishu_doc_media.download': ['board:whiteboard:node:read', 'docs:document.media:download'],
   'feishu_doc_media.insert': ['docx:document:write_only', 'docs:document.media:upload'],
   'feishu_doc_comments.list': ['wiki:node:read', 'docs:document.comment:read'],

@@ -4,16 +4,18 @@
  *
  * feishu_drive_file tool -- Manage Feishu Drive files.
  *
- * Actions: list, get_meta, copy, move, delete, upload, download
+ * Actions: list, get_meta, copy, move, delete, upload, download, rename, create_folder
  *
  * Uses the Feishu Drive API:
- *   - list:        GET    /open-apis/drive/v1/files
- *   - get_meta:    POST   /open-apis/drive/v1/metas/batch_query
- *   - copy:        POST   /open-apis/drive/v1/files/:file_token/copy
- *   - move:        POST   /open-apis/drive/v1/files/:file_token/move
- *   - delete:      DELETE /open-apis/drive/v1/files/:file_token
- *   - upload:      POST   /open-apis/drive/v1/files/upload_all
- *   - download:    GET    /open-apis/drive/v1/files/:file_token/download
+ *   - list:           GET    /open-apis/drive/v1/files
+ *   - get_meta:       POST   /open-apis/drive/v1/metas/batch_query
+ *   - copy:           POST   /open-apis/drive/v1/files/:file_token/copy
+ *   - move:           POST   /open-apis/drive/v1/files/:file_token/move
+ *   - delete:         DELETE /open-apis/drive/v1/files/:file_token
+ *   - upload:         POST   /open-apis/drive/v1/files/upload_all
+ *   - download:       GET    /open-apis/drive/v1/files/:file_token/download
+ *   - rename:         POST   /open-apis/drive/v1/files/:file_token/rename  (via invokeByPath)
+ *   - create_folder:  POST   /open-apis/drive/v1/files/create_folder
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -237,6 +239,45 @@ const FeishuDriveFileSchema = Type.Union([
       }),
     ),
   }),
+
+  // RENAME FILE/FOLDER
+  Type.Object({
+    action: Type.Literal('rename'),
+    file_token: Type.String({
+      description: '文件/文件夹 token（必填）',
+    }),
+    name: Type.String({
+      description: '新名称（必填）',
+    }),
+    type: Type.Union(
+      [
+        Type.Literal('doc'),
+        Type.Literal('sheet'),
+        Type.Literal('file'),
+        Type.Literal('bitable'),
+        Type.Literal('docx'),
+        Type.Literal('folder'),
+        Type.Literal('mindnote'),
+        Type.Literal('slides'),
+      ],
+      {
+        description: '文档类型（必填）',
+      },
+    ),
+  }),
+
+  // CREATE FOLDER
+  Type.Object({
+    action: Type.Literal('create_folder'),
+    name: Type.String({
+      description: '文件夹名称（必填）',
+    }),
+    folder_token: Type.Optional(
+      Type.String({
+        description: '父文件夹 token（可选）。不传则在根目录创建',
+      }),
+    ),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -290,6 +331,17 @@ type FeishuDriveFileParams =
       action: 'download';
       file_token: string;
       output_path?: string;
+    }
+  | {
+      action: 'rename';
+      file_token: string;
+      name: string;
+      type: string;
+    }
+  | {
+      action: 'create_folder';
+      name: string;
+      folder_token?: string;
     };
 
 // ---------------------------------------------------------------------------
@@ -308,16 +360,18 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
       name: 'feishu_drive_file',
       label: 'Feishu Drive Files',
       description:
-        '【以用户身份】飞书云空间文件管理工具。当用户要求查看云空间(云盘)中的文件列表、获取文件信息、复制/移动/删除文件、上传/下载文件时使用。消息中的文件读写**禁止**使用该工具!' +
+        '【以用户身份】飞书云空间文件管理工具。当用户要求查看云空间(云盘)中的文件列表、获取文件信息、复制/移动/删除/重命名文件、创建文件夹、上传/下载文件时使用。消息中的文件读写**禁止**使用该工具!' +
         '\n\nActions:' +
         '\n- list（列出文件）：列出文件夹下的文件。不提供 folder_token 时获取根目录清单' +
         "\n- get_meta（批量获取元数据）：批量查询文档元信息，使用 request_docs 数组参数，格式：[{doc_token: '...', doc_type: 'sheet'}]" +
         '\n- copy（复制文件）：复制文件到指定位置' +
         '\n- move（移动文件）：移动文件到指定文件夹' +
         '\n- delete（删除文件）：删除文件' +
+        '\n- rename（重命名）：重命名文件或文件夹' +
+        '\n- create_folder（创建文件夹）：在指定位置创建新文件夹' +
         '\n- upload（上传文件）：上传本地文件到云空间。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）' +
         '\n- download（下载文件）：下载文件到本地。提供 output_path（本地保存路径）则保存到本地，否则返回 Base64 编码' +
-        '\n\n【重要】copy/move/delete 操作需要 file_token 和 type 参数。get_meta 使用 request_docs 数组参数。' +
+        '\n\n【重要】copy/move/delete/rename 操作需要 file_token 和 type 参数。get_meta 使用 request_docs 数组参数。' +
         '\n【重要】upload 优先使用 file_path（自动读取文件、提取文件名和大小），也支持 file_content_base64（需手动提供 file_name 和 size）。' +
         '\n【重要】download 提供 output_path 时保存到本地（可以是文件路径或文件夹路径+file_name），不提供则返回 Base64。',
       parameters: FeishuDriveFileSchema,
@@ -672,6 +726,71 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
                   chunks_uploaded: block_num,
                 });
               }
+            }
+
+            // -----------------------------------------------------------------
+            // RENAME FILE/FOLDER
+            // -----------------------------------------------------------------
+            case 'rename': {
+              log.info(`rename: file_token=${p.file_token}, name=${p.name}, type=${p.type}`);
+
+              const res = await client.invokeByPath<{
+                code: number;
+                msg: string;
+                data?: { file?: { token?: string; name?: string; type?: string } };
+              }>(
+                'feishu_drive_file.rename',
+                `/open-apis/drive/v1/files/${p.file_token}/rename`,
+                {
+                  method: 'POST',
+                  body: {
+                    name: p.name,
+                    type: p.type,
+                  },
+                  as: 'user',
+                },
+              );
+              assertLarkOk(res);
+
+              log.info(`rename: success, new name=${p.name}`);
+
+              return json({
+                success: true,
+                file_token: p.file_token,
+                name: p.name,
+              });
+            }
+
+            // -----------------------------------------------------------------
+            // CREATE FOLDER
+            // -----------------------------------------------------------------
+            case 'create_folder': {
+              log.info(`create_folder: name=${p.name}, folder_token=${p.folder_token || '(root)'}`);
+
+              const res = await client.invoke(
+                'feishu_drive_file.create_folder',
+                (sdk, opts) =>
+                  sdk.drive.file.createFolder(
+                    {
+                      data: {
+                        name: p.name,
+                        folder_token: p.folder_token as any,
+                      },
+                    },
+                    opts,
+                  ),
+                { as: 'user' },
+              );
+              assertLarkOk(res);
+
+              log.info(`create_folder: token=${(res.data as any)?.token}`);
+
+              return json({
+                success: true,
+                token: (res.data as any)?.token,
+                url: (res.data as any)?.url,
+                name: p.name,
+              });
             }
 
             // -----------------------------------------------------------------
