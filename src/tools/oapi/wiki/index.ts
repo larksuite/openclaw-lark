@@ -34,8 +34,10 @@ export function registerFeishuWikiTools(api: OpenClawPluginApi) {
   }
 
   // 注册所有工具
-  registerFeishuWikiSpaceTool(api);
-  registerFeishuWikiSpaceNodeTool(api);
-
-  api.logger.info?.('feishu_wiki: Registered feishu_wiki_space, feishu_wiki_space_node');
+  const registered: string[] = [];
+  if (registerFeishuWikiSpaceTool(api)) registered.push('feishu_wiki_space');
+  if (registerFeishuWikiSpaceNodeTool(api)) registered.push('feishu_wiki_space_node');
+  if (registered.length > 0) {
+    api.logger.info?.(`feishu_wiki: Registered ${registered.join(', ')}`);
+  }
 }

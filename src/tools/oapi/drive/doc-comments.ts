@@ -206,13 +206,13 @@ async function assembleCommentsWithReplies(
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerDocCommentsTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_doc_comments');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_doc_comments',
@@ -418,5 +418,4 @@ export function registerDocCommentsTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_doc_comments' },
   );
-
 }

@@ -401,13 +401,13 @@ async function handleDownload(
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerDocMediaTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerDocMediaTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_doc_media');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_doc_media',
@@ -437,5 +437,4 @@ export function registerDocMediaTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_doc_media' },
   );
-
 }

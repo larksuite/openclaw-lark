@@ -225,10 +225,10 @@ export async function callMcpTool(
 export function registerMcpTool<T extends Record<string, unknown>>(
   api: OpenClawPluginApi,
   config: McpToolConfig<T>,
-): void {
+): boolean {
   const { toolClient, log } = createToolContext(api, config.name);
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: config.name,

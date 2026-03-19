@@ -127,12 +127,12 @@ interface FeishuImBotImageParams {
   type: 'image' | 'file';
 }
 
-export function registerFeishuImBotImageTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuImBotImageTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
 
   const { getClient, log } = createToolContext(api, 'feishu_im_bot_image');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_bot_image',
@@ -183,6 +183,4 @@ export function registerFeishuImBotImageTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_im_bot_image' },
   );
-
-  api.logger.info?.('feishu_im_bot_image: Registered feishu_im_bot_image tool');
 }

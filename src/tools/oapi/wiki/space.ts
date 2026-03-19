@@ -94,13 +94,13 @@ type FeishuWikiSpaceParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuWikiSpaceTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuWikiSpaceTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_wiki_space');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_wiki_space',
@@ -212,5 +212,4 @@ export function registerFeishuWikiSpaceTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_wiki_space' },
   );
-
 }

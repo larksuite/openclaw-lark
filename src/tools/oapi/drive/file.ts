@@ -296,13 +296,13 @@ type FeishuDriveFileParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_drive_file');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_drive_file',
@@ -743,5 +743,4 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_drive_file' },
   );
-
 }

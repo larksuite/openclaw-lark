@@ -139,12 +139,12 @@ interface GetMessagesParams {
   end_time?: string;
 }
 
-function registerGetMessages(api: OpenClawPluginApi) {
-  if (!api.config) return;
+function registerGetMessages(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_messages');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_user_get_messages',
@@ -244,12 +244,12 @@ interface GetThreadMessagesParams {
   page_token?: string;
 }
 
-function registerGetThreadMessages(api: OpenClawPluginApi) {
-  if (!api.config) return;
+function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_thread_messages');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_user_get_thread_messages',
@@ -479,12 +479,12 @@ function enrichMessages(
   });
 }
 
-function registerSearchMessages(api: OpenClawPluginApi) {
-  if (!api.config) return;
+function registerSearchMessages(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_search_messages');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_user_search_messages',
@@ -602,8 +602,10 @@ function registerSearchMessages(api: OpenClawPluginApi) {
 // Unified registration
 // ===========================================================================
 
-export function registerMessageReadTools(api: OpenClawPluginApi) {
-  registerGetMessages(api);
-  registerGetThreadMessages(api);
-  registerSearchMessages(api);
+export function registerMessageReadTools(api: OpenClawPluginApi): string[] {
+  const registered: string[] = [];
+  if (registerGetMessages(api)) registered.push('feishu_im_user_get_messages');
+  if (registerGetThreadMessages(api)) registered.push('feishu_im_user_get_thread_messages');
+  if (registerSearchMessages(api)) registered.push('feishu_im_user_search_messages');
+  return registered;
 }

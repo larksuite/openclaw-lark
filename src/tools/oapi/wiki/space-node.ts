@@ -191,13 +191,13 @@ type FeishuWikiSpaceNodeParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_wiki_space_node');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_wiki_space_node',
@@ -390,5 +390,4 @@ export function registerFeishuWikiSpaceNodeTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_wiki_space_node' },
   );
-
 }

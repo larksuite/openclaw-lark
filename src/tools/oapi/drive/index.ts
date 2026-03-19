@@ -35,9 +35,11 @@ export function registerFeishuDriveTools(api: OpenClawPluginApi) {
   }
 
   // 注册所有工具
-  registerFeishuDriveFileTool(api);
-  registerDocCommentsTool(api);
-  registerDocMediaTool(api);
-
-  api.logger.info?.('feishu_drive: Registered feishu_drive_file, feishu_doc_comments, feishu_doc_media');
+  const registered: string[] = [];
+  if (registerFeishuDriveFileTool(api)) registered.push('feishu_drive_file');
+  if (registerDocCommentsTool(api)) registered.push('feishu_doc_comments');
+  if (registerDocMediaTool(api)) registered.push('feishu_doc_media');
+  if (registered.length > 0) {
+    api.logger.info?.(`feishu_drive: Registered ${registered.join(', ')}`);
+  }
 }

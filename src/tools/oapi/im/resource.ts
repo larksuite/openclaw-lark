@@ -87,13 +87,13 @@ interface FetchResourceParams {
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_fetch_resource');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_user_fetch_resource',
@@ -189,5 +189,4 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_im_user_fetch_resource' },
   );
-
 }

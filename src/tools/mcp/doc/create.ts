@@ -37,8 +37,8 @@ function validateCreateDocParams(p: CreateDocParams): void {
 /**
  * 注册 create-doc 工具
  */
-export function registerCreateDocTool(api: OpenClawPluginApi) {
-  registerMcpTool<CreateDocParams>(api, {
+export function registerCreateDocTool(api: OpenClawPluginApi): boolean {
+  return registerMcpTool<CreateDocParams>(api, {
     name: 'feishu_create_doc',
     mcpToolName: 'create-doc',
     toolActionKey: 'feishu_create_doc.default',

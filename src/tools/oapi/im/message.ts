@@ -107,12 +107,12 @@ type FeishuImMessageParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuImUserMessageTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuImUserMessageTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_message');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_im_user_message',

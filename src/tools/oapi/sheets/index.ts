@@ -32,7 +32,7 @@ export function registerFeishuSheetsTools(api: OpenClawPluginApi) {
     return;
   }
 
-  registerFeishuSheetTool(api);
-
-  api.logger.info?.('feishu_sheets: Registered feishu_sheet tool');
+  if (registerFeishuSheetTool(api)) {
+    api.logger.info?.('feishu_sheets: Registered feishu_sheet');
+  }
 }

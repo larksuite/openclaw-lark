@@ -52,13 +52,13 @@ interface ChatMembersParams {
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerChatMembersTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerChatMembersTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_chat_members');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_chat_members',
@@ -119,5 +119,4 @@ export function registerChatMembersTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_chat_members' },
   );
-
 }

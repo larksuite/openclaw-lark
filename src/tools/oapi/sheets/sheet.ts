@@ -472,13 +472,13 @@ type FeishuSheetParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuSheetTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuSheetTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_sheet');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_sheet',
@@ -955,5 +955,4 @@ export function registerFeishuSheetTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_sheet' },
   );
-
 }

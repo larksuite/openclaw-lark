@@ -66,8 +66,8 @@ function validateUpdateDocParams(p: UpdateDocParams): void {
 /**
  * 注册 update-doc 工具
  */
-export function registerUpdateDocTool(api: OpenClawPluginApi) {
-  registerMcpTool<UpdateDocParams>(api, {
+export function registerUpdateDocTool(api: OpenClawPluginApi): boolean {
+  return registerMcpTool<UpdateDocParams>(api, {
     name: 'feishu_update_doc',
     mcpToolName: 'update-doc',
     toolActionKey: 'feishu_update_doc.default',

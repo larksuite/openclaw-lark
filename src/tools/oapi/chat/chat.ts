@@ -83,13 +83,13 @@ type FeishuChatParams =
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerChatSearchTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerChatSearchTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_chat');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_chat',
@@ -184,5 +184,4 @@ export function registerChatSearchTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_chat' },
   );
-
 }

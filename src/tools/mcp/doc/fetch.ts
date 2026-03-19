@@ -34,8 +34,8 @@ type FetchDocParams = Static<typeof FetchDocSchema>;
 /**
  * 注册 fetch-doc 工具
  */
-export function registerFetchDocTool(api: OpenClawPluginApi) {
-  registerMcpTool<FetchDocParams>(api, {
+export function registerFetchDocTool(api: OpenClawPluginApi): boolean {
+  return registerMcpTool<FetchDocParams>(api, {
     name: 'feishu_fetch_doc',
     mcpToolName: 'fetch-doc',
     toolActionKey: 'feishu_fetch_doc.default',

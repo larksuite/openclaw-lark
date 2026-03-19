@@ -41,9 +41,11 @@ export function registerFeishuMcpDocTools(api: OpenClawPluginApi) {
   setMcpEndpointOverride(mcpEndpoint);
 
   // 注册工具（search/list 已由 OAPI 版本替代，不再注册）
-  registerFetchDocTool(api);
-  registerCreateDocTool(api);
-  registerUpdateDocTool(api);
-
-  api.logger.info?.('feishu_doc: Registered feishu_fetch_doc, feishu_create_doc, feishu_update_doc');
+  const registered: string[] = [];
+  if (registerFetchDocTool(api)) registered.push('feishu_fetch_doc');
+  if (registerCreateDocTool(api)) registered.push('feishu_create_doc');
+  if (registerUpdateDocTool(api)) registered.push('feishu_update_doc');
+  if (registered.length > 0) {
+    api.logger.info?.(`feishu_doc: Registered ${registered.join(', ')}`);
+  }
 }

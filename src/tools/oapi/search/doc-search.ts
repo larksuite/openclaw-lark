@@ -176,13 +176,13 @@ function normalizeSearchResultTimeFields<T>(value: T, converted: { count: number
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerFeishuSearchDocWikiTool(api: OpenClawPluginApi) {
-  if (!api.config) return;
+export function registerFeishuSearchDocWikiTool(api: OpenClawPluginApi): boolean {
+  if (!api.config) return false;
   const cfg = api.config;
 
   const { toolClient, log } = createToolContext(api, 'feishu_search_doc_wiki');
 
-  registerTool(
+  return registerTool(
     api,
     {
       name: 'feishu_search_doc_wiki',
@@ -291,5 +291,4 @@ export function registerFeishuSearchDocWikiTool(api: OpenClawPluginApi) {
     },
     { name: 'feishu_search_doc_wiki' },
   );
-
 }

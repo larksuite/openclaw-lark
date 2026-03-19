@@ -13,11 +13,11 @@ import { registerFeishuImUserFetchResourceTool } from './resource';
 import { registerMessageReadTools } from './message-read';
 
 export function registerFeishuImTools(api: OpenClawPluginApi) {
-  registerFeishuImUserMessageTool(api);
-  registerFeishuImUserFetchResourceTool(api);
-  registerMessageReadTools(api);
-
-  api.logger.info?.(
-    'feishu_im: Registered feishu_im_user_message, feishu_im_user_fetch_resource, feishu_im_user_get_messages, feishu_im_user_get_thread_messages, feishu_im_user_search_messages',
-  );
+  const registered: string[] = [];
+  if (registerFeishuImUserMessageTool(api)) registered.push('feishu_im_user_message');
+  if (registerFeishuImUserFetchResourceTool(api)) registered.push('feishu_im_user_fetch_resource');
+  registered.push(...registerMessageReadTools(api));
+  if (registered.length > 0) {
+    api.logger.info?.(`feishu_im: Registered ${registered.join(', ')}`);
+  }
 }

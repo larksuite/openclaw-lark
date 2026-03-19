@@ -255,23 +255,24 @@ export function registerTool(
   api: OpenClawPluginApi,
   tool: Parameters<OpenClawPluginApi['registerTool']>[0],
   opts?: Parameters<OpenClawPluginApi['registerTool']>[1],
-): void {
+): boolean {
   // 提取工具名称
   const toolName = typeof tool === 'function' ? tool.name : (tool as { name?: string }).name;
 
   if (!toolName) {
     // 如果无法提取工具名，直接注册（不拦截）
     api.registerTool(tool, opts);
-    return;
+    return true;
   }
 
   // 检查是否应该注册
   if (!checkToolRegistration(api, toolName)) {
-    return;
+    return false;
   }
 
   // 通过检查，调用原始的 registerTool
   api.registerTool(tool, opts);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
