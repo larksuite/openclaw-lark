@@ -37,6 +37,12 @@ export function buildMentionAnnotation(ctx: MessageContext): string | undefined 
   return `[System: This message @mentions the following users: ${mentionDetails}. Use these open_ids when performing actions involving these users.]`;
 }
 
+export function buildProxyBotAnnotation(ctx: MessageContext): string | undefined {
+  if (!ctx.proxyFromBotOpenId) return undefined;
+  const label = ctx.proxyFromBotName ?? 'Unknown bot';
+  return `[System: This message was proxied on behalf of bot ${label} (open_id: ${ctx.proxyFromBotOpenId}). Treat that bot as the logical sender and @mention it when replying in Feishu.]`;
+}
+
 // ---------------------------------------------------------------------------
 // Message body builders
 // ---------------------------------------------------------------------------
@@ -59,9 +65,11 @@ export function buildMessageBody(ctx: MessageContext, quotedContent?: string): s
   const speaker = ctx.senderName ?? ctx.senderId;
   messageBody = `${speaker}: ${messageBody}`;
 
+  const proxyAnnotation = buildProxyBotAnnotation(ctx);
   const mentionAnnotation = buildMentionAnnotation(ctx);
-  if (mentionAnnotation) {
-    messageBody += `\n\n${mentionAnnotation}`;
+  const annotations = [proxyAnnotation, mentionAnnotation].filter(Boolean);
+  if (annotations.length > 0) {
+    messageBody += `\n\n${annotations.join('\n\n')}`;
   }
 
   return messageBody;
@@ -87,9 +95,11 @@ export function buildMessageBody(ctx: MessageContext, quotedContent?: string): s
  * the text and inject them as multimodal content blocks.
  */
 export function buildBodyForAgent(ctx: MessageContext): string {
+  const proxyAnnotation = buildProxyBotAnnotation(ctx);
   const mentionAnnotation = buildMentionAnnotation(ctx);
-  if (mentionAnnotation) {
-    return `${ctx.content}\n\n${mentionAnnotation}`;
+  const annotations = [proxyAnnotation, mentionAnnotation].filter(Boolean);
+  if (annotations.length > 0) {
+    return `${ctx.content}\n\n${annotations.join('\n\n')}`;
   }
   return ctx.content;
 }

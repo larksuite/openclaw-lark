@@ -169,6 +169,11 @@ export interface MessageContext {
   /** All @mentions in the message (including bot). */
   mentions: MentionInfo[];
 
+  /** When present, the message was proxied on behalf of another bot. */
+  proxyFromBotOpenId?: string;
+  /** Display name of the proxied source bot when available. */
+  proxyFromBotName?: string;
+
   // Message relationships
   rootId?: string;
   parentId?: string;

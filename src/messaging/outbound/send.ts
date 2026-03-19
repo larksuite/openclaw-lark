@@ -12,7 +12,17 @@ import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from 
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import type { MentionInfo } from '../types';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
-import { buildMentionedMessage, buildMentionedCardContent } from '../inbound/mention';
+import { buildMentionedCardContent } from '../inbound/mention';
+import {
+  buildMentionTargetsFromOpenIds,
+  buildPostContentPayload,
+  buildProxyCardDescriptorText,
+  collectCardMentionOpenIds,
+  maybeSendProxyPostMessage,
+  prepareProxyPostMessage,
+  resolveEffectiveMentions,
+  sendPreparedProxyPostMessage,
+} from '../proxy-bot';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +64,8 @@ export interface SendFeishuCardParams {
   card: Record<string, unknown>;
   /** When set, the card is sent as a threaded reply. */
   replyToMessageId?: string;
+  /** Optional mention targets associated with this card. */
+  mentions?: MentionInfo[];
   /** Optional account identifier for multi-account setups. */
   accountId?: string;
   /** When true, the reply appears in the thread instead of main chat. */
@@ -82,69 +94,20 @@ export interface SendFeishuCardParams {
 export async function sendMessageFeishu(params: SendFeishuMessageParams): Promise<FeishuSendResult> {
   const { cfg, to, text, replyToMessageId, mentions, accountId, replyInThread, i18nTexts } = params;
 
+  const proxied = await maybeSendProxyPostMessage({
+    cfg,
+    to,
+    text,
+    replyToMessageId,
+    mentions,
+    accountId,
+    replyInThread,
+    i18nTexts,
+  });
+  if (proxied) return proxied;
+
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
-
-  // Build the post-format content envelope.
-  let contentPayload: string;
-
-  if (i18nTexts && Object.keys(i18nTexts).length > 0) {
-    // Multi-locale post: build each locale's content independently.
-    const postBody: Record<string, { content: Array<Array<{ tag: string; text: string }>> }> = {};
-    for (const [locale, localeText] of Object.entries(i18nTexts)) {
-      let processed = localeText;
-
-      // Apply mention prefix if targets are provided.
-      if (mentions && mentions.length > 0) {
-        processed = buildMentionedMessage(mentions, processed);
-      }
-
-      // Convert markdown tables to Feishu-compatible format.
-      try {
-        const runtime = LarkClient.runtime;
-        if (runtime?.channel?.text?.convertMarkdownTables) {
-          processed = runtime.channel.text.convertMarkdownTables(processed, 'bullets');
-        }
-      } catch {
-        // Runtime not available -- use the text as-is.
-      }
-
-      // Apply Markdown style optimization.
-      processed = optimizeMarkdownStyle(processed, 1);
-
-      postBody[locale] = {
-        content: [[{ tag: 'md', text: processed }]],
-      };
-    }
-    contentPayload = JSON.stringify(postBody);
-  } else {
-    // Single-locale (zh_cn) post: original behavior.
-    let messageText = text;
-
-    // Apply mention prefix if targets are provided.
-    if (mentions && mentions.length > 0) {
-      messageText = buildMentionedMessage(mentions, messageText);
-    }
-
-    // Convert markdown tables to Feishu-compatible format if the runtime
-    // provides a converter.
-    try {
-      const runtime = LarkClient.runtime;
-      if (runtime?.channel?.text?.convertMarkdownTables) {
-        messageText = runtime.channel.text.convertMarkdownTables(messageText, 'bullets');
-      }
-    } catch {
-      // Runtime not available -- use the text as-is.
-    }
-
-    // Apply Markdown style optimization.
-    messageText = optimizeMarkdownStyle(messageText, 1);
-
-    contentPayload = JSON.stringify({
-      zh_cn: {
-        content: [[{ tag: 'md', text: messageText }]],
-      },
-    });
-  }
+  const contentPayload = buildPostContentPayload({ text, mentions, i18nTexts });
 
   if (replyToMessageId) {
     // Send as a threaded reply.
@@ -209,11 +172,20 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
  * @returns The send result containing the new message ID.
  */
 export async function sendCardFeishu(params: SendFeishuCardParams): Promise<FeishuSendResult> {
-  const { cfg, to, card, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, to, card, replyToMessageId, mentions, accountId, replyInThread } = params;
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
-
   const contentPayload = JSON.stringify(card);
+  const effectiveMentions = resolveEffectiveMentions(mentions);
+  const proxyMentions = buildMentionTargetsFromOpenIds(collectCardMentionOpenIds(card, effectiveMentions), effectiveMentions);
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
+
+  let result: FeishuSendResult;
 
   if (replyToMessageId) {
     // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
@@ -234,35 +206,49 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
         }),
     });
 
-    return {
+    result = {
+      messageId: response?.data?.message_id ?? '',
+      chatId: response?.data?.chat_id ?? '',
+    };
+  } else {
+    const target = normalizeFeishuTarget(to);
+    if (!target) {
+      throw new Error(`[feishu-send] Invalid target: "${to}"`);
+    }
+
+    const receiveIdType = resolveReceiveIdType(target);
+
+    const response = await client.im.message.create({
+      params: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        receive_id_type: receiveIdType as any,
+      },
+      data: {
+        receive_id: target,
+        msg_type: 'interactive',
+        content: contentPayload,
+      },
+    });
+
+    result = {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
     };
   }
 
-  const target = normalizeFeishuTarget(to);
-  if (!target) {
-    throw new Error(`[feishu-send] Invalid target: "${to}"`);
+  if (preparedProxy) {
+    await sendPreparedProxyPostMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      text: buildProxyCardDescriptorText({ nativeMessageId: result.messageId, card }),
+      replyToMessageId,
+      mentions: proxyMentions,
+      replyInThread,
+    });
   }
 
-  const receiveIdType = resolveReceiveIdType(target);
-
-  const response = await client.im.message.create({
-    params: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      receive_id_type: receiveIdType as any,
-    },
-    data: {
-      receive_id: target,
-      msg_type: 'interactive',
-      content: contentPayload,
-    },
-  });
-
-  return {
-    messageId: response?.data?.message_id ?? '',
-    chatId: response?.data?.chat_id ?? '',
-  };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +406,7 @@ export async function sendMarkdownCardFeishu(params: {
     to,
     card,
     replyToMessageId,
+    mentions,
     replyInThread,
     accountId,
   });

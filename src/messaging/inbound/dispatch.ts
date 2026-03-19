@@ -16,7 +16,7 @@
 
 import type { RuntimeEnv, HistoryEntry } from 'openclaw/plugin-sdk';
 import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk';
-import type { MessageContext } from '../types';
+import type { MentionInfo, MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import type { FeishuGroupConfig } from '../../core/types';
 import type { PermissionError } from './permission';
@@ -46,8 +46,22 @@ import { runFeishuDoctorI18n } from '../../commands/doctor';
 import { runFeishuAuthI18n } from '../../commands/auth';
 import { runFeishuStartI18n, getFeishuHelpI18n } from '../../commands/index';
 import { sendCardFeishu, buildI18nMarkdownCard, sendMessageFeishu } from '../outbound/send';
+import { withImplicitProxyMentions } from '../proxy-bot';
 
 const log = larkLogger('inbound/dispatch');
+
+function buildAutoProxyMentions(ctx: MessageContext): MentionInfo[] {
+  return ctx.proxyFromBotOpenId
+    ? [
+        {
+          key: 'proxy-from-bot',
+          openId: ctx.proxyFromBotOpenId,
+          name: ctx.proxyFromBotName ?? 'Source bot',
+          isBot: true,
+        },
+      ]
+    : [];
+}
 
 // ---------------------------------------------------------------------------
 // Internal: normal message dispatch
@@ -71,6 +85,8 @@ async function dispatchNormalMessage(
   skillFilter?: string[],
   skipTyping?: boolean,
 ): Promise<void> {
+  const autoMentions = buildAutoProxyMentions(dc.ctx);
+
   // Abort messages should never create streaming cards — dispatch via the
   // plain-text system-command path so the SDK's abort handler can reply
   // without touching CardKit.
@@ -90,6 +106,7 @@ async function dispatchNormalMessage(
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.isThread,
+    autoMentions,
   });
 
   // Create an AbortController so the abort fast-path can cancel the
@@ -176,177 +193,187 @@ export async function dispatchToAgent(params: {
 }): Promise<void> {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
+  const autoMentions = buildAutoProxyMentions(params.ctx);
 
-  // 1b. Resolve thread session isolation (async: may query group info API)
-  if (dc.isThread && dc.ctx.threadId) {
-    dc.threadSessionKey = await resolveThreadSessionKey({
-      accountScopedCfg: dc.accountScopedCfg,
-      account: dc.account,
-      chatId: dc.ctx.chatId,
-      threadId: dc.ctx.threadId,
-      baseSessionKey: dc.route.sessionKey,
-    });
-  }
-
-  // 2. Build annotated message body
-  const messageBody = buildMessageBody(params.ctx, params.quotedContent);
-
-  // 3. Permission-error notification (optional side-effect).
-  //    Isolated so a failure here does not block the main message dispatch.
-  if (params.permissionError) {
-    try {
-      await dispatchPermissionNotification(dc, params.permissionError, params.replyToMessageId);
-    } catch (err) {
-      dc.error(`feishu[${dc.account.accountId}]: permission notification failed, continuing: ${String(err)}`);
+  const runDispatch = async (): Promise<void> => {
+    // 1b. Resolve thread session isolation (async: may query group info API)
+    if (dc.isThread && dc.ctx.threadId) {
+      dc.threadSessionKey = await resolveThreadSessionKey({
+        accountScopedCfg: dc.accountScopedCfg,
+        account: dc.account,
+        chatId: dc.ctx.chatId,
+        threadId: dc.ctx.threadId,
+        baseSessionKey: dc.route.sessionKey,
+      });
     }
-  }
 
-  // 4. Build main envelope (with group chat history)
-  const { combinedBody, historyKey } = buildEnvelopeWithHistory(
-    dc,
-    messageBody,
-    params.chatHistories,
-    params.historyLimit,
-  );
+    // 2. Build annotated message body
+    const messageBody = buildMessageBody(params.ctx, params.quotedContent);
 
-  // 5. Build BodyForAgent with mention annotation (if any).
-  //    SDK >= 2026.2.10 no longer falls back to Body for BodyForAgent,
-  //    so we must set it explicitly to preserve the annotation.
-  const bodyForAgent = buildBodyForAgent(params.ctx);
-
-  // 6. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
-  //    The SDK's buildInboundUserContextPrefix renders these as structured
-  //    JSON blocks; earlier SDK versions simply ignore unknown fields.
-  const threadHistoryKey = threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined);
-  const inboundHistory =
-    dc.isGroup && params.chatHistories && params.historyLimit > 0
-      ? (params.chatHistories.get(threadHistoryKey) ?? []).map((entry) => ({
-          sender: entry.sender,
-          body: entry.body,
-          timestamp: entry.timestamp ?? Date.now(),
-        }))
-      : undefined;
-
-  // 7. Build inbound context payload
-  const isBareNewOrReset = /^\/(?:new|reset)\s*$/i.test((params.ctx.content ?? '').trim());
-  const groupSystemPrompt = dc.isGroup
-    ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
-    : undefined;
-  const originatingTo =
-    isBareNewOrReset && dc.isThread
-      ? encodeFeishuRouteTarget({
-          target: dc.feishuTo,
-          replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
-          threadId: dc.ctx.threadId,
-        })
-      : undefined;
-  const ctxPayload = buildInboundPayload(dc, {
-    body: combinedBody,
-    bodyForAgent,
-    rawBody: params.ctx.content,
-    commandBody: params.ctx.content,
-    originatingTo,
-    senderName: params.ctx.senderName ?? params.ctx.senderId,
-    senderId: params.ctx.senderId,
-    messageSid: params.ctx.messageId,
-    wasMentioned: mentionedBot(params.ctx),
-    replyToBody: params.quotedContent,
-    inboundHistory,
-    extraFields: {
-      ...params.mediaPayload,
-      ...(groupSystemPrompt ? { GroupSystemPrompt: groupSystemPrompt } : {}),
-      ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
-    },
-  });
-
-  // 8a. Intercept /feishu commands for i18n multi-locale card dispatch
-  //     Must run BEFORE the SDK command check — the SDK does not recognise
-  //     plugin-registered commands via isControlCommandMessage, so
-  //     /feishu_* falls through to the AI agent otherwise.
-  const contentTrimmed = (params.ctx.content ?? '').trim();
-  const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
-  const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
-  const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
-  const isHelpCommand = /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
-
-  const i18nCommandName = isDoctorCommand
-    ? 'doctor'
-    : isAuthCommand
-      ? 'auth'
-      : isStartCommand
-        ? 'start'
-        : isHelpCommand
-          ? 'help'
-          : null;
-
-  if (i18nCommandName) {
-    dc.log(`feishu[${dc.account.accountId}]: ${i18nCommandName} command detected, using i18n dispatch`);
-    log.info(`${i18nCommandName} command detected, using i18n dispatch`);
-    try {
-      let i18nTexts: Record<string, string>;
-      if (isDoctorCommand) {
-        i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
-      } else if (isAuthCommand) {
-        i18nTexts = await runFeishuAuthI18n(dc.accountScopedCfg);
-      } else if (isStartCommand) {
-        i18nTexts = runFeishuStartI18n(dc.accountScopedCfg);
-      } else {
-        i18nTexts = getFeishuHelpI18n();
+    // 3. Permission-error notification (optional side-effect).
+    //    Isolated so a failure here does not block the main message dispatch.
+    if (params.permissionError) {
+      try {
+        await dispatchPermissionNotification(dc, params.permissionError, params.replyToMessageId);
+      } catch (err) {
+        dc.error(`feishu[${dc.account.accountId}]: permission notification failed, continuing: ${String(err)}`);
       }
-      const card = buildI18nMarkdownCard(i18nTexts);
-      await sendCardFeishu({
-        cfg: dc.accountScopedCfg,
-        to: dc.ctx.chatId,
-        card,
-        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
-        accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      dc.error(`feishu[${dc.account.accountId}]: ${i18nCommandName} i18n dispatch failed: ${errMsg}`);
-      await sendMessageFeishu({
-        cfg: dc.accountScopedCfg,
-        to: dc.ctx.chatId,
-        text: `${i18nCommandName} failed: ${errMsg}`,
-        replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
-        accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
-      });
     }
+
+    // 4. Build main envelope (with group chat history)
+    const { combinedBody, historyKey } = buildEnvelopeWithHistory(
+      dc,
+      messageBody,
+      params.chatHistories,
+      params.historyLimit,
+    );
+
+    // 5. Build BodyForAgent with mention annotation (if any).
+    //    SDK >= 2026.2.10 no longer falls back to Body for BodyForAgent,
+    //    so we must set it explicitly to preserve the annotation.
+    const bodyForAgent = buildBodyForAgent(params.ctx);
+
+    // 6. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
+    //    The SDK's buildInboundUserContextPrefix renders these as structured
+    //    JSON blocks; earlier SDK versions simply ignore unknown fields.
+    const threadHistoryKey = threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined);
+    const inboundHistory =
+      dc.isGroup && params.chatHistories && params.historyLimit > 0
+        ? (params.chatHistories.get(threadHistoryKey) ?? []).map((entry) => ({
+            sender: entry.sender,
+            body: entry.body,
+            timestamp: entry.timestamp ?? Date.now(),
+          }))
+        : undefined;
+
+    // 7. Build inbound context payload
+    const isBareNewOrReset = /^\/(?:new|reset)\s*$/i.test((params.ctx.content ?? '').trim());
+    const groupSystemPrompt = dc.isGroup
+      ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
+      : undefined;
+    const originatingTo =
+      isBareNewOrReset && dc.isThread
+        ? encodeFeishuRouteTarget({
+            target: dc.feishuTo,
+            replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
+            threadId: dc.ctx.threadId,
+          })
+        : undefined;
+    const ctxPayload = buildInboundPayload(dc, {
+      body: combinedBody,
+      bodyForAgent,
+      rawBody: params.ctx.content,
+      commandBody: params.ctx.content,
+      originatingTo,
+      senderName: params.ctx.senderName ?? params.ctx.senderId,
+      senderId: params.ctx.senderId,
+      messageSid: params.ctx.messageId,
+      wasMentioned: mentionedBot(params.ctx),
+      replyToBody: params.quotedContent,
+      inboundHistory,
+      extraFields: {
+        ...params.mediaPayload,
+        ...(groupSystemPrompt ? { GroupSystemPrompt: groupSystemPrompt } : {}),
+        ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
+      },
+    });
+
+    // 8a. Intercept /feishu commands for i18n multi-locale card dispatch
+    //     Must run BEFORE the SDK command check — the SDK does not recognise
+    //     plugin-registered commands via isControlCommandMessage, so
+    //     /feishu_* falls through to the AI agent otherwise.
+    const contentTrimmed = (params.ctx.content ?? '').trim();
+    const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
+    const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
+    const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
+    const isHelpCommand = /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
+
+    const i18nCommandName = isDoctorCommand
+      ? 'doctor'
+      : isAuthCommand
+        ? 'auth'
+        : isStartCommand
+          ? 'start'
+          : isHelpCommand
+            ? 'help'
+            : null;
+
+    if (i18nCommandName) {
+      dc.log(`feishu[${dc.account.accountId}]: ${i18nCommandName} command detected, using i18n dispatch`);
+      log.info(`${i18nCommandName} command detected, using i18n dispatch`);
+      try {
+        let i18nTexts: Record<string, string>;
+        if (isDoctorCommand) {
+          i18nTexts = await runFeishuDoctorI18n(dc.accountScopedCfg, dc.account.accountId);
+        } else if (isAuthCommand) {
+          i18nTexts = await runFeishuAuthI18n(dc.accountScopedCfg);
+        } else if (isStartCommand) {
+          i18nTexts = runFeishuStartI18n(dc.accountScopedCfg);
+        } else {
+          i18nTexts = getFeishuHelpI18n();
+        }
+        const card = buildI18nMarkdownCard(i18nTexts);
+        await sendCardFeishu({
+          cfg: dc.accountScopedCfg,
+          to: dc.ctx.chatId,
+          card,
+          replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+          accountId: dc.account.accountId,
+          replyInThread: dc.isThread,
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        dc.error(`feishu[${dc.account.accountId}]: ${i18nCommandName} i18n dispatch failed: ${errMsg}`);
+        await sendMessageFeishu({
+          cfg: dc.accountScopedCfg,
+          to: dc.ctx.chatId,
+          text: `${i18nCommandName} failed: ${errMsg}`,
+          replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
+          accountId: dc.account.accountId,
+          replyInThread: dc.isThread,
+        });
+      }
+      return;
+    }
+
+    // 8. Dispatch: system command vs. normal message
+    const isCommand = dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
+
+    // Resolve per-group skill filter (per-group > default "*")
+    const skillFilter = dc.isGroup ? (params.groupConfig?.skills ?? params.defaultGroupConfig?.skills) : undefined;
+
+    if (isCommand) {
+      await dispatchSystemCommand(dc, ctxPayload, isBareNewOrReset, params.replyToMessageId);
+      // /new and /reset explicitly start a new session — clear pending history
+      if (isBareNewOrReset && dc.isGroup && historyKey && params.chatHistories) {
+        clearHistoryEntriesIfEnabled({
+          historyMap: params.chatHistories,
+          historyKey,
+          limit: params.historyLimit,
+        });
+      }
+    } else {
+      // Normal message dispatch; history cleanup happens inside.
+      // System commands intentionally skip history cleanup — command handlers
+      // don't consume history context, so entries are preserved for the next
+      // normal message.
+      await dispatchNormalMessage(
+        dc,
+        ctxPayload,
+        params.chatHistories,
+        historyKey,
+        params.historyLimit,
+        params.replyToMessageId,
+        skillFilter,
+        params.skipTyping,
+      );
+    }
+  };
+
+  if (autoMentions.length > 0) {
+    await withImplicitProxyMentions(autoMentions, runDispatch);
     return;
   }
 
-  // 8. Dispatch: system command vs. normal message
-  const isCommand = dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
-
-  // Resolve per-group skill filter (per-group > default "*")
-  const skillFilter = dc.isGroup ? (params.groupConfig?.skills ?? params.defaultGroupConfig?.skills) : undefined;
-
-  if (isCommand) {
-    await dispatchSystemCommand(dc, ctxPayload, isBareNewOrReset, params.replyToMessageId);
-    // /new and /reset explicitly start a new session — clear pending history
-    if (isBareNewOrReset && dc.isGroup && historyKey && params.chatHistories) {
-      clearHistoryEntriesIfEnabled({
-        historyMap: params.chatHistories,
-        historyKey,
-        limit: params.historyLimit,
-      });
-    }
-  } else {
-    // Normal message dispatch; history cleanup happens inside.
-    // System commands intentionally skip history cleanup — command handlers
-    // don't consume history context, so entries are preserved for the next
-    // normal message.
-    await dispatchNormalMessage(
-      dc,
-      ctxPayload,
-      params.chatHistories,
-      historyKey,
-      params.historyLimit,
-      params.replyToMessageId,
-      skillFilter,
-      params.skipTyping,
-    );
-  }
+  await runDispatch();
 }

@@ -9,13 +9,22 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import type { FeishuSendResult } from '../types';
+import type { FeishuSendResult, MentionInfo } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { uploadAndSendMediaLark } from './media';
 import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
+import {
+  buildMentionTargetsFromOpenIds,
+  buildProxyCardDescriptorText,
+  collectCardMentionOpenIds,
+  maybeSendProxyPostMessage,
+  prepareProxyPostMessage,
+  resolveEffectiveMentions,
+  sendPreparedProxyPostMessage,
+} from '../proxy-bot';
 
 const log = larkLogger('outbound/deliver');
 
@@ -243,6 +252,16 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
     return sendCardLark({ cfg, to, card, replyToMessageId, replyInThread, accountId });
   }
 
+  const proxied = await maybeSendProxyPostMessage({
+    cfg,
+    to,
+    text,
+    replyToMessageId,
+    accountId,
+    replyInThread,
+  });
+  if (proxied) return proxied;
+
   log.info(`sendTextLark: target=${to}, textLength=${text.length}`);
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const processedText = prepareTextForLark(text);
@@ -275,6 +294,8 @@ export interface SendCardLarkParams {
   card: Record<string, unknown>;
   /** When set, the card is sent as a threaded reply. */
   replyToMessageId?: string;
+  /** Optional mention targets associated with this card. */
+  mentions?: MentionInfo[];
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
   /** Optional account identifier for multi-account setups. */
@@ -317,16 +338,36 @@ export interface SendCardLarkParams {
  * ```
  */
 export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSendResult> {
-  const { cfg, to, card, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, card, replyToMessageId, mentions, replyInThread, accountId } = params;
 
   const version = card.schema === '2.0' ? 'v2' : 'v1';
   log.info(`sendCardLark: target=${to}, cardVersion=${version}`);
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify(card);
+  const effectiveMentions = resolveEffectiveMentions(mentions);
+  const proxyMentions = buildMentionTargetsFromOpenIds(collectCardMentionOpenIds(card, effectiveMentions), effectiveMentions);
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    const result = await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    if (preparedProxy) {
+      await sendPreparedProxyPostMessage({
+        prepared: preparedProxy,
+        cfg,
+        to,
+        text: buildProxyCardDescriptorText({ nativeMessageId: result.messageId, card }),
+        replyToMessageId,
+        mentions: proxyMentions,
+        replyInThread,
+      });
+    }
+    return result;
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);
@@ -358,6 +399,8 @@ export interface SendMediaLarkParams {
   mediaUrl: string;
   /** When set, the message is sent as a threaded reply. */
   replyToMessageId?: string;
+  /** Optional mention targets associated with this media send. */
+  mentions?: MentionInfo[];
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
   /** Optional account identifier for multi-account setups. */
@@ -390,7 +433,7 @@ export interface SendMediaLarkParams {
  * ```
  */
 export async function sendMediaLark(params: SendMediaLarkParams): Promise<FeishuSendResult> {
-  const { cfg, to, mediaUrl, replyToMessageId, replyInThread, accountId, mediaLocalRoots } = params;
+  const { cfg, to, mediaUrl, replyToMessageId, mentions, replyInThread, accountId, mediaLocalRoots } = params;
 
   log.info(`sendMediaLark: target=${to}, mediaUrl=${mediaUrl}`);
 
@@ -400,6 +443,7 @@ export async function sendMediaLark(params: SendMediaLarkParams): Promise<Feishu
       to,
       mediaUrl,
       replyToMessageId,
+      mentions,
       replyInThread,
       accountId,
       mediaLocalRoots,

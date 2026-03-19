@@ -22,6 +22,7 @@ import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { sendMessageFeishu, sendMarkdownCardFeishu } from '../messaging/outbound/send';
+import { ProxySendPausedError } from '../messaging/proxy-bot';
 import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } from '../messaging/outbound/typing';
 import { resolveReplyMode, expandAutoMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
@@ -40,6 +41,7 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
   const { cfg, agentId, chatId, replyToMessageId, accountId, replyInThread } = params;
+  const autoMentions = params.autoMentions ?? [];
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -55,7 +57,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     streaming: feishuCfg?.streaming,
     chatType,
   });
-  const useStreamingCards = replyMode === 'streaming';
+  const useStreamingCards = replyMode === 'streaming' && autoMentions.length === 0;
 
   // ---- Block streaming for static mode ----
   const enableBlockStreaming = feishuCfg?.blockStreaming === true && !useStreamingCards;
@@ -226,10 +228,16 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               to: chatId,
               text: chunk,
               replyToMessageId,
+              mentions: autoMentions,
               replyInThread,
               accountId,
             });
           } catch (err) {
+            if (err instanceof ProxySendPausedError) {
+              dispatchFullyComplete = true;
+              log.info('deliver: proxy send paused for authorization');
+              return;
+            }
             if (staticGuard?.terminate('deliver.cardChunk', err)) return;
             throw err;
           }
@@ -244,11 +252,17 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               cfg,
               to: chatId,
               text: chunk,
+              mentions: autoMentions,
               replyToMessageId,
               replyInThread,
               accountId,
             });
           } catch (err) {
+            if (err instanceof ProxySendPausedError) {
+              dispatchFullyComplete = true;
+              log.info('deliver: proxy send paused for authorization');
+              return;
+            }
             if (staticGuard?.terminate('deliver.textChunk', err)) return;
             throw err;
           }

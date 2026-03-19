@@ -11,6 +11,7 @@
 
 import type { ClawdbotConfig, ReplyPayload } from 'openclaw/plugin-sdk';
 import type { FeishuFooterConfig } from '../core/types';
+import type { MentionInfo } from '../messaging/types';
 
 // ---------------------------------------------------------------------------
 // CardPhase — explicit state machine replacing boolean flags
@@ -121,6 +122,8 @@ export interface CreateFeishuReplyDispatcherParams {
   skipTyping?: boolean;
   /** When true, replies are sent into the thread instead of main chat. */
   replyInThread?: boolean;
+  /** Optional mentions that should be prepended automatically on replies. */
+  autoMentions?: MentionInfo[];
 }
 
 /**

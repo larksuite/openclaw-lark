@@ -18,6 +18,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { MentionInfo } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import {
@@ -28,6 +29,13 @@ import {
   validateLocalMediaRoots,
 } from './media-url-utils';
 import { larkLogger } from '../../core/lark-logger';
+import {
+  buildMentionTargetsFromOpenIds,
+  buildProxyMediaDescriptorText,
+  prepareProxyPostMessage,
+  resolveEffectiveMentions,
+  sendPreparedProxyPostMessage,
+} from '../proxy-bot';
 
 const log = larkLogger('outbound/media');
 
@@ -425,15 +433,45 @@ export async function sendImageLark(params: {
   to: string;
   imageKey: string;
   replyToMessageId?: string;
+  mentions?: MentionInfo[];
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, imageKey, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, imageKey, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendImageLark: target=${to}, imageKey=${imageKey}`);
+
+  const proxyMentions = buildMentionTargetsFromOpenIds(
+    resolveEffectiveMentions(mentions).map((mention) => mention.openId),
+    mentions,
+  );
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ image_key: imageKey });
-  return sendMediaMessage({ client, to, content, msgType: 'image', replyToMessageId, replyInThread });
+  const result = await sendMediaMessage({ client, to, content, msgType: 'image', replyToMessageId, replyInThread });
+
+  if (preparedProxy) {
+    await sendPreparedProxyPostMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      text: buildProxyMediaDescriptorText({
+        nativeMessageId: result.messageId,
+        mediaType: 'image',
+        imageKey,
+      }),
+      replyToMessageId,
+      mentions: proxyMentions,
+      replyInThread,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,16 +493,48 @@ export async function sendFileLark(params: {
   cfg: OpenClawConfig;
   to: string;
   fileKey: string;
+  fileName?: string;
   replyToMessageId?: string;
+  mentions?: MentionInfo[];
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, fileName, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendFileLark: target=${to}, fileKey=${fileKey}`);
+
+  const proxyMentions = buildMentionTargetsFromOpenIds(
+    resolveEffectiveMentions(mentions).map((mention) => mention.openId),
+    mentions,
+  );
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'file', replyToMessageId, replyInThread });
+  const result = await sendMediaMessage({ client, to, content, msgType: 'file', replyToMessageId, replyInThread });
+
+  if (preparedProxy) {
+    await sendPreparedProxyPostMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      text: buildProxyMediaDescriptorText({
+        nativeMessageId: result.messageId,
+        mediaType: 'file',
+        fileKey,
+        fileName,
+      }),
+      replyToMessageId,
+      mentions: proxyMentions,
+      replyInThread,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,16 +559,50 @@ export async function sendVideoLark(params: {
   cfg: OpenClawConfig;
   to: string;
   fileKey: string;
+  fileName?: string;
+  duration?: number;
   replyToMessageId?: string;
+  mentions?: MentionInfo[];
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, fileName, duration, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendVideoLark: target=${to}, fileKey=${fileKey}`);
+
+  const proxyMentions = buildMentionTargetsFromOpenIds(
+    resolveEffectiveMentions(mentions).map((mention) => mention.openId),
+    mentions,
+  );
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'media', replyToMessageId, replyInThread });
+  const result = await sendMediaMessage({ client, to, content, msgType: 'media', replyToMessageId, replyInThread });
+
+  if (preparedProxy) {
+    await sendPreparedProxyPostMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      text: buildProxyMediaDescriptorText({
+        nativeMessageId: result.messageId,
+        mediaType: 'video',
+        fileKey,
+        fileName,
+        duration,
+      }),
+      replyToMessageId,
+      mentions: proxyMentions,
+      replyInThread,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -523,16 +627,50 @@ export async function sendAudioLark(params: {
   cfg: OpenClawConfig;
   to: string;
   fileKey: string;
+  fileName?: string;
+  duration?: number;
   replyToMessageId?: string;
+  mentions?: MentionInfo[];
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, fileName, duration, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendAudioLark: target=${to}, fileKey=${fileKey}`);
+
+  const proxyMentions = buildMentionTargetsFromOpenIds(
+    resolveEffectiveMentions(mentions).map((mention) => mention.openId),
+    mentions,
+  );
+  const preparedProxy = await prepareProxyPostMessage({
+    cfg,
+    to,
+    accountId,
+    mentionOpenIds: proxyMentions.map((mention) => mention.openId),
+  });
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'audio', replyToMessageId, replyInThread });
+  const result = await sendMediaMessage({ client, to, content, msgType: 'audio', replyToMessageId, replyInThread });
+
+  if (preparedProxy) {
+    await sendPreparedProxyPostMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      text: buildProxyMediaDescriptorText({
+        nativeMessageId: result.messageId,
+        mediaType: 'audio',
+        fileKey,
+        fileName,
+        duration,
+      }),
+      replyToMessageId,
+      mentions: proxyMentions,
+      replyInThread,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -744,12 +882,13 @@ export async function uploadAndSendMediaLark(params: {
   mediaBuffer?: Buffer;
   fileName?: string;
   replyToMessageId?: string;
+  mentions?: MentionInfo[];
   replyInThread?: boolean;
   accountId?: string;
   /** Allowed root directories for local file access (SSRF prevention). */
   mediaLocalRoots?: readonly string[];
 }): Promise<SendMediaResult> {
-  const { cfg, to, mediaUrl, mediaBuffer, fileName, replyToMessageId, replyInThread, accountId, mediaLocalRoots } =
+  const { cfg, to, mediaUrl, mediaBuffer, fileName, replyToMessageId, mentions, replyInThread, accountId, mediaLocalRoots } =
     params;
 
   log.info(
@@ -801,6 +940,7 @@ export async function uploadAndSendMediaLark(params: {
       to,
       imageKey,
       replyToMessageId,
+      mentions,
       replyInThread,
       accountId,
     });
@@ -826,18 +966,40 @@ export async function uploadAndSendMediaLark(params: {
   );
 
   if (isAudio) {
-    return sendAudioLark({ cfg, to, fileKey, replyToMessageId, replyInThread, accountId });
+    return sendAudioLark({
+      cfg,
+      to,
+      fileKey,
+      fileName: resolvedFileName,
+      duration,
+      replyToMessageId,
+      mentions,
+      replyInThread,
+      accountId,
+    });
   }
 
   if (isVideo) {
-    return sendVideoLark({ cfg, to, fileKey, replyToMessageId, replyInThread, accountId });
+    return sendVideoLark({
+      cfg,
+      to,
+      fileKey,
+      fileName: resolvedFileName,
+      duration,
+      replyToMessageId,
+      mentions,
+      replyInThread,
+      accountId,
+    });
   }
 
   return sendFileLark({
     cfg,
     to,
     fileKey,
+    fileName: resolvedFileName,
     replyToMessageId,
+    mentions,
     replyInThread,
     accountId,
   });
