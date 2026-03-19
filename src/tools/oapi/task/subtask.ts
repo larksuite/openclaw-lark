@@ -4,7 +4,7 @@
  *
  * feishu_task_subtask tool -- Manage Feishu task subtasks.
  *
- * P1 Actions: create, list
+ * P1 Actions: create, list 支持通过 auth_type 参数切换用户(user)或应用(tenant)身份。
  *
  * Uses the Feishu Task v2 API:
  *   - create: POST /open-apis/task/v2/tasks/:task_guid/subtasks
@@ -29,7 +29,15 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskSubtaskSchema = Type.Union([
+const FeishuTaskSubtaskSchema = Type.Intersect([
+  Type.Object({
+    auth_type: Type.Optional(
+      StringEnum(['tenant', 'user'], {
+        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "tenant"。',
+      }),
+    ),
+  }),
+  Type.Union([
   // CREATE (P1)
   Type.Object({
     action: Type.Literal('create'),
@@ -55,7 +63,8 @@ const FeishuTaskSubtaskSchema = Type.Union([
     members: Type.Optional(
       Type.Array(
         Type.Object({
-          id: Type.String({ description: '成员 open_id' }),
+          id: Type.String({ description: '成员 ID（通常为 open_id）' }),
+          type: Type.Optional(StringEnum(['user', 'app'])),
           role: Type.Optional(StringEnum(['assignee', 'follower'])),
         }),
         { description: '子任务成员列表（assignee=负责人，follower=关注人）' },
@@ -70,13 +79,14 @@ const FeishuTaskSubtaskSchema = Type.Union([
     page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
+  ])
 ]);
 
 // ---------------------------------------------------------------------------
 // Params type
 // ---------------------------------------------------------------------------
 
-type FeishuTaskSubtaskParams =
+type FeishuTaskSubtaskParams = { auth_type?: 'tenant' | 'user' } & (
   | {
       action: 'create';
       task_guid: string;
@@ -84,14 +94,17 @@ type FeishuTaskSubtaskParams =
       description?: string;
       due?: { timestamp: string; is_all_day?: boolean };
       start?: { timestamp: string; is_all_day?: boolean };
-      members?: Array<{ id: string; role?: string }>;
+      members?: Array<{ id: string;
+        type?: 'user' | 'app';
+        role?: string }>;
     }
   | {
       action: 'list';
       task_guid: string;
       page_size?: number;
       page_token?: string;
-    };
+      }
+);
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -109,7 +122,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
       name: 'feishu_task_subtask',
       label: 'Feishu Task Subtasks',
       description:
-        '【以用户身份】飞书任务的子任务管理工具。当用户要求创建子任务、查询任务的子任务列表时使用。Actions: create（创建子任务）, list（列出任务的所有子任务）。',
+        '【以用户或应用身份】飞书任务的子任务管理工具。当用户要求创建子任务、查询任务的子任务列表时使用。Actions: create（创建子任务）, list（列出任务的所有子任务）。',
       parameters: FeishuTaskSubtaskSchema,
       async execute(_toolCallId, params) {
         const p = params as FeishuTaskSubtaskParams;
@@ -165,7 +178,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
               if (p.members && p.members.length > 0) {
                 data.members = p.members.map((m) => ({
                   id: m.id,
-                  type: 'user',
+                  type: m.type || 'user',
                   role: m.role || 'assignee',
                 }));
               }
@@ -186,7 +199,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -220,7 +233,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 

@@ -4,7 +4,7 @@
  *
  * feishu_task_section tool -- Manage Feishu task sections.
  *
- * P0 Actions: create, get, list, patch, tasks
+ * P0 Actions: create, get, list, patch, tasks 支持通过 auth_type 参数切换用户(user)或应用(tenant)身份。
  *
  * Uses the Feishu Task v2 API:
  *   - create: POST /open-apis/task/v2/sections
@@ -24,7 +24,15 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskSectionSchema = Type.Union([
+const FeishuTaskSectionSchema = Type.Intersect([
+  Type.Object({
+    auth_type: Type.Optional(
+      StringEnum(['tenant', 'user'], {
+        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "tenant"。',
+      }),
+    ),
+  }),
+  Type.Union([
   // CREATE
   Type.Object({
     action: Type.Literal('create'),
@@ -138,13 +146,14 @@ const FeishuTaskSectionSchema = Type.Union([
     ),
     user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
   }),
+  ])
 ]);
 
 // ---------------------------------------------------------------------------
 // Params type
 // ---------------------------------------------------------------------------
 
-type FeishuTaskSectionParams =
+type FeishuTaskSectionParams = { auth_type?: 'tenant' | 'user' } & (
   | {
       action: 'create';
       name: string;
@@ -184,7 +193,8 @@ type FeishuTaskSectionParams =
       created_from?: string;
       created_to?: string;
       user_id_type?: 'open_id' | 'union_id' | 'user_id';
-    };
+      }
+);
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -202,7 +212,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
       name: 'feishu_task_section',
       label: 'Feishu Task Section Management',
       description:
-        '【以用户身份】飞书任务自定义分组管理工具。用于创建、查询、更新自定义分组，以及列出分组内的任务。Actions: create（创建分组）, get（获取分组详情）, patch（更新分组）, list（获取分组列表）, tasks（获取分组任务列表）。',
+        '【以用户或应用身份】飞书任务自定义分组管理工具。用于创建、查询、更新自定义分组，以及列出分组内的任务。Actions: create（创建分组）, get（获取分组详情）, patch（更新分组）, list（获取分组列表）, tasks（获取分组任务列表）。',
       parameters: FeishuTaskSectionSchema,
       async execute(_toolCallId: string, params: unknown) {
         const p = params as FeishuTaskSectionParams;
@@ -237,7 +247,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -266,7 +276,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -321,7 +331,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -356,7 +366,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -405,7 +415,7 @@ export function registerFeishuTaskSectionTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 

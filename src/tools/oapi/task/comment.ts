@@ -4,7 +4,7 @@
  *
  * feishu_task_comment tool -- Manage Feishu task comments.
  *
- * P1 Actions: create, list, get
+ * P1 Actions: create, list, get 支持通过 auth_type 参数切换用户(user)或应用(tenant)身份。
  *
  * Uses the Feishu Task v2 API:
  *   - create: POST /open-apis/task/v2/tasks/:task_guid/comments
@@ -22,7 +22,15 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskCommentSchema = Type.Union([
+const FeishuTaskCommentSchema = Type.Intersect([
+  Type.Object({
+    auth_type: Type.Optional(
+      StringEnum(['tenant', 'user'], {
+        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "tenant"。',
+      }),
+    ),
+  }),
+  Type.Union([
   // CREATE (P1)
   Type.Object({
     action: Type.Literal('create'),
@@ -49,13 +57,14 @@ const FeishuTaskCommentSchema = Type.Union([
     action: Type.Literal('get'),
     comment_id: Type.String({ description: '评论 ID' }),
   }),
+  ])
 ]);
 
 // ---------------------------------------------------------------------------
 // Params type
 // ---------------------------------------------------------------------------
 
-type FeishuTaskCommentParams =
+type FeishuTaskCommentParams = { auth_type?: 'tenant' | 'user' } & (
   | {
       action: 'create';
       task_guid: string;
@@ -72,7 +81,8 @@ type FeishuTaskCommentParams =
   | {
       action: 'get';
       comment_id: string;
-    };
+      }
+);
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -90,7 +100,7 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi): void {
       name: 'feishu_task_comment',
       label: 'Feishu Task Comments',
       description:
-        '【以用户身份】飞书任务评论管理工具。当用户要求添加/查询任务评论、回复评论时使用。Actions: create（添加评论）, list（列出任务的所有评论）, get（获取单个评论详情）。',
+        '【以用户或应用身份】飞书任务评论管理工具。当用户要求添加/查询任务评论、回复评论时使用。Actions: create（添加评论）, list（列出任务的所有评论）, get（获取单个评论详情）。',
       parameters: FeishuTaskCommentSchema,
       async execute(_toolCallId, params) {
         const p = params as FeishuTaskCommentParams;
@@ -129,7 +139,7 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -165,7 +175,7 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
@@ -200,7 +210,7 @@ export function registerFeishuTaskCommentTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: 'user' },
+                { as: p.auth_type || 'tenant' },
               );
               assertLarkOk(res);
 
