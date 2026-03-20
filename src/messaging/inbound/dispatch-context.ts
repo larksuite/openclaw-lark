@@ -117,10 +117,10 @@ export function buildDispatchContext(params: {
   }
   const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
 
-  core.system.enqueueSystemEvent(`Feishu[${account.accountId}] ${location} | ${sender}${tagStr}`, {
-    sessionKey: route.sessionKey,
-    contextKey: `feishu:message:${ctx.chatId}:${ctx.messageId}`,
-  });
+  // Log the event for debugging, but do NOT enqueue it as a system event.
+  // enqueueSystemEvent injects dynamic timestamps into the prompt pipeline,
+  // which busts Anthropic system prompt caching on every turn.
+  log(`Feishu[${account.accountId}] ${location} | ${sender}${tagStr}`);
 
   return {
     ctx,
