@@ -17,25 +17,29 @@ import type { FeishuLocale } from './locale';
 // I18n text map for /feishu start, help, and error messages
 // ---------------------------------------------------------------------------
 
-const T: Record<FeishuLocale, {
-  // start
-  legacyNotDisabled: string;
-  toolsProfileWarn: (profile: string) => string;
-  startFailed: (details: string) => string;
-  startWithWarnings: (version: string, details: string) => string;
-  startOk: (version: string) => string;
-  // help
-  helpTitle: (version: string) => string;
-  helpUsage: string;
-  helpStart: string;
-  helpAuth: string;
-  helpDoctor: string;
-  helpHelp: string;
-  // errors
-  diagFailed: (msg: string) => string;
-  authFailed: (msg: string) => string;
-  execFailed: (msg: string) => string;
-}> = {
+const T: Record<
+  FeishuLocale,
+  {
+    // start
+    legacyNotDisabled: string;
+    toolsProfileWarn: (profile: string) => string;
+    startFailed: (details: string) => string;
+    startWithWarnings: (version: string, details: string) => string;
+    startOk: (version: string) => string;
+    // help
+    helpTitle: (version: string) => string;
+    helpUsage: string;
+    helpAuthAlias: string;
+    helpStart: string;
+    helpAuth: string;
+    helpDoctor: string;
+    helpHelp: string;
+    // errors
+    diagFailed: (msg: string) => string;
+    authFailed: (msg: string) => string;
+    execFailed: (msg: string) => string;
+  }
+> = {
   zh_cn: {
     legacyNotDisabled:
       '❌ 检测到旧版插件未禁用。\n' +
@@ -47,11 +51,11 @@ const T: Record<FeishuLocale, {
     toolsProfileWarn: (profile) =>
       `⚠️ 工具 Profile 当前为 \`${profile}\`，飞书工具可能无法加载。请检查配置是否正确。\n`,
     startFailed: (details) => `❌ 飞书 OpenClaw 插件启动失败：\n\n${details}`,
-    startWithWarnings: (version, details) =>
-      `⚠️ 飞书 OpenClaw 插件已启动 v${version}（存在警告）\n\n${details}`,
+    startWithWarnings: (version, details) => `⚠️ 飞书 OpenClaw 插件已启动 v${version}（存在警告）\n\n${details}`,
     startOk: (version) => `✅ 飞书 OpenClaw 插件已启动 v${version}`,
     helpTitle: (version) => `飞书OpenClaw插件 v${version}`,
     helpUsage: '用法：',
+    helpAuthAlias: '/auth - 批量授权用户权限',
     helpStart: '/feishu start - 校验插件配置',
     helpAuth: '/feishu auth - 批量授权用户权限',
     helpDoctor: '/feishu doctor - 运行诊断',
@@ -76,6 +80,7 @@ const T: Record<FeishuLocale, {
     startOk: (version) => `✅ Feishu OpenClaw plugin started v${version}`,
     helpTitle: (version) => `Feishu OpenClaw Plugin v${version}`,
     helpUsage: 'Usage:',
+    helpAuthAlias: '/auth - Batch authorize user permissions',
     helpStart: '/feishu start - Validate plugin configuration',
     helpAuth: '/feishu auth - Batch authorize user permissions',
     helpDoctor: '/feishu doctor - Run diagnostics',
@@ -93,10 +98,7 @@ const T: Record<FeishuLocale, {
 /**
  * 运行 /feishu start 校验，返回 Markdown 格式结果。
  */
-export function runFeishuStart(
-  config: OpenClawConfig,
-  locale: FeishuLocale = 'zh_cn',
-): string {
+export function runFeishuStart(config: OpenClawConfig, locale: FeishuLocale = 'zh_cn'): string {
   const t = T[locale];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cfg = config as any;
@@ -146,11 +148,25 @@ export function getFeishuHelp(locale: FeishuLocale = 'zh_cn'): string {
   return (
     `${t.helpTitle(getPluginVersion())}\n\n` +
     `${t.helpUsage}\n` +
+    `  ${t.helpAuthAlias}\n` +
     `  ${t.helpStart}\n` +
     `  ${t.helpAuth}\n` +
     `  ${t.helpDoctor}\n` +
     `  ${t.helpHelp}`
   );
+}
+
+function buildAuthHandler() {
+  return async (ctx: { config: OpenClawConfig }) => {
+    try {
+      const result = await runFeishuAuth(ctx.config);
+      return { text: result };
+    } catch (err) {
+      return {
+        text: T.zh_cn.authFailed(err instanceof Error ? err.message : String(err)),
+      };
+    }
+  };
 }
 
 /**
@@ -168,6 +184,15 @@ export function getFeishuHelpI18n(): Record<FeishuLocale, string> {
 // ---------------------------------------------------------------------------
 
 export function registerCommands(api: OpenClawPluginApi): void {
+  // /auth
+  api.registerCommand({
+    name: 'auth',
+    description: 'Batch authorize user permissions for Feishu',
+    acceptsArgs: false,
+    requireAuth: true,
+    handler: buildAuthHandler(),
+  });
+
   // /feishu_diagnose
   api.registerCommand({
     name: 'feishu_diagnose',
@@ -210,16 +235,7 @@ export function registerCommands(api: OpenClawPluginApi): void {
     description: 'Batch authorize user permissions for Feishu',
     acceptsArgs: false,
     requireAuth: true,
-    async handler(ctx) {
-      try {
-        const result = await runFeishuAuth(ctx.config);
-        return { text: result };
-      } catch (err) {
-        return {
-          text: T.zh_cn.authFailed(err instanceof Error ? err.message : String(err)),
-        };
-      }
-    },
+    handler: buildAuthHandler(),
   });
 
   // /feishu (统一入口，支持子命令)

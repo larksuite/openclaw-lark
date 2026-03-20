@@ -5,7 +5,7 @@
  * feishu_auth command — 飞书用户权限批量授权命令实现
  *
  * 直接复用 onboarding-auth.ts 的 triggerOnboarding() 函数。
- * 注意：此命令仅限应用 owner 执行（与 onboarding 逻辑一致）
+ * ownerPolicy=strict 时仅限应用 owner 执行；multiUser 时允许绑定用户执行。
  */
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
@@ -25,22 +25,26 @@ import type { FeishuLocale } from './locale';
 // I18n text map
 // ---------------------------------------------------------------------------
 
-const T: Record<FeishuLocale, {
-  noIdentity: string;
-  accountIncomplete: (accountId: string) => string;
-  missingSelfManage: (link: string) => string;
-  ownerOnly: string;
-  missingOfflineAccess: (link: string) => string;
-  noUserScopes: string;
-  allAuthorized: (count: number) => string;
-  authSent: string;
-}> = {
+const T: Record<
+  FeishuLocale,
+  {
+    noIdentity: string;
+    accountIncomplete: (accountId: string) => string;
+    missingSelfManage: (link: string) => string;
+    ownerOnly: string;
+    missingOfflineAccess: (link: string) => string;
+    noUserScopes: string;
+    allAuthorized: (count: number) => string;
+    authSent: string;
+  }
+> = {
   zh_cn: {
     noIdentity: '❌ 无法获取用户身份，请在飞书对话中使用此命令',
     accountIncomplete: (accountId) => `❌ 账号 ${accountId} 配置不完整`,
     missingSelfManage: (link) =>
       `❌ 应用缺少核心权限 application:application:self_manage，无法查询可授权 scope 列表。\n\n请管理员在飞书开放平台开通此权限后重试：[申请权限](${link})`,
-    ownerOnly: '❌ 此命令仅限应用 owner 执行\n\n如需授权，请联系应用管理员。',
+    ownerOnly:
+      '❌ 当前配置为 owner-only 模式，此命令仅限应用 owner 执行。\n\n如需多用户授权，请将 channels.feishu.ownerPolicy 设置为 multiUser。',
     missingOfflineAccess: (link) =>
       `❌ 应用缺少核心权限 offline_access，无法查询可授权 scope 列表。\n\n请管理员在飞书开放平台开通此权限后重试：[申请权限](${link})`,
     noUserScopes: '当前应用未开通任何用户级权限，无需授权。',
@@ -52,11 +56,13 @@ const T: Record<FeishuLocale, {
     accountIncomplete: (accountId) => `❌ Account ${accountId} configuration is incomplete`,
     missingSelfManage: (link) =>
       `❌ App is missing the core permission application:application:self_manage and cannot query available scopes.\n\nPlease ask an admin to grant this permission on the Feishu Open Platform: [Apply](${link})`,
-    ownerOnly: '❌ This command is restricted to the app owner.\n\nPlease contact the app admin for authorization.',
+    ownerOnly:
+      '❌ Current configuration is owner-only, so this command is restricted to the app owner.\n\nTo enable multi-user authorization, set channels.feishu.ownerPolicy to multiUser.',
     missingOfflineAccess: (link) =>
       `❌ App is missing the core permission offline_access and cannot query available scopes.\n\nPlease ask an admin to grant this permission on the Feishu Open Platform: [Apply](${link})`,
     noUserScopes: 'No user-level permissions are enabled for this app. Authorization is not needed.',
-    allAuthorized: (count) => `✅ You have authorized all available permissions (${count} total). No re-authorization needed.`,
+    allAuthorized: (count) =>
+      `✅ You have authorized all available permissions (${count} total). No re-authorization needed.`,
     authSent: '✅ Authorization request sent',
   },
 };
@@ -190,13 +196,10 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * 执行飞书用户权限批量授权命令
- * 直接调用 triggerOnboarding()，包含 owner 检查
+ * 执行飞书用户权限批量授权命令。
+ * 直接调用 triggerOnboarding()，并遵循 ownerPolicy 配置。
  */
-export async function runFeishuAuth(
-  config: OpenClawConfig,
-  locale: FeishuLocale = 'zh_cn',
-): Promise<string> {
+export async function runFeishuAuth(config: OpenClawConfig, locale: FeishuLocale = 'zh_cn'): Promise<string> {
   const result = await executeFeishuAuth(config);
   return formatAuthResult(result, locale);
 }
@@ -205,9 +208,7 @@ export async function runFeishuAuth(
  * 运行飞书授权命令，同时生成中英双语结果。
  * 副作用（triggerOnboarding）只执行一次，结果格式化为双语文本。
  */
-export async function runFeishuAuthI18n(
-  config: OpenClawConfig,
-): Promise<Record<FeishuLocale, string>> {
+export async function runFeishuAuthI18n(config: OpenClawConfig): Promise<Record<FeishuLocale, string>> {
   const result = await executeFeishuAuth(config);
   return {
     zh_cn: formatAuthResult(result, 'zh_cn'),

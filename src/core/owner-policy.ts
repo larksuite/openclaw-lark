@@ -33,6 +33,12 @@ export class OwnerAccessDeniedError extends Error {
   }
 }
 
+export type OwnerPolicyMode = 'strict' | 'multiUser';
+
+export function getOwnerPolicyMode(account: ConfiguredLarkAccount): OwnerPolicyMode {
+  return account.config.ownerPolicy === 'multiUser' ? 'multiUser' : 'strict';
+}
+
 // ---------------------------------------------------------------------------
 // Policy functions
 // ---------------------------------------------------------------------------
@@ -52,6 +58,10 @@ export async function assertOwnerAccessStrict(
   sdk: any,
   userOpenId: string,
 ): Promise<void> {
+  if (getOwnerPolicyMode(account) === 'multiUser') {
+    return;
+  }
+
   const ownerOpenId = await getAppOwnerFallback(account, sdk);
 
   if (!ownerOpenId) {

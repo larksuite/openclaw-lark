@@ -113,6 +113,7 @@ const DedupSchema = z
   .optional();
 
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
+const OwnerPolicyEnum = z.enum(['strict', 'multiUser']).optional();
 
 export const UATConfigSchema = z
   .object({
@@ -158,6 +159,7 @@ export const FeishuAccountConfigSchema = z.object({
   webhookPath: z.string().optional(),
   webhookPort: z.number().optional(),
   dmPolicy: DmPolicyEnum.optional(),
+  ownerPolicy: OwnerPolicyEnum,
   allowFrom: AllowFromSchema,
   groupPolicy: GroupPolicyEnum.optional(),
   groupAllowFrom: AllowFromSchema,
