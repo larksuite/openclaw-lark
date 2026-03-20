@@ -29,10 +29,12 @@ import { buildAuthCard } from '../tools/oauth-cards';
 const log = larkLogger('messaging/proxy-bot');
 
 const PROXY_HEADER_PREFIX = 'Bot2Bot-Proxy';
+export const PROXY_MARKER_EMOJI_TYPE = 'Loudspeaker';
 const PROXY_AUTH_SCOPES = ['offline_access', 'im:message', 'im:message.send_as_user'] as const;
 const BOT_ID_CACHE_TTL_MS = 5 * 60 * 1000;
 const CHAT_MEMBER_CACHE_TTL_MS = 60 * 1000;
 const AUTH_PROMPT_COOLDOWN_MS = 60 * 1000;
+const PROXY_MESSAGE_META_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const INLINE_MENTION_RE = /<at\s+(?:user_id|open_id|id)\s*=\s*"?([^">\s]+)"?\s*>/giu;
 
 interface CachedOpenIds {
@@ -45,6 +47,13 @@ const humanMembersCache = new Map<string, CachedOpenIds>();
 const authPromptCooldowns = new Map<string, number>();
 const pendingOwnerAuthFlows = new Set<string>();
 const proxyReplyContextStore = new AsyncLocalStorage<{ mentions: MentionInfo[] }>();
+const proxyMessageMetaCache = new Map<
+  string,
+  {
+    expireAt: number;
+    meta: ProxyBotMetadata;
+  }
+>();
 
 export interface ProxyBotMetadata {
   openId: string;
@@ -118,7 +127,7 @@ function truncateForProxy(text: string, maxLength = 4000): string {
 export function buildProxyBotHeader(meta: ProxyBotMetadata): string {
   const trimmedName = meta.name?.trim();
   const namePart = trimmedName ? ` name=${jsonStringValue(trimmedName)}` : '';
-  return `—— ${PROXY_HEADER_PREFIX}: from_bot=${meta.openId}${namePart}`;
+  return `📢 ${PROXY_HEADER_PREFIX}: from_bot=${meta.openId}${namePart}`;
 }
 
 export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata; text: string } {
@@ -129,22 +138,28 @@ export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata
     { index: 0, line: lines[0] ?? '' },
     { index: lines.length - 1, line: lines[lines.length - 1] ?? '' },
   ];
-  const headerRe =
-    /^(?:\[(?:OpenClaw-Proxy|Bot2Bot-Proxy):\s+from_bot=([^\s\]]+)(?:\s+name=("(?:\\.|[^"\\])*"))?\]|——\s+Bot2Bot-Proxy:\s+from_bot=([^\s]+)(?:\s+name=("(?:\\.|[^"\\])*"))?)$/u;
+  const headerPatterns: RegExp[] = [
+    /^\[(?:OpenClaw-Proxy|Bot2Bot-Proxy):\s+from_bot=([^\s\]]+)(?:\s+name=("(?:\\.|[^"\\])*"))?\]$/u,
+    /^——\s+Bot2Bot-Proxy:\s+from_bot=([^\s]+)(?:\s+name=("(?:\\.|[^"\\])*"))?$/u,
+    /^📢\s*Bot2Bot-Proxy:\s+from_bot=([^\s]+)(?:\s+name=("(?:\\.|[^"\\])*"))?$/u,
+  ];
 
   let matchedIndex = -1;
   let match: RegExpMatchArray | null = null;
   for (const candidate of candidates) {
-    match = candidate.line.match(headerRe);
-    if (match) {
-      matchedIndex = candidate.index;
-      break;
+    for (const headerRe of headerPatterns) {
+      match = candidate.line.match(headerRe);
+      if (match) {
+        matchedIndex = candidate.index;
+        break;
+      }
     }
+    if (match) break;
   }
   if (!match || matchedIndex < 0) return { text };
 
   let name: string | undefined;
-  const rawName = match[2] ?? match[4];
+  const rawName = match[2];
   if (rawName) {
     try {
       name = JSON.parse(rawName) as string;
@@ -155,7 +170,7 @@ export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata
 
   return {
     metadata: {
-      openId: match[1] ?? match[3],
+      openId: match[1],
       name,
     },
     text: lines
@@ -165,8 +180,64 @@ export function parseProxyBotHeader(text: string): { metadata?: ProxyBotMetadata
   };
 }
 
-function appendProxyHeader(text: string, meta: ProxyBotMetadata): string {
-  return `${text}\n${buildProxyBotHeader(meta)}`;
+export function rememberProxyMessageMetadata(messageId: string, meta: ProxyBotMetadata): void {
+  const normalizedMessageId = normalizeMessageId(messageId);
+  if (!normalizedMessageId || !meta.openId) return;
+
+  proxyMessageMetaCache.set(normalizedMessageId, {
+    expireAt: Date.now() + PROXY_MESSAGE_META_CACHE_TTL_MS,
+    meta,
+  });
+}
+
+export function getRememberedProxyMessageMetadata(messageId: string): ProxyBotMetadata | undefined {
+  const normalizedMessageId = normalizeMessageId(messageId);
+  if (!normalizedMessageId) return undefined;
+
+  const cached = proxyMessageMetaCache.get(normalizedMessageId);
+  if (!cached) return undefined;
+  if (cached.expireAt <= Date.now()) {
+    proxyMessageMetaCache.delete(normalizedMessageId);
+    return undefined;
+  }
+  return cached.meta;
+}
+
+export async function resolveProxyMetadataFromMarkerReaction(params: {
+  cfg: ClawdbotConfig;
+  messageId: string;
+  accountId?: string;
+}): Promise<ProxyBotMetadata | undefined> {
+  const normalizedMessageId = normalizeMessageId(params.messageId);
+  if (!normalizedMessageId) return undefined;
+
+  const cached = getRememberedProxyMessageMetadata(normalizedMessageId);
+  if (cached) return cached;
+
+  try {
+    const sdk = LarkClient.fromCfg(params.cfg, params.accountId).sdk;
+    const response = await sdk.im.messageReaction.list({
+      path: { message_id: normalizedMessageId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      params: { page_size: 50, reaction_type: PROXY_MARKER_EMOJI_TYPE } as any,
+    });
+
+    const items = response?.data?.items ?? [];
+    for (const item of items) {
+      if (item?.reaction_type?.emoji_type !== PROXY_MARKER_EMOJI_TYPE) continue;
+      const operatorType = item?.operator?.operator_type;
+      const operatorId = item?.operator?.operator_id?.trim();
+      if (operatorType !== 'app' || !operatorId) continue;
+
+      const meta: ProxyBotMetadata = { openId: operatorId, name: operatorId };
+      rememberProxyMessageMetadata(normalizedMessageId, meta);
+      return meta;
+    }
+  } catch {
+    // Ignore reaction lookup errors (missing scope/network/etc.).
+  }
+
+  return undefined;
 }
 
 function extractInlineMentionOpenIds(text: string): string[] {
@@ -671,16 +742,10 @@ export async function sendPreparedProxyPostMessage(params: {
 }): Promise<FeishuSendResult> {
   const { prepared } = params;
   const mentions = resolveEffectiveMentions(params.mentions);
-  const proxiedText = appendProxyHeader(params.text, prepared.botMeta);
-  const proxiedI18nTexts = params.i18nTexts
-    ? Object.fromEntries(
-        Object.entries(params.i18nTexts).map(([locale, localeText]) => [locale, appendProxyHeader(localeText, prepared.botMeta)]),
-      )
-    : undefined;
   const contentPayload = buildPostContentPayload({
-    text: proxiedText,
+    text: params.text,
     mentions,
-    i18nTexts: proxiedI18nTexts,
+    i18nTexts: params.i18nTexts,
   });
 
   const normalizedReplyToMessageId = normalizeMessageId(params.replyToMessageId);
@@ -692,7 +757,7 @@ export async function sendPreparedProxyPostMessage(params: {
   const sdk = LarkClient.fromAccount(prepared.account).sdk;
 
   try {
-    return await callWithUAT(
+    const result = await callWithUAT(
       {
         userOpenId: prepared.ownerOpenId,
         appId: prepared.account.appId,
@@ -753,6 +818,131 @@ export async function sendPreparedProxyPostMessage(params: {
         };
       },
     );
+    rememberProxyMessageMetadata(result.messageId, prepared.botMeta);
+    await addProxyMarkerReaction(prepared.account, result.messageId);
+    return result;
+  } catch (err) {
+    const errorCode = normalizeProxyError(err);
+    if (
+      err instanceof NeedAuthorizationError ||
+      errorCode === LARK_ERROR.USER_SCOPE_INSUFFICIENT ||
+      errorCode === LARK_ERROR.TOKEN_INVALID ||
+      errorCode === LARK_ERROR.TOKEN_EXPIRED
+    ) {
+      await promptOwnerForProxyAuthorization({
+        cfg: params.cfg,
+        account: prepared.account,
+        ownerOpenId: prepared.ownerOpenId,
+      });
+      throw new ProxySendPausedError(prepared.ownerOpenId);
+    }
+    throw err;
+  }
+}
+
+async function addProxyMarkerReaction(account: ConfiguredLarkAccount, messageId: string): Promise<void> {
+  const normalizedMessageId = normalizeMessageId(messageId);
+  if (!normalizedMessageId) return;
+
+  try {
+    const sdk = LarkClient.fromAccount(account).sdk;
+    await sdk.im.v1.messageReaction.create({
+      path: { message_id: normalizedMessageId },
+      data: { reaction_type: { emoji_type: PROXY_MARKER_EMOJI_TYPE } },
+    });
+  } catch (err) {
+    log.debug(`failed to add proxy marker reaction: ${String(err)}`, {
+      accountId: account.accountId,
+      messageId: normalizedMessageId,
+      emoji: PROXY_MARKER_EMOJI_TYPE,
+    });
+  }
+}
+
+export async function sendPreparedProxyNativeMessage(params: {
+  prepared: PreparedProxyPostSend;
+  cfg: ClawdbotConfig;
+  to: string;
+  msgType: 'interactive' | 'image' | 'file' | 'audio' | 'media';
+  content: string;
+  replyToMessageId?: string;
+  replyInThread?: boolean;
+}): Promise<FeishuSendResult> {
+  const { prepared } = params;
+  const normalizedReplyToMessageId = normalizeMessageId(params.replyToMessageId);
+  const normalizedTarget = normalizeFeishuTarget(params.to);
+  if (!normalizedTarget) {
+    throw new Error(`[proxy-send] Invalid target: "${params.to}"`);
+  }
+
+  const sdk = LarkClient.fromAccount(prepared.account).sdk;
+
+  try {
+    const result = await callWithUAT(
+      {
+        userOpenId: prepared.ownerOpenId,
+        appId: prepared.account.appId,
+        appSecret: prepared.account.appSecret,
+        domain: prepared.account.brand,
+      },
+      async (accessToken) => {
+        const opts = Lark.withUserAccessToken(accessToken);
+        if (normalizedReplyToMessageId) {
+          const response = await sdk.im.v1.message.reply(
+            {
+              path: { message_id: normalizedReplyToMessageId },
+              data: {
+                content: params.content,
+                msg_type: params.msgType,
+                reply_in_thread: params.replyInThread,
+              },
+            },
+            opts,
+          );
+
+          if (response?.code && response.code !== 0) {
+            const error = new Error(response.msg || `Lark API error ${response.code}`);
+            (error as { code?: number }).code = response.code;
+            throw error;
+          }
+
+          return {
+            messageId: response?.data?.message_id ?? '',
+            chatId: response?.data?.chat_id ?? '',
+          };
+        }
+
+        const response = await sdk.im.v1.message.create(
+          {
+            params: {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              receive_id_type: resolveReceiveIdType(normalizedTarget) as any,
+            },
+            data: {
+              receive_id: normalizedTarget,
+              msg_type: params.msgType,
+              content: params.content,
+            },
+          },
+          opts,
+        );
+
+        if (response?.code && response.code !== 0) {
+          const error = new Error(response.msg || `Lark API error ${response.code}`);
+          (error as { code?: number }).code = response.code;
+          throw error;
+        }
+
+        return {
+          messageId: response?.data?.message_id ?? '',
+          chatId: response?.data?.chat_id ?? '',
+        };
+      },
+    );
+
+    rememberProxyMessageMetadata(result.messageId, prepared.botMeta);
+    await addProxyMarkerReaction(prepared.account, result.messageId);
+    return result;
   } catch (err) {
     const errorCode = normalizeProxyError(err);
     if (

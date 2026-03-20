@@ -16,12 +16,11 @@ import { buildMentionedCardContent } from '../inbound/mention';
 import {
   buildMentionTargetsFromOpenIds,
   buildPostContentPayload,
-  buildProxyCardDescriptorText,
   collectCardMentionOpenIds,
   maybeSendProxyPostMessage,
   prepareProxyPostMessage,
   resolveEffectiveMentions,
-  sendPreparedProxyPostMessage,
+  sendPreparedProxyNativeMessage,
 } from '../proxy-bot';
 
 // ---------------------------------------------------------------------------
@@ -174,7 +173,6 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
 export async function sendCardFeishu(params: SendFeishuCardParams): Promise<FeishuSendResult> {
   const { cfg, to, card, replyToMessageId, mentions, accountId, replyInThread } = params;
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const contentPayload = JSON.stringify(card);
   const effectiveMentions = resolveEffectiveMentions(mentions);
   const proxyMentions = buildMentionTargetsFromOpenIds(collectCardMentionOpenIds(card, effectiveMentions), effectiveMentions);
@@ -185,7 +183,19 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
 
-  let result: FeishuSendResult;
+  if (preparedProxy) {
+    return sendPreparedProxyNativeMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      msgType: 'interactive',
+      content: contentPayload,
+      replyToMessageId,
+      replyInThread,
+    });
+  }
+
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
   if (replyToMessageId) {
     // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
@@ -206,49 +216,35 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
         }),
     });
 
-    result = {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
-  } else {
-    const target = normalizeFeishuTarget(to);
-    if (!target) {
-      throw new Error(`[feishu-send] Invalid target: "${to}"`);
-    }
-
-    const receiveIdType = resolveReceiveIdType(target);
-
-    const response = await client.im.message.create({
-      params: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        receive_id_type: receiveIdType as any,
-      },
-      data: {
-        receive_id: target,
-        msg_type: 'interactive',
-        content: contentPayload,
-      },
-    });
-
-    result = {
+    return {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
     };
   }
 
-  if (preparedProxy) {
-    await sendPreparedProxyPostMessage({
-      prepared: preparedProxy,
-      cfg,
-      to,
-      text: buildProxyCardDescriptorText({ nativeMessageId: result.messageId, card }),
-      replyToMessageId,
-      mentions: proxyMentions,
-      replyInThread,
-    });
+  const target = normalizeFeishuTarget(to);
+  if (!target) {
+    throw new Error(`[feishu-send] Invalid target: "${to}"`);
   }
 
-  return result;
+  const receiveIdType = resolveReceiveIdType(target);
+
+  const response = await client.im.message.create({
+    params: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      receive_id_type: receiveIdType as any,
+    },
+    data: {
+      receive_id: target,
+      msg_type: 'interactive',
+      content: contentPayload,
+    },
+  });
+
+  return {
+    messageId: response?.data?.message_id ?? '',
+    chatId: response?.data?.chat_id ?? '',
+  };
 }
 
 // ---------------------------------------------------------------------------

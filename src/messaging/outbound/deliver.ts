@@ -18,12 +18,11 @@ import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
 import {
   buildMentionTargetsFromOpenIds,
-  buildProxyCardDescriptorText,
   collectCardMentionOpenIds,
   maybeSendProxyPostMessage,
   prepareProxyPostMessage,
   resolveEffectiveMentions,
-  sendPreparedProxyPostMessage,
+  sendPreparedProxyNativeMessage,
 } from '../proxy-bot';
 
 const log = larkLogger('outbound/deliver');
@@ -353,21 +352,20 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
     accountId,
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
+  if (preparedProxy) {
+    return sendPreparedProxyNativeMessage({
+      prepared: preparedProxy,
+      cfg,
+      to,
+      msgType: 'interactive',
+      content,
+      replyToMessageId,
+      replyInThread,
+    });
+  }
 
   try {
-    const result = await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
-    if (preparedProxy) {
-      await sendPreparedProxyPostMessage({
-        prepared: preparedProxy,
-        cfg,
-        to,
-        text: buildProxyCardDescriptorText({ nativeMessageId: result.messageId, card }),
-        replyToMessageId,
-        mentions: proxyMentions,
-        replyInThread,
-      });
-    }
-    return result;
+    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);

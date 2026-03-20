@@ -56,6 +56,40 @@
 > npm install -g openclaw
 > ```
 
+### 魔改版安装 / 更新命令
+
+```bash
+# 全局安装命令行（首次）
+npm i -g @realguan/openclaw-lark
+
+# 安装插件（默认从 npm 安装）
+openclaw-lark-realguan install
+
+# 更新插件
+openclaw-lark-realguan update
+
+# 查看状态
+openclaw-lark-realguan status
+```
+
+说明：
+- `install` / `update` 会自动禁用官方 `feishu` 与 `openclaw-lark` 插件，并启用 `openclaw-lark-realguan`。
+- 如需本地源码联调，可使用：`openclaw-lark-realguan install . --link`（在仓库目录执行）。
+
+### 本地命令发布 npm（不依赖 GitHub Action）
+
+```bash
+# 验证
+make check
+
+# 发布到 npm（默认 latest tag）
+make publish
+```
+
+可选参数：
+- `NPM_TAG=next make publish`
+- `NPM_REGISTRY=https://registry.npmjs.org/ make publish`
+
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 

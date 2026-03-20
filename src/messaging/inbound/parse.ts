@@ -21,7 +21,7 @@ import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { fetchCardContent, createFetchSubMessages, createParseResolveNames } from './parse-io';
-import { parseProxyBotHeader } from '../proxy-bot';
+import { parseProxyBotHeader, resolveProxyMetadataFromMarkerReaction } from '../proxy-bot';
 
 const log = larkLogger('inbound/parse');
 
@@ -108,6 +108,14 @@ export async function parseMessageEvent(
   };
   const { content, resources } = await convertMessageContent(effectiveContent, event.message.message_type, convertCtx);
   const proxyParse = parseProxyBotHeader(content);
+  let proxyMeta = proxyParse.metadata;
+  if (!proxyMeta && expandCtx && event.message.chat_type === 'group' && mentionList.length > 0) {
+    proxyMeta = await resolveProxyMetadataFromMarkerReaction({
+      cfg: expandCtx.cfg,
+      messageId: event.message.message_id,
+      accountId: acctId,
+    });
+  }
 
   const createTimeStr = event.message.create_time;
   const createTime = createTimeStr ? parseInt(createTimeStr, 10) : undefined;
@@ -124,8 +132,8 @@ export async function parseMessageEvent(
     contentType: event.message.message_type,
     resources,
     mentions: mentionList,
-    proxyFromBotOpenId: proxyParse.metadata?.openId,
-    proxyFromBotName: proxyParse.metadata?.name,
+    proxyFromBotOpenId: proxyMeta?.openId,
+    proxyFromBotName: proxyMeta?.name,
     createTime: Number.isNaN(createTime) ? undefined : createTime,
     rawMessage:
       effectiveContent !== event.message.content ? { ...event.message, content: effectiveContent } : event.message,

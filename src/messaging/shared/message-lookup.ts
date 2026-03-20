@@ -13,7 +13,7 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { convertMessageContent, buildConvertContextFromItem } from '../converters/content-converter';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
-import { parseProxyBotHeader } from '../proxy-bot';
+import { parseProxyBotHeader, resolveProxyMetadataFromMarkerReaction } from '../proxy-bot';
 
 const log = larkLogger('shared/message-lookup');
 import { getUserNameCache, createBatchResolveNames } from '../inbound/user-name-cache';
@@ -164,6 +164,20 @@ async function parseMessageItem(
   };
   const { content } = await convertMessageContent(rawContent, msgType, ctx);
   const proxyParse = parseProxyBotHeader(content);
+  let proxyMeta = proxyParse.metadata;
+  if (
+    !proxyMeta &&
+    expandCtx &&
+    typeof msg.chat_id === 'string' &&
+    msg.chat_id.startsWith('oc_') &&
+    msg.sender?.sender_type === 'user'
+  ) {
+    proxyMeta = await resolveProxyMetadataFromMarkerReaction({
+      cfg: expandCtx.cfg,
+      messageId,
+      accountId: acctId,
+    });
+  }
 
   const senderId: string | undefined = msg.sender?.id ?? undefined;
   const senderType: string | undefined = msg.sender?.sender_type ?? undefined;
@@ -177,8 +191,8 @@ async function parseMessageItem(
     senderName,
     senderType,
     content: proxyParse.text,
-    proxyFromBotOpenId: proxyParse.metadata?.openId,
-    proxyFromBotName: proxyParse.metadata?.name,
+    proxyFromBotOpenId: proxyMeta?.openId,
+    proxyFromBotName: proxyMeta?.name,
     contentType: msgType,
     createTime: msg.create_time ? parseInt(String(msg.create_time), 10) : undefined,
     threadId: msg.thread_id || undefined,

@@ -19,8 +19,7 @@ import { json, createToolContext, assertLarkOk, handleInvokeErrorWithAutoAuth, r
 import type { ToolClient } from '../../../core/tool-client';
 import type { ProxyBotMetadata } from '../../../messaging/proxy-bot';
 import {
-  buildProxyBotHeader,
-  parseProxyBotHeader,
+  rememberProxyMessageMetadata,
   resolveCurrentBotMetadata,
   shouldProxyBotMention,
 } from '../../../messaging/proxy-bot';
@@ -29,6 +28,8 @@ import { getMessageFeishu } from '../../../messaging/shared/message-lookup';
 // ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
+
+const PROXY_MARKER_EMOJI_TYPE = 'Loudspeaker';
 
 const FeishuImMessageSchema = Type.Union([
   // SEND
@@ -173,17 +174,50 @@ function buildImplicitPostMentionRow(openId: string, name?: string): Array<Recor
   ];
 }
 
-function contentHasProxyHeader(value: unknown): boolean {
-  if (typeof value === 'string') return Boolean(parseProxyBotHeader(value).metadata);
-  if (Array.isArray(value)) return value.some((item) => contentHasProxyHeader(item));
-  if (!value || typeof value !== 'object') return false;
-  return Object.values(value as Record<string, unknown>).some((nested) => contentHasProxyHeader(nested));
+function normalizeInteractiveAtMentions(text: string): string {
+  let normalized = text.replace(
+    /<at\s+(?:id|open_id|user_id)\s*=\s*"?([^">\s]+)"?\s*>[\s\S]*?<\/at>/giu,
+    '<at id="$1"></at>',
+  );
+  normalized = normalized.replace(/<at\s+(?:id|open_id|user_id)\s*=\s*"?([^">\s]+)"?\s*>/giu, '<at id="$1"></at>');
+  return normalized;
+}
+
+function isInteractiveTextCarrier(parent: Record<string, unknown> | undefined, key: string | undefined): boolean {
+  if (!key) return false;
+  if (key === 'content') {
+    const tag = typeof parent?.tag === 'string' ? parent.tag : '';
+    if (!tag) return true;
+    return ['lark_md', 'markdown', 'markdown_v1', 'plain_text', 'text', 'div', 'note'].includes(tag);
+  }
+  return key === 'text';
+}
+
+function resolveInteractiveTransformTarget(
+  parsed: Record<string, unknown>,
+): unknown {
+  if (typeof parsed.card === 'string') {
+    try {
+      return JSON.parse(parsed.card) as unknown;
+    } catch {
+      // fall through to root content
+    }
+  }
+
+  if (typeof parsed.json_card === 'string') {
+    try {
+      return JSON.parse(parsed.json_card) as unknown;
+    } catch {
+      // fall through to root content
+    }
+  }
+
+  return parsed;
 }
 
 function transformToolMessageContent(params: {
   msgType: string;
   content: string;
-  botMeta: ProxyBotMetadata;
   implicitMentionOpenId?: string;
   implicitMentionName?: string;
 }): string {
@@ -199,15 +233,11 @@ function transformToolMessageContent(params: {
     if (params.implicitMentionOpenId) {
       text = prependImplicitTextMention(text, params.implicitMentionOpenId);
     }
-    if (!parseProxyBotHeader(text).metadata) {
-      text = `${text}\n${buildProxyBotHeader(params.botMeta)}`;
-    }
     parsed.text = text;
     return JSON.stringify(parsed);
   }
 
   if (params.msgType === 'post') {
-    const headerText = buildProxyBotHeader(params.botMeta);
     for (const localeValue of Object.values(parsed)) {
       if (!localeValue || typeof localeValue !== 'object') continue;
       const localeRecord = localeValue as Record<string, unknown>;
@@ -222,11 +252,77 @@ function transformToolMessageContent(params: {
           contentRows.unshift(buildImplicitPostMentionRow(params.implicitMentionOpenId, params.implicitMentionName));
         }
       }
+    }
+    return JSON.stringify(parsed);
+  }
 
-      if (!contentHasProxyHeader(contentRows)) {
-        contentRows.push([{ tag: 'text', text: headerText }]);
+  if (params.msgType === 'interactive') {
+    const target = resolveInteractiveTransformTarget(parsed);
+    const hasImplicitMention = Boolean(
+      params.implicitMentionOpenId && extractInlineMentionOpenIds(JSON.stringify(target)).includes(params.implicitMentionOpenId),
+    );
+
+    let injectImplicitMention = Boolean(params.implicitMentionOpenId && !hasImplicitMention);
+    let changed = false;
+
+    const visit = (
+      value: unknown,
+      parent?: Record<string, unknown>,
+      key?: string,
+    ): unknown => {
+      if (typeof value === 'string') {
+        let text = normalizeInteractiveAtMentions(value);
+        const textCarrier = isInteractiveTextCarrier(parent, key);
+
+        if (textCarrier && injectImplicitMention && params.implicitMentionOpenId) {
+          text = `<at id="${params.implicitMentionOpenId}"></at> ${text}`;
+          injectImplicitMention = false;
+        }
+
+        if (text !== value) changed = true;
+        return text;
+      }
+
+      if (Array.isArray(value)) {
+        let arrayChanged = false;
+        const next = value.map((item) => {
+          const visited = visit(item);
+          if (visited !== item) arrayChanged = true;
+          return visited;
+        });
+        if (arrayChanged) changed = true;
+        return next;
+      }
+
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        let recordChanged = false;
+        const nextEntries = Object.entries(record).map(([nestedKey, nestedValue]) => {
+          const visited = visit(nestedValue, record, nestedKey);
+          if (visited !== nestedValue) recordChanged = true;
+          return [nestedKey, visited] as const;
+        });
+
+        if (!recordChanged) return value;
+        changed = true;
+        return Object.fromEntries(nextEntries);
+      }
+
+      return value;
+    };
+
+    const nextTarget = visit(target);
+    if (nextTarget !== target) {
+      if (typeof parsed.card === 'string') {
+        parsed.card = JSON.stringify(nextTarget);
+      } else if (typeof parsed.json_card === 'string') {
+        parsed.json_card = JSON.stringify(nextTarget);
+      } else {
+        Object.assign(parsed, nextTarget as Record<string, unknown>);
       }
     }
+
+    if (!changed) return params.content;
     return JSON.stringify(parsed);
   }
 
@@ -238,10 +334,10 @@ async function maybeApplyBotProxyProtocol(params: {
   client: ToolClient;
   log: { info: (message: string) => void };
   payload: FeishuImMessageParams;
-}): Promise<FeishuImMessageParams> {
+}): Promise<{ payload: FeishuImMessageParams; proxied: boolean; botMeta?: ProxyBotMetadata }> {
   const { cfg, client, log, payload } = params;
   const botMeta = await resolveCurrentBotMetadata(client.account);
-  if (!botMeta?.openId) return payload;
+  if (!botMeta?.openId) return { payload, proxied: false, botMeta: undefined };
 
   let targetChatId: string | undefined;
   let implicitMentionOpenId: string | undefined;
@@ -270,7 +366,7 @@ async function maybeApplyBotProxyProtocol(params: {
     mentionOpenIds = [...mentionOpenIds, implicitMentionOpenId];
   }
 
-  if (!targetChatId || mentionOpenIds.length === 0) return payload;
+  if (!targetChatId || mentionOpenIds.length === 0) return { payload, proxied: false, botMeta: undefined };
 
   const shouldAppendHeader = await shouldProxyBotMention({
     cfg,
@@ -278,22 +374,44 @@ async function maybeApplyBotProxyProtocol(params: {
     accountId: client.account.accountId,
     mentionOpenIds,
   });
-  if (!shouldAppendHeader) return payload;
+  if (!shouldAppendHeader) return { payload, proxied: false, botMeta: undefined };
 
   const content = transformToolMessageContent({
     msgType: payload.msg_type,
     content: payload.content,
-    botMeta,
     implicitMentionOpenId,
     implicitMentionName,
   });
-  if (content === payload.content) return payload;
 
-  log.info(
-    `proxy protocol injected: action=${payload.action}, msg_type=${payload.msg_type}, accountId=${client.account.accountId}, targetChatId=${targetChatId}`,
-  );
+  log.info(`proxy send enabled: action=${payload.action}, msg_type=${payload.msg_type}, accountId=${client.account.accountId}, targetChatId=${targetChatId}`);
 
-  return { ...payload, content };
+  if (content === payload.content) {
+    return { payload, proxied: true, botMeta };
+  }
+
+  return { payload: { ...payload, content }, proxied: true, botMeta };
+}
+
+async function addProxyMarkerReaction(params: {
+  client: ToolClient;
+  log: { debug?: (message: string) => void };
+  messageId?: string;
+  botMeta?: ProxyBotMetadata;
+}): Promise<void> {
+  const messageId = params.messageId?.trim();
+  if (!messageId) return;
+  if (params.botMeta?.openId) {
+    rememberProxyMessageMetadata(messageId, params.botMeta);
+  }
+
+  try {
+    await params.client.sdk.im.v1.messageReaction.create({
+      path: { message_id: messageId },
+      data: { reaction_type: { emoji_type: PROXY_MARKER_EMOJI_TYPE } },
+    });
+  } catch (err) {
+    params.log.debug?.(`failed to add proxy marker reaction: ${String(err)}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,14 +441,19 @@ export function registerFeishuImUserMessageTool(api: OpenClawPluginApi): void {
       parameters: FeishuImMessageSchema,
       async execute(_toolCallId: string, params: unknown) {
         let p = params as FeishuImMessageParams;
+        let proxied = false;
+        let proxyBotMeta: ProxyBotMetadata | undefined;
         try {
           const client = toolClient();
-          p = await maybeApplyBotProxyProtocol({
+          const proxyResult = await maybeApplyBotProxyProtocol({
             cfg,
             client,
             log,
             payload: p,
           });
+          p = proxyResult.payload;
+          proxied = proxyResult.proxied;
+          proxyBotMeta = proxyResult.botMeta;
 
           if (p.action === 'send') {
             const sendPayload = p;
@@ -365,6 +488,14 @@ export function registerFeishuImUserMessageTool(api: OpenClawPluginApi): void {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const data = res.data as any;
             log.info(`send: message sent, message_id=${data?.message_id}`);
+            if (proxied) {
+              await addProxyMarkerReaction({
+                client,
+                log,
+                messageId: data?.message_id,
+                botMeta: proxyBotMeta,
+              });
+            }
 
             return json({
               message_id: data?.message_id,
@@ -406,6 +537,14 @@ export function registerFeishuImUserMessageTool(api: OpenClawPluginApi): void {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const data = res.data as any;
             log.info(`reply: message sent, message_id=${data?.message_id}`);
+            if (proxied) {
+              await addProxyMarkerReaction({
+                client,
+                log,
+                messageId: data?.message_id,
+                botMeta: proxyBotMeta,
+              });
+            }
 
             return json({
               message_id: data?.message_id,

@@ -31,10 +31,9 @@ import {
 import { larkLogger } from '../../core/lark-logger';
 import {
   buildMentionTargetsFromOpenIds,
-  buildProxyMediaDescriptorText,
   prepareProxyPostMessage,
   resolveEffectiveMentions,
-  sendPreparedProxyPostMessage,
+  sendPreparedProxyNativeMessage,
 } from '../proxy-bot';
 
 const log = larkLogger('outbound/media');
@@ -451,27 +450,21 @@ export async function sendImageLark(params: {
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ image_key: imageKey });
-  const result = await sendMediaMessage({ client, to, content, msgType: 'image', replyToMessageId, replyInThread });
-
   if (preparedProxy) {
-    await sendPreparedProxyPostMessage({
+    return sendPreparedProxyNativeMessage({
       prepared: preparedProxy,
       cfg,
       to,
-      text: buildProxyMediaDescriptorText({
-        nativeMessageId: result.messageId,
-        mediaType: 'image',
-        imageKey,
-      }),
+      msgType: 'image',
+      content,
       replyToMessageId,
-      mentions: proxyMentions,
       replyInThread,
     });
   }
 
-  return result;
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  return sendMediaMessage({ client, to, content, msgType: 'image', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +492,7 @@ export async function sendFileLark(params: {
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, fileName, replyToMessageId, mentions, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendFileLark: target=${to}, fileKey=${fileKey}`);
 
   const proxyMentions = buildMentionTargetsFromOpenIds(
@@ -513,28 +506,21 @@ export async function sendFileLark(params: {
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  const result = await sendMediaMessage({ client, to, content, msgType: 'file', replyToMessageId, replyInThread });
-
   if (preparedProxy) {
-    await sendPreparedProxyPostMessage({
+    return sendPreparedProxyNativeMessage({
       prepared: preparedProxy,
       cfg,
       to,
-      text: buildProxyMediaDescriptorText({
-        nativeMessageId: result.messageId,
-        mediaType: 'file',
-        fileKey,
-        fileName,
-      }),
+      msgType: 'file',
+      content,
       replyToMessageId,
-      mentions: proxyMentions,
       replyInThread,
     });
   }
 
-  return result;
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  return sendMediaMessage({ client, to, content, msgType: 'file', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -566,7 +552,7 @@ export async function sendVideoLark(params: {
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, fileName, duration, replyToMessageId, mentions, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendVideoLark: target=${to}, fileKey=${fileKey}`);
 
   const proxyMentions = buildMentionTargetsFromOpenIds(
@@ -580,29 +566,21 @@ export async function sendVideoLark(params: {
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  const result = await sendMediaMessage({ client, to, content, msgType: 'media', replyToMessageId, replyInThread });
-
   if (preparedProxy) {
-    await sendPreparedProxyPostMessage({
+    return sendPreparedProxyNativeMessage({
       prepared: preparedProxy,
       cfg,
       to,
-      text: buildProxyMediaDescriptorText({
-        nativeMessageId: result.messageId,
-        mediaType: 'video',
-        fileKey,
-        fileName,
-        duration,
-      }),
+      msgType: 'media',
+      content,
       replyToMessageId,
-      mentions: proxyMentions,
       replyInThread,
     });
   }
 
-  return result;
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  return sendMediaMessage({ client, to, content, msgType: 'media', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -634,7 +612,7 @@ export async function sendAudioLark(params: {
   replyInThread?: boolean;
   accountId?: string;
 }): Promise<SendMediaResult> {
-  const { cfg, to, fileKey, fileName, duration, replyToMessageId, mentions, replyInThread, accountId } = params;
+  const { cfg, to, fileKey, replyToMessageId, mentions, replyInThread, accountId } = params;
   log.info(`sendAudioLark: target=${to}, fileKey=${fileKey}`);
 
   const proxyMentions = buildMentionTargetsFromOpenIds(
@@ -648,29 +626,21 @@ export async function sendAudioLark(params: {
     mentionOpenIds: proxyMentions.map((mention) => mention.openId),
   });
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  const result = await sendMediaMessage({ client, to, content, msgType: 'audio', replyToMessageId, replyInThread });
-
   if (preparedProxy) {
-    await sendPreparedProxyPostMessage({
+    return sendPreparedProxyNativeMessage({
       prepared: preparedProxy,
       cfg,
       to,
-      text: buildProxyMediaDescriptorText({
-        nativeMessageId: result.messageId,
-        mediaType: 'audio',
-        fileKey,
-        fileName,
-        duration,
-      }),
+      msgType: 'audio',
+      content,
       replyToMessageId,
-      mentions: proxyMentions,
       replyInThread,
     });
   }
 
-  return result;
+  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  return sendMediaMessage({ client, to, content, msgType: 'audio', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
