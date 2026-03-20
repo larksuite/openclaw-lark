@@ -47,6 +47,7 @@ import { OwnerAccessDeniedError } from '../core/owner-policy';
 import { enqueueFeishuChatTask } from '../channel/chat-queue';
 import { handleFeishuMessage } from '../messaging/inbound/handler';
 import { withTicket } from '../core/lark-ticket';
+import { resolveResumeText } from './auth-resume';
 
 // ---------------------------------------------------------------------------
 // Debounce + scope merge — 防抖缓冲区（两阶段）
@@ -870,7 +871,7 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
             chat_id: flow.ticket.chatId,
             chat_type: flow.ticket.chatType ?? ('p2p' as const),
             message_type: 'text',
-            content: JSON.stringify({ text: '应用权限已开通，请继续执行之前的操作。' }),
+            content: JSON.stringify({ text: resolveResumeText(flow.ticket, '应用权限已开通，请直接恢复刚才被打断的工具调用。') }),
             thread_id: flow.ticket.threadId,
           },
         };
@@ -892,6 +893,9 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
                 senderOpenId: flow.ticket.senderOpenId!,
                 chatType: flow.ticket.chatType,
                 threadId: flow.ticket.threadId,
+                agentId: flow.ticket.agentId,
+                sessionKey: flow.ticket.sessionKey,
+                resumeText: flow.ticket.resumeText,
               },
               () =>
                 handleFeishuMessage({

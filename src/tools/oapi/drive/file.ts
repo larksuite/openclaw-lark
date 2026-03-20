@@ -30,6 +30,12 @@ import {
 import type { DriveFileListData, DriveFileData, DriveTaskData } from '../sdk-types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getTicket } from '../../../core/lark-ticket';
+import { buildToolResumeText } from '../../auth-resume';
+import {
+  extractFilenameFromContentDisposition,
+  resolveDownloadOutputPath,
+} from '../../session-artifacts';
 
 // 分片上传配置
 const SMALL_FILE_THRESHOLD = 15 * 1024 * 1024; // 15MB，小于此大小使用一次上传
@@ -233,7 +239,7 @@ const FeishuDriveFileSchema = Type.Union([
     output_path: Type.Optional(
       Type.String({
         description:
-          "本地保存的完整文件路径（可选）。必须包含文件名和扩展名，例如 '/tmp/file.pdf'。如果不提供，则返回 Base64 编码的文件内容。",
+          "本地保存的完整文件路径（可选）。不提供时，系统会自动保存到当前 agent/session 对应 workspace 的 .openclaw/artifacts/feishu/ 下。",
       }),
     ),
   }),
@@ -316,13 +322,14 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
         '\n- move（移动文件）：移动文件到指定文件夹' +
         '\n- delete（删除文件）：删除文件' +
         '\n- upload（上传文件）：上传本地文件到云空间。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）' +
-        '\n- download（下载文件）：下载文件到本地。提供 output_path（本地保存路径）则保存到本地，否则返回 Base64 编码' +
+        '\n- download（下载文件）：下载文件到本地。提供 output_path 时按指定路径保存；不提供时自动保存到当前 workspace artifact 目录' +
         '\n\n【重要】copy/move/delete 操作需要 file_token 和 type 参数。get_meta 使用 request_docs 数组参数。' +
         '\n【重要】upload 优先使用 file_path（自动读取文件、提取文件名和大小），也支持 file_content_base64（需手动提供 file_name 和 size）。' +
-        '\n【重要】download 提供 output_path 时保存到本地（可以是文件路径或文件夹路径+file_name），不提供则返回 Base64。',
+        '\n【重要】download 不提供 output_path 时也会自动生成安全的 workspace 内保存路径。',
       parameters: FeishuDriveFileSchema,
       async execute(_toolCallId: string, params: unknown) {
         const p = params as FeishuDriveFileParams;
+        const ticket = getTicket();
         try {
           const client = toolClient();
 
@@ -678,6 +685,10 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
             // DOWNLOAD FILE
             // -----------------------------------------------------------------
             case 'download': {
+              if (ticket) {
+                ticket.resumeText = buildToolResumeText('feishu_drive_file', p);
+              }
+
               log.info(`download: file_token=${p.file_token}`);
 
               const res: any = await client.invoke(
@@ -704,34 +715,32 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi) {
 
               log.info(`download: file size=${fileBuffer.length} bytes`);
 
-              // 如果提供了 output_path，保存到本地文件
-              if (p.output_path) {
-                try {
-                  // output_path 必须是完整文件路径
-                  // 确保父目录存在
-                  await fs.mkdir(path.dirname(p.output_path), { recursive: true });
+              const contentDispositionHeader =
+                typeof res.headers?.['content-disposition'] === 'string' ? res.headers['content-disposition'] : undefined;
+              const preferredFileName =
+                extractFilenameFromContentDisposition(contentDispositionHeader) || `drive-file-${p.file_token}`;
+              const output = resolveDownloadOutputPath({
+                cfg,
+                ticket,
+                prefix: 'drive-file',
+                preferredFileName,
+                outputPath: p.output_path,
+              });
 
-                  // 写入文件
-                  await fs.writeFile(p.output_path, fileBuffer);
+              try {
+                await fs.mkdir(path.dirname(output.absolutePath), { recursive: true });
+                await fs.writeFile(output.absolutePath, fileBuffer);
 
-                  log.info(`download: saved to ${p.output_path}`);
-
-                  return json({
-                    saved_path: p.output_path,
-                    size: fileBuffer.length,
-                  });
-                } catch (err) {
-                  return json({
-                    error: `failed to save file: ${err instanceof Error ? err.message : String(err)}`,
-                  });
-                }
-              } else {
-                // 没有提供 output_path，返回 base64
-                const base64Content = fileBuffer.toString('base64');
+                log.info(`download: saved to ${output.absolutePath}`);
 
                 return json({
-                  file_content_base64: base64Content,
+                  saved_path: output.absolutePath,
+                  workspace_path: output.workspacePath,
                   size: fileBuffer.length,
+                });
+              } catch (err) {
+                return json({
+                  error: `failed to save file: ${err instanceof Error ? err.message : String(err)}`,
                 });
               }
             }

@@ -36,6 +36,7 @@ import { getStoredToken, setStoredToken, tokenStatus, type StoredUAToken } from 
 import { revokeUAT } from '../core/uat-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
 import { buildAuthCard, buildAuthSuccessCard, buildAuthFailedCard, buildAuthIdentityMismatchCard } from './oauth-cards';
+import { resolveResumeText } from './auth-resume';
 import { json, registerTool } from './oapi/helpers';
 
 // ---------------------------------------------------------------------------
@@ -632,7 +633,7 @@ export async function executeAuthorize(
                 chat_type: ticket.chatType ?? ('p2p' as const),
                 message_type: 'text',
                 content: JSON.stringify({
-                  text: '我已完成飞书账号授权，请继续执行之前的操作。',
+                  text: resolveResumeText(ticket),
                 }),
                 thread_id: ticket.threadId,
               },
@@ -659,6 +660,9 @@ export async function executeAuthorize(
                     senderOpenId,
                     chatType: ticket.chatType,
                     threadId: ticket.threadId,
+                    agentId: ticket.agentId,
+                    sessionKey: ticket.sessionKey,
+                    resumeText: ticket.resumeText,
                   },
                   () =>
                     handleFeishuMessage({
@@ -714,7 +718,7 @@ export async function executeAuthorize(
   const scopeCount = filteredScope.split(/\s+/).filter(Boolean).length;
   let message = isBatchAuth
     ? `已发送批量授权请求卡片，共需授权 ${scopeCount} 个权限。请在卡片中完成授权。`
-    : '已发送授权请求卡片，请用户在卡片中点击链接完成授权。授权完成后请重新执行之前的操作。';
+    : '已发送授权请求卡片，请用户在卡片中点击链接完成授权。授权完成后系统会自动恢复当前被打断的操作。';
 
   if (batchInfo) {
     message += batchInfo;

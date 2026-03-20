@@ -21,7 +21,7 @@ import type { LarkAccount } from '../../core/types';
 import type { FeishuGroupConfig } from '../../core/types';
 import type { PermissionError } from './permission';
 import { larkLogger } from '../../core/lark-logger';
-import { ticketElapsed } from '../../core/lark-ticket';
+import { getTicket, ticketElapsed } from '../../core/lark-ticket';
 import { createFeishuReplyDispatcher } from '../../card/reply-dispatcher';
 import { mentionedBot } from './mention';
 import {
@@ -102,6 +102,12 @@ async function dispatchNormalMessage(
   registerActiveDispatcher(queueKey, { abortCard, abortController });
 
   const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
+  const ticket = getTicket();
+  if (ticket) {
+    ticket.agentId = dc.route.agentId;
+    ticket.sessionKey = effectiveSessionKey;
+  }
+
   dc.log(`feishu[${dc.account.accountId}]: dispatching to agent (session=${effectiveSessionKey})`);
   log.info(`dispatching to agent (session=${effectiveSessionKey})`);
 

@@ -11,11 +11,16 @@
  */
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
-import { buildRandomTempFilePath } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import { json, createToolContext, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { getTicket } from '../../../core/lark-ticket';
+import { buildToolResumeText } from '../../auth-resume';
+import {
+  buildWorkspaceArtifactPath,
+  extractFilenameFromContentDisposition,
+} from '../../session-artifacts';
 
 // ---------------------------------------------------------------------------
 // Helper: MIME type to extension mapping
@@ -108,12 +113,17 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
         '\n- message_id：消息 ID（om_xxx），从消息事件或消息列表中获取' +
         '\n- file_key：资源 Key，从消息体中获取。图片用 image_key（img_xxx），文件用 file_key（file_xxx）' +
         '\n- type：图片用 image，文件/音频/视频用 file' +
-        '\n\n文件自动保存到 /tmp/openclaw/ 下，返回值中的 saved_path 为实际保存路径。' +
+        '\n\n文件会自动保存到当前 agent/session 对应 workspace 的 .openclaw/artifacts/feishu/ 下。' +
         '\n限制：文件大小不超过 100MB。不支持下载表情包、合并转发消息、卡片中的资源。',
       parameters: FetchResourceSchema,
       async execute(_toolCallId: string, params: unknown) {
         const p = params as FetchResourceParams;
+        const ticket = getTicket();
         try {
+          if (ticket) {
+            ticket.resumeText = buildToolResumeText('feishu_im_user_fetch_resource', p);
+          }
+
           const client = toolClient();
 
           log.info(`fetch_resource: message_id="${p.message_id}", file_key="${p.file_key}", type="${p.type}"`);
@@ -150,23 +160,30 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
           const contentType = res.headers?.['content-type'] || '';
           log.info(`fetch_resource: content-type=${contentType}`);
 
+          const contentDispositionHeader =
+            typeof res.headers?.['content-disposition'] === 'string' ? res.headers['content-disposition'] : undefined;
+          const preferredFileName = extractFilenameFromContentDisposition(contentDispositionHeader);
+
           // 从 Content-Type 推断扩展名，自动生成保存路径
           const mimeType = contentType ? contentType.split(';')[0].trim() : '';
           const mimeExt = mimeType ? MIME_TO_EXT[mimeType] : undefined;
 
-          const finalPath = buildRandomTempFilePath({
+          const output = buildWorkspaceArtifactPath({
+            cfg,
+            ticket,
             prefix: 'im-resource',
             extension: mimeExt,
+            preferredFileName,
           });
-          log.info(`fetch_resource: saving to ${finalPath}`);
+          log.info(`fetch_resource: saving to ${output.absolutePath}`);
 
           // 确保父目录存在
-          await fs.mkdir(path.dirname(finalPath), { recursive: true });
+          await fs.mkdir(path.dirname(output.absolutePath), { recursive: true });
 
           // 保存文件
           try {
-            await fs.writeFile(finalPath, buffer);
-            log.info(`fetch_resource: saved to ${finalPath}`);
+            await fs.writeFile(output.absolutePath, buffer);
+            log.info(`fetch_resource: saved to ${output.absolutePath}`);
 
             return json({
               message_id: p.message_id,
@@ -174,7 +191,8 @@ export function registerFeishuImUserFetchResourceTool(api: OpenClawPluginApi) {
               type: p.type,
               size_bytes: buffer.length,
               content_type: contentType,
-              saved_path: finalPath,
+              saved_path: output.absolutePath,
+              workspace_path: output.workspacePath,
             });
           } catch (err) {
             log.error(`fetch_resource: failed to save file: ${err}`);

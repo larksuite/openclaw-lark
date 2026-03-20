@@ -24,6 +24,9 @@ export interface LarkTicket {
   senderOpenId?: string;
   chatType?: 'p2p' | 'group';
   threadId?: string;
+  agentId?: string;
+  sessionKey?: string;
+  resumeText?: string;
 }
 
 // ---------------------------------------------------------------------------
