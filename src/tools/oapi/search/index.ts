@@ -35,6 +35,6 @@ export function registerFeishuSearchTools(api: OpenClawPluginApi) {
 
   // 注册所有工具
   if (registerFeishuSearchDocWikiTool(api)) {
-    api.logger.info?.('feishu_search: Registered feishu_search_doc_wiki');
+    api.logger.debug?.('feishu_search: Registered feishu_search_doc_wiki');
   }
 }

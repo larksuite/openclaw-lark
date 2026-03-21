@@ -227,7 +227,7 @@ export function registerFeishuOAuthTool(api: OpenClawPluginApi) {
     { name: 'feishu_oauth' },
   );
 
-  api.logger.info?.('feishu_oauth: Registered feishu_oauth tool');
+  api.logger.debug?.('feishu_oauth: Registered feishu_oauth tool');
 }
 
 // ---------------------------------------------------------------------------

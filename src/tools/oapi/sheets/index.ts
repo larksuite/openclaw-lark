@@ -33,6 +33,6 @@ export function registerFeishuSheetsTools(api: OpenClawPluginApi) {
   }
 
   if (registerFeishuSheetTool(api)) {
-    api.logger.info?.('feishu_sheets: Registered feishu_sheet');
+    api.logger.debug?.('feishu_sheets: Registered feishu_sheet');
   }
 }

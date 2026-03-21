@@ -17,6 +17,6 @@ import { registerFeishuImBotImageTool } from './resource';
  */
 export function registerFeishuImTools(api: OpenClawPluginApi) {
   if (registerFeishuImBotImageTool(api)) {
-    api.logger.info?.('feishu_im: Registered feishu_im_bot_image');
+    api.logger.debug?.('feishu_im: Registered feishu_im_bot_image');
   }
 }

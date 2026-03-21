@@ -46,6 +46,6 @@ export function registerFeishuMcpDocTools(api: OpenClawPluginApi) {
   if (registerCreateDocTool(api)) registered.push('feishu_create_doc');
   if (registerUpdateDocTool(api)) registered.push('feishu_update_doc');
   if (registered.length > 0) {
-    api.logger.info?.(`feishu_doc: Registered ${registered.join(', ')}`);
+    api.logger.debug?.(`feishu_doc: Registered ${registered.join(', ')}`);
   }
 }
