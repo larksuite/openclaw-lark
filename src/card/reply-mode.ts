@@ -74,14 +74,19 @@ export function expandAutoMode(params: {
  * being rendered inside a Feishu interactive card (fenced code blocks or
  * markdown tables).
  */
+/** Empirical Feishu card table limit — 4+ tables trigger error 230099 (tested 2026-03). */
+const FEISHU_CARD_TABLE_LIMIT = 3;
+
 export function shouldUseCard(text: string): boolean {
   // Fenced code blocks
   if (/```[\s\S]*?```/.test(text)) {
     return true;
   }
-  // Markdown tables (header + separator rows separated by pipes)
-  if (/\|.+\|[\r\n]+\|[-:| ]+\|/.test(text)) {
-    return true;
+  // Markdown tables (header + separator rows separated by pipes).
+  // Skip card mode when table count exceeds the Feishu limit.
+  const tableMatches = text.match(/\|.+\|[\r\n]+\|[-:| ]+\|/g);
+  if (tableMatches) {
+    return tableMatches.length <= FEISHU_CARD_TABLE_LIMIT;
   }
   return false;
 }

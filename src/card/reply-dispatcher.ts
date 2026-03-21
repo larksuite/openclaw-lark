@@ -17,6 +17,7 @@ import {
   logTypingFailure,
   type ReplyPayload,
 } from 'openclaw/plugin-sdk';
+import { extractLarkApiCode } from '../core/api-error';
 import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
@@ -219,7 +220,13 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       if (shouldUseCard(text)) {
         const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
         log.info('deliver: sending card chunks', { count: chunks.length, chatId });
+        // Runtime fallback after shouldUseCard() pre-check passed but API still rejects
+        let cardTableLimitHit = false;
         for (const chunk of chunks) {
+          if (cardTableLimitHit) {
+            await sendMessageFeishu({ cfg, to: chatId, text: chunk, replyToMessageId, replyInThread, accountId });
+            continue;
+          }
           try {
             await sendMarkdownCardFeishu({
               cfg,
@@ -231,6 +238,13 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             });
           } catch (err) {
             if (staticGuard?.terminate('deliver.cardChunk', err)) return;
+            // Card table count exceeds Feishu limit — fall back to plain text
+            if (extractLarkApiCode(err) === 230099) {
+              log.warn('card table limit exceeded (230099), falling back to text');
+              cardTableLimitHit = true;
+              await sendMessageFeishu({ cfg, to: chatId, text: chunk, replyToMessageId, replyInThread, accountId });
+              continue;
+            }
             throw err;
           }
         }
