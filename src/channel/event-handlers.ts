@@ -237,9 +237,99 @@ export async function handleBotMembershipEvent(
 // Card action handler
 // ---------------------------------------------------------------------------
 
+/**
+ * Handle a Feishu interactive card action event.
+ *
+ * First, we try the built-in OAuth handler (`handleCardAction`). This covers
+ * cases where the card action is part of the OAuth authorisation flow.
+ *
+ * If `handleCardAction` returns `undefined` the action is not OAuth-related.
+ * In that case we forward it into the standard inbound message pipeline so
+ * the agent can handle multi-step card interactions (e.g. a "Confirm / Cancel"
+ * button after the agent presents a draft).
+ *
+ * The card action payload is normalised into a synthetic `FeishuMessageEvent`
+ * so that the existing session-isolation, serialisation, and context logic in
+ * `handleMessageEvent` can be reused without modification.
+ */
 export async function handleCardActionEvent(ctx: MonitorContext, data: unknown): Promise<unknown> {
   try {
-    return await handleCardAction(data, ctx.cfg, ctx.accountId);
+    const result = await handleCardAction(data, ctx.cfg, ctx.accountId);
+    if (result !== undefined) return result;
+
+    // ── Non-OAuth card action: forward to agent via inbound message pipeline ──
+    const { accountId, log } = ctx;
+    const payload = data as Record<string, unknown>;
+    const operator = (payload.operator as Record<string, unknown>) ?? {};
+    const openId = (operator.open_id as string) ?? '';
+    const action = (payload.action as Record<string, unknown>) ?? {};
+    const context = (payload.context as Record<string, unknown>) ?? {};
+
+    const chatId = (payload.open_chat_id as string) || (context.open_chat_id as string) || '';
+    const msgId = (payload.open_message_id as string) || (context.open_message_id as string) || '';
+
+    // Merge action.value + action.form_value and tag with action metadata so
+    // the agent can identify which button was clicked and what form data was
+    // submitted.
+    const actionValue: Record<string, unknown> = {
+      ...((action.value as Record<string, unknown>) ?? {}),
+      ...((action.form_value as Record<string, unknown>) ?? {}),
+    };
+    if (action.tag) actionValue._action_tag = action.tag;
+
+    log(`feishu[${accountId}]: non-OAuth card action from ${openId} in chat ${chatId}: ${JSON.stringify(actionValue)}`);
+
+    const syntheticEvent: FeishuMessageEvent = {
+      sender: {
+        sender_id: { open_id: openId },
+        sender_type: 'user',
+      },
+      message: {
+        message_id: msgId || `card_action_${Date.now()}`,
+        chat_id: chatId,
+        chat_type: chatId.startsWith('oc_') ? 'group' : 'p2p',
+        message_type: 'text',
+        content: JSON.stringify({ text: JSON.stringify(actionValue) }),
+        // Signal to downstream handlers that this message originated from a
+        // card action so they can skip mention checks and format responses
+        // as a follow-up card rather than a fresh reply.
+        _card_action: true,
+      } as FeishuMessageEvent['message'],
+    };
+
+    const { status } = enqueueFeishuChatTask({
+      accountId,
+      chatId,
+      threadId: undefined,
+      task: async () => {
+        try {
+          await withTicket(
+            {
+              messageId: syntheticEvent.message?.message_id ?? '',
+              chatId,
+              accountId,
+              startTime: Date.now(),
+              senderOpenId: openId,
+              chatType: syntheticEvent.message?.chat_type as 'p2p' | 'group' | undefined,
+              threadId: undefined,
+            },
+            () =>
+              handleFeishuMessage({
+                cfg: ctx.cfg,
+                event: syntheticEvent,
+                botOpenId: ctx.lark.botOpenId,
+                runtime: ctx.runtime,
+                chatHistories: ctx.chatHistories,
+                accountId,
+              }),
+          );
+        } catch (err) {
+          elog.warn(`feishu[${accountId}]: error handling card action: ${String(err)}`);
+        }
+      },
+    });
+
+    log(`feishu[${accountId}]: card action from ${openId} enqueued for chat ${chatId} — ${status}`);
   } catch (err) {
     elog.warn(`card.action.trigger handler error: ${err}`);
   }
