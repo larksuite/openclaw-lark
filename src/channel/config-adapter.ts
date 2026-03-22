@@ -24,6 +24,27 @@ function mergeFeishuAccountConfig(
 ): ClawdbotConfig {
   const isDefault = !accountId || accountId === DEFAULT_ACCOUNT_ID;
   if (isDefault) {
+    const feishuCfg = cfg.channels?.feishu as FeishuConfig | undefined;
+    const accountsMap = (feishuCfg as FeishuConfig & { accounts?: Record<string, unknown> } | undefined)?.accounts;
+    // When accounts.default exists, write the patch there so that the
+    // read path (getLarkAccount) — which merges accounts.default over
+    // top-level — sees the updated value. Without this, writes to the
+    // top-level would be silently overridden by accounts.default.
+    if (accountsMap && accountsMap[DEFAULT_ACCOUNT_ID] !== undefined) {
+      return {
+        ...cfg,
+        channels: {
+          ...cfg.channels,
+          feishu: {
+            ...feishuCfg,
+            accounts: {
+              ...accountsMap,
+              [DEFAULT_ACCOUNT_ID]: { ...(accountsMap[DEFAULT_ACCOUNT_ID] as Record<string, unknown>), ...patch },
+            },
+          },
+        },
+      };
+    }
     return {
       ...cfg,
       channels: {
