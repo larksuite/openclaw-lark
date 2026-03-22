@@ -475,10 +475,23 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
   const ticket = getTicket();
 
   // 1. 解析账号
+  //
+  // api.config (the `config` param) is scoped to the current channel/agent by openclaw,
+  // and may NOT contain the full `channels.feishu.accounts` sub-map.
+  // We must use the live config (LarkClient.runtime.config.loadConfig()) to resolve
+  // accounts correctly, otherwise getLarkAccount() falls back to the base (default) appId
+  // and corrupts the LarkClient cache for non-default accounts.
+  let resolveConfig = config;
+  try {
+    resolveConfig = LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+  } catch {
+    // runtime not yet initialised (e.g. during early startup) — fall back to passed config
+  }
+
   let account: ConfiguredLarkAccount | undefined;
 
   if (ticket?.accountId) {
-    const resolved = getLarkAccount(config, ticket.accountId);
+    const resolved = getLarkAccount(resolveConfig, ticket.accountId);
     if (!resolved.configured) {
       throw new Error(
         `Feishu account "${ticket.accountId}" is not configured (missing appId or appSecret). ` +
@@ -495,7 +508,7 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
   }
 
   if (!account) {
-    const accounts = getEnabledLarkAccounts(config);
+    const accounts = getEnabledLarkAccounts(resolveConfig);
     if (accounts.length === 0) {
       throw new Error(
         'No enabled Feishu accounts configured. ' + 'Please add appId and appSecret in config under channels.feishu',

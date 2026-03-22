@@ -47,6 +47,29 @@ export interface ToolContext {
 }
 
 // ---------------------------------------------------------------------------
+// 配置解析
+// ---------------------------------------------------------------------------
+
+/**
+ * 获取最新的运行时配置，回退到传入的静态配置
+ *
+ * openclaw 传给插件的 `api.config` 是 channel 级别的快照，可能缺少
+ * `channels.feishu.accounts` 子树。使用此函数替代直接访问 `config` 参数，
+ * 确保始终使用完整的运行时配置进行账号解析。
+ *
+ * @param fallback - 当运行时未就绪时使用的回退配置
+ * @returns 运行时配置，或回退配置
+ */
+export function getResolvedConfig(fallback: ClawdbotConfig): ClawdbotConfig {
+  try {
+    return LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+  } catch {
+    // runtime not yet initialised — fall back to passed config
+    return fallback;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 客户端管理
 // ---------------------------------------------------------------------------
 
@@ -81,17 +104,20 @@ export interface ToolContext {
  */
 export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): ClientGetter {
   return () => {
+    // api.config may be channel-scoped (no accounts sub-map); use live config for resolution.
+    const resolveConfig = getResolvedConfig(config);
+
     // 优先使用 LarkTicket 中的 accountId 进行动态账号解析
     const ticket = getTicket();
     if (ticket?.accountId) {
-      const account = getLarkAccount(config, ticket.accountId);
+      const account = getLarkAccount(resolveConfig, ticket.accountId);
       if (account.enabled && account.configured) {
         return LarkClient.fromAccount(account).sdk;
       }
     }
 
     // 回退：使用 accountIndex 指定的账号
-    const accounts = getEnabledLarkAccounts(config);
+    const accounts = getEnabledLarkAccounts(resolveConfig);
 
     if (accounts.length === 0) {
       throw new Error(
@@ -125,17 +151,20 @@ export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): Cl
  * ```
  */
 export function getFirstAccount(config: ClawdbotConfig): LarkAccount {
+  // api.config may be channel-scoped (no accounts sub-map); use live config for resolution.
+  const resolveConfig = getResolvedConfig(config);
+
   // 优先使用 LarkTicket 中的 accountId
   const ticket = getTicket();
   if (ticket?.accountId) {
-    const account = getLarkAccount(config, ticket.accountId);
+    const account = getLarkAccount(resolveConfig, ticket.accountId);
     if (account.enabled && account.configured) {
       return account;
     }
   }
 
   // 回退到第一个启用的账号
-  const accounts = getEnabledLarkAccounts(config);
+  const accounts = getEnabledLarkAccounts(resolveConfig);
 
   if (accounts.length === 0) {
     throw new Error(
