@@ -18,6 +18,6 @@ export function registerFeishuImTools(api: OpenClawPluginApi) {
   if (registerFeishuImUserFetchResourceTool(api)) registered.push('feishu_im_user_fetch_resource');
   registered.push(...registerMessageReadTools(api));
   if (registered.length > 0) {
-    api.logger.info?.(`feishu_im: Registered ${registered.join(', ')}`);
+    api.logger.debug?.(`feishu_im: Registered ${registered.join(', ')}`);
   }
 }

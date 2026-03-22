@@ -38,6 +38,6 @@ export function registerFeishuWikiTools(api: OpenClawPluginApi) {
   if (registerFeishuWikiSpaceTool(api)) registered.push('feishu_wiki_space');
   if (registerFeishuWikiSpaceNodeTool(api)) registered.push('feishu_wiki_space_node');
   if (registered.length > 0) {
-    api.logger.info?.(`feishu_wiki: Registered ${registered.join(', ')}`);
+    api.logger.debug?.(`feishu_wiki: Registered ${registered.join(', ')}`);
   }
 }

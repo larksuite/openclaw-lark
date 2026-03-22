@@ -40,6 +40,6 @@ export function registerFeishuDriveTools(api: OpenClawPluginApi) {
   if (registerDocCommentsTool(api)) registered.push('feishu_doc_comments');
   if (registerDocMediaTool(api)) registered.push('feishu_doc_media');
   if (registered.length > 0) {
-    api.logger.info?.(`feishu_drive: Registered ${registered.join(', ')}`);
+    api.logger.debug?.(`feishu_drive: Registered ${registered.join(', ')}`);
   }
 }
