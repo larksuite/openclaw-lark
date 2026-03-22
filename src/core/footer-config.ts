@@ -23,6 +23,7 @@ import type { FeishuFooterConfig } from './types';
 export const DEFAULT_FOOTER_CONFIG: Required<FeishuFooterConfig> = {
   status: false,
   elapsed: false,
+  model: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,5 +41,6 @@ export function resolveFooterConfig(cfg?: FeishuFooterConfig): Required<FeishuFo
   return {
     status: cfg.status ?? DEFAULT_FOOTER_CONFIG.status,
     elapsed: cfg.elapsed ?? DEFAULT_FOOTER_CONFIG.elapsed,
+    model: cfg.model ?? DEFAULT_FOOTER_CONFIG.model,
   };
 }

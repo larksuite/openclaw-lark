@@ -328,11 +328,24 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // ---- Abort card (delegates to controller or no-op for static) ----
   const abortCard = controller ? () => controller.abortCard() : async () => {};
 
+  // Wrap onModelSelected to also update the controller's model state
+  const onModelSelectedWrapper = (
+    ctx: { provider: string; model: string; thinkLevel: string | undefined } | undefined,
+  ) => {
+    if (ctx && controller) {
+      controller.setModel(ctx);
+    }
+    // Also call the original callback to preserve other functionality
+    if (ctx) {
+      prefixContext.onModelSelected(ctx);
+    }
+  };
+
   return {
     dispatcher,
     replyOptions: {
       ...replyOptions,
-      onModelSelected: prefixContext.onModelSelected,
+      onModelSelected: onModelSelectedWrapper,
       disableBlockStreaming: !enableBlockStreaming,
       ...(controller
         ? {

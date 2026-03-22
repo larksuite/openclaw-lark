@@ -18,7 +18,9 @@
     "lint": "eslint src/ index.ts",
     "lint:fix": "eslint src/ index.ts --fix",
     "format": "prettier --write src/**/*.ts",
-    "format:check": "prettier --check src/**/*.ts"
+    "format:check": "prettier --check src/**/*.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.59.0",
@@ -39,7 +41,8 @@
     "minimist": "^1.2.8",
     "openclaw": "2026.2.26",
     "prettier": "^3.8.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   },
   "openclaw": {
     "extensions": [
