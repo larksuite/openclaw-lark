@@ -23,6 +23,7 @@ const CHAT_PREFIX = 'oc_';
 const OPEN_ID_PREFIX = 'ou_';
 
 // Canonical routing prefixes used inside OpenClaw (not Feishu-native).
+const TAG_CHANNEL = 'channel:';
 const TAG_CHAT = 'chat:';
 const TAG_USER = 'user:';
 const TAG_OPEN_ID = 'open_id:';
@@ -73,6 +74,7 @@ export function normalizeFeishuTarget(raw: string): string | null {
     if (inner) return inner;
   }
 
+  if (trimmed.startsWith(TAG_CHANNEL)) return trimmed.slice(TAG_CHANNEL.length);
   if (trimmed.startsWith(TAG_CHAT)) return trimmed.slice(TAG_CHAT.length);
   if (trimmed.startsWith(TAG_USER)) return trimmed.slice(TAG_USER.length);
   if (trimmed.startsWith(TAG_OPEN_ID)) return trimmed.slice(TAG_OPEN_ID.length);
@@ -184,6 +186,7 @@ export function normalizeMessageId(messageId: string | undefined): string | unde
 export function looksLikeFeishuId(raw: string): boolean {
   if (!raw) return false;
   return (
+    raw.startsWith(TAG_CHANNEL) ||
     raw.startsWith(TAG_CHAT) ||
     raw.startsWith(TAG_USER) ||
     raw.startsWith(TAG_OPEN_ID) ||

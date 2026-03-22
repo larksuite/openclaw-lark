@@ -61,7 +61,7 @@ export async function dispatchPermissionNotification(
     markFullyComplete: markPermComplete,
   } = createFeishuReplyDispatcher({
     cfg: dc.accountScopedCfg,
-    agentId: dc.route.agentId,
+    agentId: dc.boundAgentId ?? dc.route.agentId,
     chatId: dc.ctx.chatId,
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
