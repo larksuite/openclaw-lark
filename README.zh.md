@@ -26,6 +26,7 @@
 - **🌊 流式回复**：在消息卡片中提供实时的流式响应
 - **🔒 权限策略**：为私聊和群聊提供灵活的访问控制策略
 - **⚙️ 高级群组配置**：每个群聊的独立设置，包括白名单、技能绑定和自定义系统提示词
+- **🔔 多维表格记录变更通知**：订阅指定多维表格的记录变更事件，自动将变更内容转发给 Agent
 
 ## 安全与风险提示（使用前必读）
 本插件对接 OpenClaw AI 自动化能力，存在模型幻觉、执行不可控、提示词注入等固有风险；授权飞书权限后，OpenClaw 将以您的用户身份在授权范围内执行操作，可能导致敏感数据泄露、越权操作等高风险后果，请您谨慎操作和使用。
@@ -58,6 +59,51 @@
 
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
+
+## 多维表格记录变更通知
+
+插件支持订阅多维表格的记录变更事件（`drive.file.bitable_record_changed_v1`），当多维表格中有记录新增、编辑或删除时，自动将变更内容发送给 Agent 所在的指定会话。
+
+### 前置准备
+
+1. **开启事件订阅**：在飞书开放平台 [开发者后台](https://open.feishu.cn/) → 应用 → 事件与回调 → 事件配置，添加 **多维表记录变更** 事件（`drive.file.bitable_record_changed_v1`），订阅方式选择**长连接**。
+
+2. **订阅具体文件**：需要调用飞书 Drive 订阅 API，对目标多维表文件发起订阅请求（`drive.file.subscribe`）。可通过 OpenClaw Agent 中的 `feishu_drive` 工具执行，或使用飞书 API 调试工具手动完成。
+
+### 配置示例
+
+在 `openclaw.json` 的飞书账号配置中添加 `bitableNotifications` 字段：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "appId": "cli_xxxxxxxx",
+      "appSecret": "xxxxxxxx",
+      "bitableNotifications": [
+        {
+          "fileToken": "RyGZbWS8ia64cbsBsrAc0tzCnXy",
+          "chatId": "oc_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "label": "需求跟踪表"
+        },
+        {
+          "fileToken": "AbCdEfGhIjKlMnOpQrStUvWxYz1",
+          "chatId": "oc_yyyyyyyyyyyyyyyyyyyyyyyy",
+          "tableIds": ["tblABC123"],
+          "label": "项目进度表（仅跟踪 Sprint 表）"
+        }
+      ]
+    }
+  }
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `fileToken` | ✅ | 多维表格的 App Token（URL 中 `base/` 后的部分） |
+| `chatId` | ✅ | 接收通知的会话 ID（p2p 使用 `oc_xxx`，群聊同样使用 `oc_xxx`） |
+| `tableIds` | ❌ | 只监听指定数据表，省略则监听该多维表下所有数据表 |
+| `label` | ❌ | 通知消息中显示的可读名称，便于区分多个多维表 |
 
 ## 贡献
 
