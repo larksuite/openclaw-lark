@@ -60,6 +60,17 @@ export interface ConfirmData {
   preview?: string;
 }
 
+export interface FooterSessionMetrics {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  totalTokens?: number;
+  totalTokensFresh?: boolean;
+  contextTokens?: number;
+  model?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -193,6 +204,106 @@ function buildFooter(zhText: string, enText: string, isError?: boolean): CardEle
   }];
 }
 
+function compactNumber(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) {
+    const m = value / 1_000_000;
+    return Math.abs(m) >= 100 ? `${Math.round(m)}m` : `${m.toFixed(1)}m`;
+  }
+  if (abs >= 1_000) {
+    const k = value / 1_000;
+    return Math.abs(k) >= 100 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
+  }
+  return `${Math.round(value)}`;
+}
+
+function formatFooterRuntimeSegments(params: {
+  footer?: {
+    status?: boolean;
+    elapsed?: boolean;
+    tokens?: boolean;
+    cache?: boolean;
+    context?: boolean;
+    model?: boolean;
+  };
+  metrics?: FooterSessionMetrics;
+  elapsedMs?: number;
+  isError?: boolean;
+  isAborted?: boolean;
+}): { zh: string[]; en: string[] } {
+  const { footer, metrics, elapsedMs, isError, isAborted } = params;
+  const zhParts: string[] = [];
+  const enParts: string[] = [];
+
+  if (footer?.status) {
+    if (isError) {
+      zhParts.push('出错');
+      enParts.push('Error');
+    } else if (isAborted) {
+      zhParts.push('已停止');
+      enParts.push('Stopped');
+    } else {
+      zhParts.push('已完成');
+      enParts.push('Completed');
+    }
+  }
+
+  if (footer?.elapsed && elapsedMs != null) {
+    const d = formatElapsed(elapsedMs);
+    zhParts.push(`耗时 ${d}`);
+    enParts.push(`Elapsed ${d}`);
+  }
+
+  if (footer?.tokens && metrics) {
+    const inTokens = typeof metrics.inputTokens === 'number' ? Math.max(0, metrics.inputTokens) : undefined;
+    const outTokens = typeof metrics.outputTokens === 'number' ? Math.max(0, metrics.outputTokens) : undefined;
+    if (inTokens != null && outTokens != null) {
+      const inLabel = compactNumber(inTokens);
+      const outLabel = compactNumber(outTokens);
+      zhParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+      enParts.push(`↑ ${inLabel} ↓ ${outLabel}`);
+    }
+  }
+
+  if (footer?.cache && metrics) {
+    const read = typeof metrics.cacheRead === 'number' ? Math.max(0, metrics.cacheRead) : undefined;
+    const write = typeof metrics.cacheWrite === 'number' ? Math.max(0, metrics.cacheWrite) : undefined;
+    const inputVal = typeof metrics.inputTokens === 'number' ? Math.max(0, metrics.inputTokens) : undefined;
+    if (read != null && write != null && inputVal != null) {
+      const total = read + write + inputVal;
+      const hit = total > 0 ? Math.round((read / total) * 100) : 0;
+      const left = compactNumber(read);
+      const right = compactNumber(write);
+      zhParts.push(`缓存 ${left}/${right} (${hit}%)`);
+      enParts.push(`Cache ${left}/${right} (${hit}%)`);
+    }
+  }
+
+  if (footer?.context && metrics) {
+    const freshTotal = metrics.totalTokensFresh === false ? undefined : metrics.totalTokens;
+    const total = typeof freshTotal === 'number' ? Math.max(0, freshTotal) : undefined;
+    const ctx = typeof metrics.contextTokens === 'number' ? Math.max(0, metrics.contextTokens) : undefined;
+    if (total != null && ctx != null) {
+      const totalLabel = compactNumber(total);
+      const ctxLabel = compactNumber(ctx);
+      const pct = ctx > 0 ? Math.round((total / ctx) * 100) : 0;
+      const pctLabel = `${pct}%`;
+      zhParts.push(`上下文 ${totalLabel}/${ctxLabel} (${pctLabel})`);
+      enParts.push(`Context ${totalLabel}/${ctxLabel} (${pctLabel})`);
+    }
+  }
+
+  if (footer?.model && metrics?.model) {
+    const model = metrics.model.trim();
+    if (model) {
+      zhParts.push(model);
+      enParts.push(model);
+    }
+  }
+
+  return { zh: zhParts, en: enParts };
+}
+
 // ---------------------------------------------------------------------------
 // buildCardContent
 // ---------------------------------------------------------------------------
@@ -212,7 +323,8 @@ export function buildCardContent(
     elapsedMs?: number;
     isError?: boolean;
     isAborted?: boolean;
-    footer?: { status?: boolean; elapsed?: boolean };
+    footer?: { status?: boolean; elapsed?: boolean; tokens?: boolean; cache?: boolean; context?: boolean; model?: boolean };
+    footerMetrics?: FooterSessionMetrics;
   } = {},
 ): FeishuCard {
   switch (state) {
@@ -230,6 +342,7 @@ export function buildCardContent(
         reasoningElapsedMs: data.reasoningElapsedMs,
         isAborted: data.isAborted,
         footer: data.footer,
+        footerMetrics: data.footerMetrics,
       });
     case 'confirm':
       return buildConfirmCard(data.confirmData!);
@@ -304,9 +417,10 @@ function buildCompleteCard(params: {
   reasoningText?: string;
   reasoningElapsedMs?: number;
   isAborted?: boolean;
-  footer?: { status?: boolean; elapsed?: boolean };
+  footer?: { status?: boolean; elapsed?: boolean; tokens?: boolean; cache?: boolean; context?: boolean; model?: boolean };
+  footerMetrics?: FooterSessionMetrics;
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer } = params;
+  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer, footerMetrics } = params;
   const elements: CardElement[] = [];
 
   // Collapsible reasoning panel (before main content)
@@ -369,31 +483,17 @@ function buildCompleteCard(params: {
   }
 
   // Footer meta-info: each metadata item is independently controlled via
-  // the `footer` config. Both status and elapsed default to hidden.
-  const zhParts: string[] = [];
-  const enParts: string[] = [];
+  // the `footer` config.
+  const footerParts = formatFooterRuntimeSegments({
+    footer,
+    metrics: footerMetrics,
+    elapsedMs,
+    isError,
+    isAborted,
+  });
 
-  if (footer?.status) {
-    if (isError) {
-      zhParts.push('出错');
-      enParts.push('Error');
-    } else if (isAborted) {
-      zhParts.push('已停止');
-      enParts.push('Stopped');
-    } else {
-      zhParts.push('已完成');
-      enParts.push('Completed');
-    }
-  }
-
-  if (footer?.elapsed && elapsedMs != null) {
-    const d = formatElapsed(elapsedMs);
-    zhParts.push(`耗时 ${d}`);
-    enParts.push(`Elapsed ${d}`);
-  }
-
-  if (zhParts.length > 0) {
-    elements.push(...buildFooter(zhParts.join(' · '), enParts.join(' · '), isError));
+  if (footerParts.zh.length > 0) {
+    elements.push(...buildFooter(footerParts.zh.join(' · '), footerParts.en.join(' · '), isError));
   }
 
   // Use the answer text (not reasoning) as the feed preview summary.

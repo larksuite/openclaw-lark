@@ -11,9 +11,11 @@
  * detection to UnavailableGuard.
  */
 
+import { readFileSync } from 'node:fs';
 import { SILENT_REPLY_TOKEN, type ReplyPayload } from 'openclaw/plugin-sdk';
 import { extractLarkApiCode } from '../core/api-error';
 import { larkLogger } from '../core/lark-logger';
+import { LarkClient } from '../core/lark-client';
 import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';
 import {
   createCardEntity,
@@ -22,7 +24,14 @@ import {
   updateCardKitCard,
   setCardStreamingMode,
 } from './cardkit';
-import { buildCardContent, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2 } from './builder';
+import {
+  buildCardContent,
+  splitReasoningText,
+  stripReasoningTags,
+  STREAMING_ELEMENT_ID,
+  toCardKit2,
+  type FooterSessionMetrics,
+} from './builder';
 import { optimizeMarkdownStyle } from './markdown-style';
 import { ImageResolver } from './image-resolver';
 import { registerShutdownHook } from '../core/shutdown-hooks';
@@ -128,6 +137,101 @@ export class StreamingCardController {
 
   private elapsed(): number {
     return Date.now() - this.dispatchStartTime;
+  }
+
+  private getFooterSessionMetrics(): FooterSessionMetrics | undefined {
+    try {
+      const runtime = LarkClient.runtime;
+      if (!runtime) return undefined;
+      const sessionApi = runtime.agent?.session;
+      const sessionStorePath = this.deps.cfg.sessions?.store;
+      const key = this.deps.sessionKey.trim().toLowerCase();
+
+      if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
+        const storePath = sessionApi.resolveStorePath(sessionStorePath);
+        const store = sessionApi.loadSessionStore(storePath);
+        const entry = store[key];
+        if (!entry) {
+          log.info('footer metrics lookup: session entry missing', {
+            sessionKey: this.deps.sessionKey,
+            normalizedSessionKey: key,
+            storePath,
+            source: 'runtime.agent.session',
+          });
+          return undefined;
+        }
+        const metrics = {
+          inputTokens: entry.inputTokens,
+          outputTokens: entry.outputTokens,
+          cacheRead: entry.cacheRead,
+          cacheWrite: entry.cacheWrite,
+          totalTokens: entry.totalTokens,
+          totalTokensFresh: entry.totalTokensFresh,
+          contextTokens: entry.contextTokens,
+          model: entry.model,
+        };
+        log.info('footer metrics lookup: session entry found', {
+          sessionKey: this.deps.sessionKey,
+          normalizedSessionKey: key,
+          storePath,
+          source: 'runtime.agent.session',
+          metrics,
+        });
+        return metrics;
+      }
+
+      const channelSession = runtime.channel?.session;
+      if (!channelSession?.resolveStorePath) {
+        log.info('footer metrics lookup unavailable', {
+          sessionKey: this.deps.sessionKey,
+          hasRuntime: !!runtime,
+          hasAgent: !!runtime.agent,
+          hasAgentSession: !!runtime.agent?.session,
+          hasChannel: !!runtime.channel,
+          hasChannelSession: !!runtime.channel?.session,
+        });
+        return undefined;
+      }
+
+      const storePath = channelSession.resolveStorePath(sessionStorePath);
+      const raw = readFileSync(storePath, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      const store = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, Record<string, unknown>>)
+        : {};
+      const entry = store[key];
+      if (!entry || typeof entry !== 'object') {
+        log.info('footer metrics lookup: session entry missing', {
+          sessionKey: this.deps.sessionKey,
+          normalizedSessionKey: key,
+          storePath,
+          source: 'channel.session.file',
+        });
+        return undefined;
+      }
+
+      const metrics = {
+        inputTokens: typeof entry.inputTokens === 'number' ? entry.inputTokens : undefined,
+        outputTokens: typeof entry.outputTokens === 'number' ? entry.outputTokens : undefined,
+        cacheRead: typeof entry.cacheRead === 'number' ? entry.cacheRead : undefined,
+        cacheWrite: typeof entry.cacheWrite === 'number' ? entry.cacheWrite : undefined,
+        totalTokens: typeof entry.totalTokens === 'number' ? entry.totalTokens : undefined,
+        totalTokensFresh: typeof entry.totalTokensFresh === 'boolean' ? entry.totalTokensFresh : undefined,
+        contextTokens: typeof entry.contextTokens === 'number' ? entry.contextTokens : undefined,
+        model: typeof entry.model === 'string' ? entry.model : undefined,
+      };
+      log.info('footer metrics lookup: session entry found', {
+        sessionKey: this.deps.sessionKey,
+        normalizedSessionKey: key,
+        storePath,
+        source: 'channel.session.file',
+        metrics,
+      });
+      return metrics;
+    } catch (err) {
+      log.warn('footer metrics lookup failed', { error: String(err), sessionKey: this.deps.sessionKey });
+      return undefined;
+    }
   }
 
   constructor(deps: StreamingCardDeps) {
@@ -383,6 +487,7 @@ export class StreamingCardController {
           elapsedMs: this.elapsed(),
           isError: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics: this.getFooterSessionMetrics(),
         });
         if (errorEffectiveCardId) {
           await this.closeStreamingAndUpdate(errorEffectiveCardId, errorCard, 'onError');
@@ -445,12 +550,21 @@ export class StreamingCardController {
 
         const resolvedDisplayText = await this.imageResolver.resolveImagesAwait(displayText, 15_000);
 
+        const footerMetrics = this.getFooterSessionMetrics();
+        log.info('final footer render inputs', {
+          footer: this.deps.resolvedFooter,
+          hasMetrics: !!footerMetrics,
+          metrics: footerMetrics ?? null,
+          elapsedMs: this.elapsed(),
+        });
+
         const completeCard = buildCardContent('complete', {
           text: resolvedDisplayText,
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
           footer: this.deps.resolvedFooter,
+          footerMetrics,
         });
 
         if (idleEffectiveCardId) {
@@ -518,6 +632,7 @@ export class StreamingCardController {
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics: this.getFooterSessionMetrics(),
         });
         await this.closeStreamingAndUpdate(effectiveCardId, abortCardContent, 'abortCard');
         log.info('abortCard completed', { effectiveCardId });
@@ -532,6 +647,7 @@ export class StreamingCardController {
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          footerMetrics: this.getFooterSessionMetrics(),
         });
         await updateCardFeishu({
           cfg: this.deps.cfg,
