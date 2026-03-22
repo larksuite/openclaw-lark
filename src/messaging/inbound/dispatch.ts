@@ -324,7 +324,7 @@ export async function dispatchToAgent(params: {
   const skillFilter = dc.isGroup ? (params.groupConfig?.skills ?? params.defaultGroupConfig?.skills) : undefined;
 
   if (isCommand) {
-    await dispatchSystemCommand(dc, ctxPayload, isBareNewOrReset, params.replyToMessageId);
+    await dispatchSystemCommand(dc, ctxPayload, false, params.replyToMessageId);
     // /new and /reset explicitly start a new session — clear pending history
     if (isBareNewOrReset && dc.isGroup && historyKey && params.chatHistories) {
       clearHistoryEntriesIfEnabled({
