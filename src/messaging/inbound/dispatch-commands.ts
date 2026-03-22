@@ -66,7 +66,7 @@ export async function dispatchPermissionNotification(
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
-    replyInThread: dc.isThread,
+    replyInThread: dc.isThread || dc.forceReplyInThread,
   });
 
   dc.log(`feishu[${dc.account.accountId}]: dispatching permission error notification to agent`);
@@ -123,7 +123,7 @@ export async function dispatchSystemCommand(
           text,
           replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
           accountId: dc.account.accountId,
-          replyInThread: dc.isThread,
+          replyInThread: dc.isThread || dc.forceReplyInThread,
         });
         delivered = true;
       },

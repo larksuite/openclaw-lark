@@ -89,7 +89,7 @@ async function dispatchNormalMessage(
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
     skipTyping,
-    replyInThread: dc.isThread,
+    replyInThread: dc.isThread || dc.forceReplyInThread,
   });
 
   // Create an AbortController so the abort fast-path can cancel the
@@ -175,7 +175,7 @@ export async function dispatchToAgent(params: {
   skipTyping?: boolean;
 }): Promise<void> {
   // 1. Derive shared context (including route resolution + system event)
-  const dc = buildDispatchContext(params);
+  const dc = buildDispatchContext({ ...params, groupConfig: params.groupConfig });
 
   // 1b. Resolve thread session isolation (async: may query group info API)
   if (dc.isThread && dc.ctx.threadId) {
@@ -300,7 +300,7 @@ export async function dispatchToAgent(params: {
         card,
         replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
         accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
+        replyInThread: dc.isThread || dc.forceReplyInThread,
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -311,7 +311,7 @@ export async function dispatchToAgent(params: {
         text: `${i18nCommandName} failed: ${errMsg}`,
         replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
         accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
+        replyInThread: dc.isThread || dc.forceReplyInThread,
       });
     }
     return;
