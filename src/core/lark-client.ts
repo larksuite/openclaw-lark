@@ -85,6 +85,38 @@ function resolveBrand(brand: LarkBrand | undefined): Lark.Domain | string {
 /** Instance cache keyed by accountId. */
 const cache = new Map<string, LarkClient>();
 
+/**
+ * Compare two SecretRef-shaped objects by their identity fields.
+ * Key-order independent, unlike JSON.stringify.
+ */
+function secretRefsEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return a.source === b.source && a.provider === b.provider && a.id === b.id;
+}
+
+/**
+ * Compare two credential values that may be strings or SecretRef objects.
+ *
+ * - Both strings: direct `===`.
+ * - Both SecretRef objects: compare `source`, `provider`, `id` explicitly.
+ * - Mixed (string vs SecretRef): treat as equal — the platform resolves the
+ *   SecretRef at startup (producing the cached string) but `loadConfig()`
+ *   returns the raw object on subsequent calls.  Detecting SecretRef identity
+ *   changes is not useful here because the platform does not re-resolve
+ *   feishu secrets on reload, so a new SecretRef would be equally unusable.
+ */
+function credentialsEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === 'string' && typeof b === 'string') return false;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    return secretRefsEqual(a as Record<string, unknown>, b as Record<string, unknown>);
+  }
+  // Mixed types: keep the cached instance that holds the working string.
+  if ((typeof a === 'string' && b && typeof b === 'object') || (typeof b === 'string' && a && typeof a === 'object')) {
+    return true;
+  }
+  return false;
+}
+
 export class LarkClient {
   readonly account: LarkAccount;
 
@@ -161,7 +193,7 @@ export class LarkClient {
    */
   static fromAccount(account: LarkAccount): LarkClient {
     const existing = cache.get(account.accountId);
-    if (existing && existing.account.appId === account.appId && existing.account.appSecret === account.appSecret) {
+    if (existing && existing.account.appId === account.appId && credentialsEqual(existing.account.appSecret, account.appSecret)) {
       return existing;
     }
     // Credentials changed — tear down the stale instance before replacing it.
