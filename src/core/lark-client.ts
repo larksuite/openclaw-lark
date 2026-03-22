@@ -19,7 +19,8 @@ import * as Lark from '@larksuiteoapi/node-sdk';
 import type { ClawdbotConfig, PluginRuntime } from 'openclaw/plugin-sdk';
 import type { LarkBrand, LarkAccount, FeishuProbeResult } from './types';
 import { getLarkAccount } from './accounts';
-import { clearUserNameCache } from '../messaging/inbound/user-name-cache';
+// NOTE: clearUserNameCache is lazy-imported in clearCache() to break a
+// circular dependency with user-name-cache.ts (which imports LarkClient).
 import { clearChatInfoCache } from './chat-info-cache';
 import { getUserAgent } from './version';
 import { larkLogger } from './lark-logger';
@@ -204,7 +205,8 @@ export class LarkClient {
    * With `accountId` — dispose that single instance.
    * Without — dispose every cached instance and clear the cache.
    */
-  static clearCache(accountId?: string): void {
+  static async clearCache(accountId?: string): Promise<void> {
+    const {clearUserNameCache} = await import('../messaging/inbound/user-name-cache');
     if (accountId !== undefined) {
       cache.get(accountId)?.dispose();
       clearUserNameCache(accountId);

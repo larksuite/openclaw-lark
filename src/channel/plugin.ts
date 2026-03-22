@@ -337,7 +337,7 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
 
     stopAccount: async (ctx) => {
       ctx.log?.info(`stopping feishu[${ctx.accountId}]`);
-      LarkClient.clearCache(ctx.accountId);
+      await LarkClient.clearCache(ctx.accountId);
       ctx.log?.info(`stopped feishu[${ctx.accountId}]`);
     },
   },
