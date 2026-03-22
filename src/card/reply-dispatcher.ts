@@ -40,7 +40,7 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
-  const { cfg, agentId, chatId, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread } = params;
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -69,6 +69,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     replyMode,
     chatType,
   });
+  log.info('footer config resolved', {
+    accountId: account.accountId,
+    sessionKey,
+    chatType,
+    useStreamingCards,
+    rawFooter: feishuCfg?.footer ?? null,
+    resolvedFooter,
+  });
 
   // ---- Chunk & render settings (static mode only) ----
   const textChunkLimit = core.channel.text.resolveTextChunkLimit(cfg, 'feishu', accountId, { fallbackLimit: 4000 });
@@ -82,6 +90,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const controller = useStreamingCards
     ? new StreamingCardController({
         cfg,
+        sessionKey,
         accountId,
         chatId,
         replyToMessageId,
