@@ -72,6 +72,7 @@ export interface StreamingTextState {
   completedText: string;
   streamingPrefix: string;
   lastPartialText: string;
+  lastFlushedText: string;
 }
 
 export interface CardKitState {
@@ -112,6 +113,7 @@ export interface CreateFeishuReplyDispatcherParams {
   cfg: ClawdbotConfig;
   agentId: string;
   chatId: string;
+  sessionKey?: string;
   replyToMessageId?: string;
   /** Account ID for multi-account support. */
   accountId?: string;
@@ -162,7 +164,9 @@ export interface StreamingCardDeps {
   cfg: ClawdbotConfig;
   accountId: string | undefined;
   chatId: string;
+  sessionKey?: string;
   replyToMessageId: string | undefined;
   replyInThread: boolean | undefined;
+  reasoning: { enable: boolean; showFullPaths: boolean };
   resolvedFooter: Required<FeishuFooterConfig>;
 }

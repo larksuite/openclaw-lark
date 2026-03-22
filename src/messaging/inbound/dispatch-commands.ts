@@ -14,6 +14,7 @@ import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { ticketElapsed } from '../../core/lark-ticket';
 import { createFeishuReplyDispatcher } from '../../card/reply-dispatcher';
+import { startReasoningTraceRun } from '../../card/reasoning-trace-store';
 import { sendMessageFeishu } from '../outbound/send';
 import { buildInboundPayload } from './dispatch-builders';
 
@@ -54,6 +55,8 @@ export async function dispatchPermissionNotification(
     wasMentioned: false,
   });
 
+  startReasoningTraceRun(dc.threadSessionKey ?? dc.route.sessionKey);
+
   const {
     dispatcher: permDispatcher,
     replyOptions: permReplyOptions,
@@ -63,6 +66,7 @@ export async function dispatchPermissionNotification(
     cfg: dc.accountScopedCfg,
     agentId: dc.route.agentId,
     chatId: dc.ctx.chatId,
+    sessionKey: dc.threadSessionKey ?? dc.route.sessionKey,
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,

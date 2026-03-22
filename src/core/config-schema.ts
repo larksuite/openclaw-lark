@@ -174,6 +174,12 @@ export const FeishuAccountConfigSchema = z.object({
   replyMode: ReplyModeSchema,
   streaming: z.boolean().optional(),
   blockStreaming: z.boolean().optional(),
+  reasoning: z
+    .object({
+      enable: z.boolean().optional(),
+      showFullPaths: z.boolean().optional(),
+    })
+    .optional(),
   tools: FeishuToolsFlagSchema,
   footer: FeishuFooterSchema,
   markdown: MarkdownConfigSchema,

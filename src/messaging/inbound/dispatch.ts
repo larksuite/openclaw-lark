@@ -30,6 +30,7 @@ import {
   registerActiveDispatcher,
   unregisterActiveDispatcher,
 } from '../../channel/chat-queue';
+import { startReasoningTraceRun } from '../../card/reasoning-trace-store';
 import { isLikelyAbortText } from '../../channel/abort-detect';
 import { type DispatchContext, buildDispatchContext, resolveThreadSessionKey } from './dispatch-context';
 import {
@@ -81,10 +82,14 @@ async function dispatchNormalMessage(
     return;
   }
 
+  const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
+  startReasoningTraceRun(effectiveSessionKey);
+
   const { dispatcher, replyOptions, markDispatchIdle, markFullyComplete, abortCard } = createFeishuReplyDispatcher({
     cfg: dc.accountScopedCfg,
     agentId: dc.route.agentId,
     chatId: dc.ctx.chatId,
+    sessionKey: effectiveSessionKey,
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
@@ -101,7 +106,6 @@ async function dispatchNormalMessage(
   const queueKey = buildQueueKey(dc.account.accountId, dc.ctx.chatId, dc.ctx.threadId);
   registerActiveDispatcher(queueKey, { abortCard, abortController });
 
-  const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
   dc.log(`feishu[${dc.account.accountId}]: dispatching to agent (session=${effectiveSessionKey})`);
   log.info(`dispatching to agent (session=${effectiveSessionKey})`);
 

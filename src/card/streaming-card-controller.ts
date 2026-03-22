@@ -22,8 +22,22 @@ import {
   updateCardKitCard,
   setCardStreamingMode,
 } from './cardkit';
-import { buildCardContent, splitReasoningText, stripReasoningTags, STREAMING_ELEMENT_ID, toCardKit2 } from './builder';
+import {
+  buildCardContent,
+  buildStreamingThinkingCard,
+  splitReasoningText,
+  STREAMING_ELEMENT_ID,
+  stripReasoningTags,
+  toCardKit2,
+} from './builder';
 import { optimizeMarkdownStyle } from './markdown-style';
+import {
+  buildReasoningTitleSuffix,
+  normalizeReasoningDisplay,
+  type ReasoningDisplayResult,
+  type ReasoningToolEvent,
+} from './reasoning-display';
+import { getReasoningTraceSteps } from './reasoning-trace-store';
 import { ImageResolver } from './image-resolver';
 import { registerShutdownHook } from '../core/shutdown-hooks';
 import { FlushController } from './flush-controller';
@@ -44,43 +58,7 @@ import {
 } from './reply-dispatcher-types';
 
 const log = larkLogger('card/streaming');
-// ---------------------------------------------------------------------------
-// CardKit 2.0 initial streaming payload
-// ---------------------------------------------------------------------------
 
-const STREAMING_THINKING_CARD = {
-  schema: '2.0',
-  config: {
-    streaming_mode: true,
-    locales: ['zh_cn', 'en_us'],
-    summary: {
-      content: 'Thinking...',
-      i18n_content: { zh_cn: '思考中...', en_us: 'Thinking...' },
-    },
-  },
-  body: {
-    elements: [
-      {
-        tag: 'markdown',
-        content: '',
-        text_align: 'left',
-        text_size: 'normal_v2',
-        margin: '0px 0px 0px 0px',
-        element_id: STREAMING_ELEMENT_ID,
-      },
-      {
-        tag: 'markdown',
-        content: ' ',
-        icon: {
-          tag: 'custom_icon',
-          img_key: 'img_v3_02vb_496bec09-4b43-4773-ad6b-0cdd103cd2bg',
-          size: '16px 16px',
-        },
-        element_id: 'loading_icon',
-      },
-    ],
-  },
-} as const;
 
 // ---------------------------------------------------------------------------
 // StreamingCardController
@@ -102,6 +80,7 @@ export class StreamingCardController {
     completedText: '',
     streamingPrefix: '',
     lastPartialText: '',
+    lastFlushedText: '',
   };
   private reasoning: ReasoningState = {
     accumulatedReasoningText: '',
@@ -109,6 +88,7 @@ export class StreamingCardController {
     reasoningElapsedMs: 0,
     isReasoningPhase: false,
   };
+  private readonly toolEvents: ReasoningToolEvent[] = [];
 
   // ---- Sub-controllers ----
   private readonly flush: FlushController;
@@ -201,6 +181,39 @@ export class StreamingCardController {
     return this.phase;
   }
 
+  private get shouldDisplayStepEvents(): boolean {
+    return this.deps.reasoning.enable;
+  }
+
+  private get visibleReasoningDisplay(): ReasoningDisplayResult | null {
+    if (!this.shouldDisplayStepEvents) return null;
+    const traceSteps = getReasoningTraceSteps(this.deps.sessionKey);
+    return normalizeReasoningDisplay({
+      traceSteps,
+      toolEvents: this.toolEvents,
+      showFullPaths: this.deps.reasoning.showFullPaths,
+    });
+  }
+
+  private get finalReasoningText(): string | undefined {
+    const content = this.visibleReasoningDisplay?.content.trim();
+    return content || undefined;
+  }
+
+  private get visibleReasoningElapsedMs(): number | undefined {
+    if (!this.shouldDisplayStepEvents || !this.reasoning.reasoningStartTime) {
+      return undefined;
+    }
+    return this.reasoning.reasoningElapsedMs || Date.now() - this.reasoning.reasoningStartTime;
+  }
+
+  private get visibleReasoningTitleSuffix(): { zh: string; en: string } | undefined {
+    if (!this.shouldDisplayStepEvents) return undefined;
+    return buildReasoningTitleSuffix({
+      stepCount: this.visibleReasoningDisplay?.stepCount ?? 0,
+    });
+  }
+
   // ------------------------------------------------------------------
   // Unified callback guard
   // ------------------------------------------------------------------
@@ -251,6 +264,46 @@ export class StreamingCardController {
     this.disposeShutdownHook = null;
   }
 
+  private markReasoningActivity(): void {
+    if (!this.reasoning.reasoningStartTime) {
+      this.reasoning.reasoningStartTime = Date.now();
+    }
+    this.reasoning.reasoningElapsedMs = Date.now() - this.reasoning.reasoningStartTime;
+  }
+
+  private captureReasoningElapsed(): void {
+    if (!this.reasoning.reasoningStartTime) return;
+    this.reasoning.reasoningElapsedMs = Date.now() - this.reasoning.reasoningStartTime;
+  }
+
+  private appendToolEvent(event: ReasoningToolEvent): boolean {
+    const normalized: ReasoningToolEvent = {
+      kind: event.kind,
+      name: event.name?.trim() || undefined,
+      phase: event.phase?.trim() || undefined,
+      text: event.text?.trim() || undefined,
+    };
+
+    if (!normalized.name && !normalized.text) return false;
+
+    const lastEvent = this.toolEvents.at(-1);
+    if (
+      lastEvent &&
+      lastEvent.kind === normalized.kind &&
+      lastEvent.name === normalized.name &&
+      lastEvent.phase === normalized.phase &&
+      lastEvent.text === normalized.text
+    ) {
+      return false;
+    }
+
+    this.toolEvents.push(normalized);
+    if (this.toolEvents.length > 200) {
+      this.toolEvents.splice(0, this.toolEvents.length - 200);
+    }
+    return true;
+  }
+
   // ------------------------------------------------------------------
   // SDK callback bindings
   // ------------------------------------------------------------------
@@ -276,11 +329,10 @@ export class StreamingCardController {
 
     if (split.reasoningText && !split.answerText) {
       // Pure reasoning payload
-      this.reasoning.reasoningElapsedMs = this.reasoning.reasoningStartTime
-        ? Date.now() - this.reasoning.reasoningStartTime
-        : 0;
+      this.markReasoningActivity();
       this.reasoning.accumulatedReasoningText = split.reasoningText;
       this.reasoning.isReasoningPhase = true;
+      if (!this.text.accumulatedText) return;
       await this.throttledCardUpdate();
       return;
     }
@@ -288,6 +340,7 @@ export class StreamingCardController {
     // Answer payload (may also contain inline reasoning from tags)
     this.reasoning.isReasoningPhase = false;
     if (split.reasoningText) {
+      this.markReasoningActivity();
       this.reasoning.accumulatedReasoningText = split.reasoningText;
     }
     const answerText = split.answerText ?? text;
@@ -313,12 +366,50 @@ export class StreamingCardController {
     const rawText = payload.text ?? '';
     if (!rawText) return;
 
-    if (!this.reasoning.reasoningStartTime) {
-      this.reasoning.reasoningStartTime = Date.now();
-    }
+    this.markReasoningActivity();
     this.reasoning.isReasoningPhase = true;
     const split = splitReasoningText(rawText);
     this.reasoning.accumulatedReasoningText = split.reasoningText ?? rawText;
+    if (!this.text.accumulatedText) return;
+    await this.throttledCardUpdate();
+  }
+
+  async onToolStart(payload: { name?: string; phase?: string }): Promise<void> {
+    if (!this.shouldProceed('onToolStart')) return;
+    if (!this.shouldDisplayStepEvents) return;
+    if (payload.phase && payload.phase !== 'start') return;
+
+    if (!this.appendToolEvent({ kind: 'start', name: payload.name, phase: payload.phase })) {
+      return;
+    }
+
+    this.markReasoningActivity();
+    this.reasoning.isReasoningPhase = true;
+
+    await this.ensureCardCreated();
+    if (!this.shouldProceed('onToolStart.postCreate')) return;
+    if (!this.cardKit.cardMessageId) return;
+    if (!this.text.accumulatedText) return;
+    await this.throttledCardUpdate();
+  }
+
+  async onToolResult(payload: ReplyPayload): Promise<void> {
+    if (!this.shouldProceed('onToolResult')) return;
+    if (!this.shouldDisplayStepEvents) return;
+
+    const text = payload.text?.trim();
+    if (!text) return;
+
+    if (!this.appendToolEvent({ kind: 'summary', text })) {
+      return;
+    }
+
+    this.markReasoningActivity();
+
+    await this.ensureCardCreated();
+    if (!this.shouldProceed('onToolResult.postCreate')) return;
+    if (!this.cardKit.cardMessageId) return;
+    if (!this.text.accumulatedText) return;
     await this.throttledCardUpdate();
   }
 
@@ -329,14 +420,10 @@ export class StreamingCardController {
     log.debug('onPartialReply', { len: text.length });
     if (!text) return;
 
-    if (!this.reasoning.reasoningStartTime) {
-      this.reasoning.reasoningStartTime = Date.now();
-    }
+    this.markReasoningActivity();
     if (this.reasoning.isReasoningPhase) {
       this.reasoning.isReasoningPhase = false;
-      this.reasoning.reasoningElapsedMs = this.reasoning.reasoningStartTime
-        ? Date.now() - this.reasoning.reasoningStartTime
-        : 0;
+      this.captureReasoningElapsed();
     }
 
     // 检测回复边界：文本长度缩短 → 新回复开始
@@ -363,6 +450,7 @@ export class StreamingCardController {
 
     log.error(`${info.kind} reply failed`, { error: String(err) });
 
+    this.captureReasoningElapsed();
     this.finalizeCard('onError', 'error');
 
     await this.flush.waitForFlush();
@@ -378,8 +466,11 @@ export class StreamingCardController {
         const errorText = this.imageResolver.resolveImages(rawErrorText);
         const errorCard = buildCardContent('complete', {
           text: errorText,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
-          reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
+          reasoningText: this.finalReasoningText,
+          reasoningSteps: this.visibleReasoningDisplay?.steps,
+          reasoningTitleSuffix: this.visibleReasoningTitleSuffix,
+          reasoningElapsedMs: this.visibleReasoningElapsedMs,
+          showReasoning: this.deps.reasoning.enable,
           elapsedMs: this.elapsed(),
           isError: true,
           footer: this.deps.resolvedFooter,
@@ -406,6 +497,7 @@ export class StreamingCardController {
     if (!this.dispatchFullyComplete) return;
 
     if (this.isTerminalPhase) return;
+    this.captureReasoningElapsed();
     this.finalizeCard('onIdle', 'normal');
 
     await this.flush.waitForFlush();
@@ -447,8 +539,11 @@ export class StreamingCardController {
 
         const completeCard = buildCardContent('complete', {
           text: resolvedDisplayText,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
-          reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
+          reasoningText: this.finalReasoningText,
+          reasoningSteps: this.visibleReasoningDisplay?.steps,
+          reasoningTitleSuffix: this.visibleReasoningTitleSuffix,
+          reasoningElapsedMs: this.visibleReasoningElapsedMs,
+          showReasoning: this.deps.reasoning.enable,
           elapsedMs: this.elapsed(),
           footer: this.deps.resolvedFooter,
         });
@@ -499,6 +594,7 @@ export class StreamingCardController {
 
   async abortCard(): Promise<void> {
     try {
+      this.captureReasoningElapsed();
       if (!this.transition('aborted', 'abortCard', 'abort')) return;
 
       // transition() already executed onEnterTerminalPhase (cancel + complete + dispose hook)
@@ -513,8 +609,11 @@ export class StreamingCardController {
         const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCardContent = buildCardContent('complete', {
           text: abortText,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
-          reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
+          reasoningText: this.finalReasoningText,
+          reasoningSteps: this.visibleReasoningDisplay?.steps,
+          reasoningTitleSuffix: this.visibleReasoningTitleSuffix,
+          reasoningElapsedMs: this.visibleReasoningElapsedMs,
+          showReasoning: this.deps.reasoning.enable,
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
@@ -527,8 +626,11 @@ export class StreamingCardController {
         const abortText = this.imageResolver.resolveImages(this.text.accumulatedText || 'Aborted.');
         const abortCard = buildCardContent('complete', {
           text: abortText,
-          reasoningText: this.reasoning.accumulatedReasoningText || undefined,
-          reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
+          reasoningText: this.finalReasoningText,
+          reasoningSteps: this.visibleReasoningDisplay?.steps,
+          reasoningTitleSuffix: this.visibleReasoningTitleSuffix,
+          reasoningElapsedMs: this.visibleReasoningElapsedMs,
+          showReasoning: this.deps.reasoning.enable,
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
@@ -568,7 +670,7 @@ export class StreamingCardController {
           // Step 1: Create card entity
           const cId = await createCardEntity({
             cfg: this.deps.cfg,
-            card: STREAMING_THINKING_CARD,
+            card: buildStreamingThinkingCard(this.deps.reasoning.enable),
             accountId: this.deps.accountId,
           });
 
@@ -632,7 +734,9 @@ export class StreamingCardController {
           this.cardKit.cardKitCardId = null;
           this.cardKit.originalCardKitCardId = null;
 
-          const fallbackCard = buildCardContent('thinking');
+          const fallbackCard = buildCardContent('streaming', {
+            showReasoning: this.deps.reasoning.enable,
+          });
           const result = await sendCardFeishu({
             cfg: this.deps.cfg,
             to: this.deps.chatId,
@@ -693,26 +797,28 @@ export class StreamingCardController {
       const resolvedText = this.imageResolver.resolveImages(displayText);
 
       if (this.cardKit.cardKitCardId) {
-        // CardKit streaming — typewriter effect
-        const prevSeq = this.cardKit.cardKitSequence;
-        this.cardKit.cardKitSequence += 1;
-        log.debug('flushCardUpdate: seq bump', {
-          seqBefore: prevSeq,
-          seqAfter: this.cardKit.cardKitSequence,
-        });
-        await streamCardContent({
-          cfg: this.deps.cfg,
-          cardId: this.cardKit.cardKitCardId,
-          elementId: STREAMING_ELEMENT_ID,
-          content: optimizeMarkdownStyle(resolvedText),
-          sequence: this.cardKit.cardKitSequence,
-          accountId: this.deps.accountId,
-        });
+        if (resolvedText !== this.text.lastFlushedText) {
+          const prevSeq = this.cardKit.cardKitSequence;
+          this.cardKit.cardKitSequence += 1;
+          log.debug('flushCardUpdate: answer seq bump', {
+            seqBefore: prevSeq,
+            seqAfter: this.cardKit.cardKitSequence,
+          });
+          await streamCardContent({
+            cfg: this.deps.cfg,
+            cardId: this.cardKit.cardKitCardId,
+            elementId: STREAMING_ELEMENT_ID,
+            content: optimizeMarkdownStyle(resolvedText),
+            sequence: this.cardKit.cardKitSequence,
+            accountId: this.deps.accountId,
+          });
+          this.text.lastFlushedText = resolvedText;
+        }
       } else {
         log.debug('flushCardUpdate: IM patch fallback');
         const card = buildCardContent('streaming', {
-          text: this.reasoning.isReasoningPhase ? '' : resolvedText,
-          reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
+          text: resolvedText,
+          showReasoning: this.deps.reasoning.enable,
         });
         await updateCardFeishu({
           cfg: this.deps.cfg,
@@ -747,10 +853,6 @@ export class StreamingCardController {
   }
 
   private buildDisplayText(): string {
-    if (this.reasoning.isReasoningPhase && this.reasoning.accumulatedReasoningText) {
-      const reasoningDisplay = `💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`;
-      return this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
-    }
     return this.text.accumulatedText;
   }
 

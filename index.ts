@@ -26,6 +26,7 @@ import {
 import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
 import { emitSecurityWarnings } from './src/core/security-check';
+import { recordReasoningToolEnd, recordReasoningToolStart } from './src/card/reasoning-trace-store';
 
 const log = larkLogger('plugin');
 
@@ -123,15 +124,29 @@ const plugin = {
 
     // ---- Tool call hooks (auto-trace AI tool invocations) ----
 
-    api.on('before_tool_call', (event) => {
-      log.info(`tool call: ${event.toolName} params=${JSON.stringify(event.params)}`);
+    api.on('before_tool_call', (event, ctx) => {
+      recordReasoningToolStart({
+        sessionKey: ctx.sessionKey,
+        toolName: event.toolName,
+        toolParams: event.params,
+      });
+      const paramsPreview = JSON.stringify(event.params)?.slice(0, 200) ?? '';
+      log.info(`tool call: ${event.toolName} session=${ctx.sessionKey ?? '-'} params=${paramsPreview}`);
     });
 
-    api.on('after_tool_call', (event) => {
+    api.on('after_tool_call', (event, ctx) => {
+      recordReasoningToolEnd({
+        sessionKey: ctx.sessionKey,
+        toolName: event.toolName,
+        toolParams: event.params,
+        result: event.result,
+        error: event.error,
+        durationMs: event.durationMs,
+      });
       if (event.error) {
-        log.error(`tool fail: ${event.toolName} ${event.error} (${event.durationMs ?? 0}ms)`);
+        log.error(`tool fail: ${event.toolName} session=${ctx.sessionKey ?? '-'} ${event.error} (${event.durationMs ?? 0}ms)`);
       } else {
-        log.info(`tool done: ${event.toolName} ok (${event.durationMs ?? 0}ms)`);
+        log.info(`tool done: ${event.toolName} session=${ctx.sessionKey ?? '-'} ok (${event.durationMs ?? 0}ms)`);
       }
     });
 

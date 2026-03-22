@@ -9,6 +9,7 @@
  */
 
 import { optimizeMarkdownStyle } from './markdown-style';
+import { EMPTY_REASONING_PLACEHOLDER, type ReasoningDisplayStep } from './reasoning-display';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -20,7 +21,6 @@ import { optimizeMarkdownStyle } from './markdown-style';
  * streaming updates.
  */
 export const STREAMING_ELEMENT_ID = 'streaming_content';
-export const REASONING_ELEMENT_ID = 'reasoning_content';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -206,7 +206,10 @@ export function buildCardContent(
   data: {
     text?: string;
     reasoningText?: string;
+    reasoningSteps?: ReasoningDisplayStep[];
+    reasoningTitleSuffix?: { zh: string; en: string };
     reasoningElapsedMs?: number;
+    showReasoning?: boolean;
     toolCalls?: ToolCallInfo[];
     confirmData?: ConfirmData;
     elapsedMs?: number;
@@ -219,15 +222,16 @@ export function buildCardContent(
     case 'thinking':
       return buildThinkingCard();
     case 'streaming':
-      return buildStreamingCard(data.text ?? '', data.toolCalls ?? [], data.reasoningText);
+      return buildStreamingCard(data.text ?? '', data.showReasoning);
     case 'complete':
       return buildCompleteCard({
         text: data.text ?? '',
-        toolCalls: data.toolCalls ?? [],
         elapsedMs: data.elapsedMs,
         isError: data.isError,
-        reasoningText: data.reasoningText,
+        reasoningSteps: data.reasoningSteps,
+        reasoningTitleSuffix: data.reasoningTitleSuffix,
         reasoningElapsedMs: data.reasoningElapsedMs,
+        showReasoning: data.showReasoning,
         isAborted: data.isAborted,
         footer: data.footer,
       });
@@ -255,38 +259,34 @@ function buildThinkingCard(): FeishuCard {
   };
 }
 
-function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reasoningText?: string): FeishuCard {
+function buildStreamingCard(
+  partialText: string,
+  showReasoning = true,
+): FeishuCard {
   const elements: CardElement[] = [];
 
-  if (!partialText && reasoningText) {
-    // Reasoning phase: show reasoning content in notation style
-    elements.push({
-      tag: 'markdown',
-      content: `💭 **Thinking...**\n\n${reasoningText}`,
-      i18n_content: {
-        zh_cn: `💭 **思考中...**\n\n${reasoningText}`,
-        en_us: `💭 **Thinking...**\n\n${reasoningText}`,
-      },
-      text_size: 'notation',
-    });
-  } else if (partialText) {
-    // Answer phase: show answer content only
+  if (showReasoning) {
+    elements.push(buildStreamingReasoningPendingPanel());
+  }
+
+  if (partialText) {
     elements.push({
       tag: 'markdown',
       content: optimizeMarkdownStyle(partialText),
     });
-  }
-
-  // Tool calls in progress
-  if (toolCalls.length > 0) {
-    const toolLines = toolCalls.map((tc) => {
-      const statusIcon = tc.status === 'running' ? '\ud83d\udd04' : tc.status === 'complete' ? '\u2705' : '\u274c';
-      return `${statusIcon} ${tc.name} - ${tc.status}`;
-    });
+  } else if (!showReasoning) {
     elements.push({
       tag: 'markdown',
-      content: toolLines.join('\n'),
-      text_size: 'notation',
+      content: 'Thinking...',
+      i18n_content: {
+        zh_cn: '思考中...',
+        en_us: 'Thinking...',
+      },
+    });
+  } else {
+    elements.push({
+      tag: 'markdown',
+      content: '...',
     });
   }
 
@@ -298,54 +298,37 @@ function buildStreamingCard(partialText: string, toolCalls: ToolCallInfo[], reas
 
 function buildCompleteCard(params: {
   text: string;
-  toolCalls: ToolCallInfo[];
   elapsedMs?: number;
   isError?: boolean;
-  reasoningText?: string;
+  reasoningSteps?: ReasoningDisplayStep[];
+  reasoningTitleSuffix?: { zh: string; en: string };
   reasoningElapsedMs?: number;
+  showReasoning?: boolean;
   isAborted?: boolean;
   footer?: { status?: boolean; elapsed?: boolean };
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer } = params;
+  const {
+    text,
+    elapsedMs,
+    isError,
+    reasoningSteps,
+    reasoningTitleSuffix,
+    reasoningElapsedMs,
+    showReasoning = true,
+    isAborted,
+    footer,
+  } = params;
   const elements: CardElement[] = [];
 
   // Collapsible reasoning panel (before main content)
-  if (reasoningText) {
-    const dur = reasoningElapsedMs ? formatReasoningDuration(reasoningElapsedMs) : null;
-    const zhLabel = dur ? dur.zh : '思考';
-    const enLabel = dur ? dur.en : 'Thought';
-    elements.push({
-      tag: 'collapsible_panel',
-      expanded: false,
-      header: {
-        title: {
-          tag: 'markdown',
-          content: `💭 ${enLabel}`,
-          i18n_content: {
-            zh_cn: `💭 ${zhLabel}`,
-            en_us: `💭 ${enLabel}`,
-          },
-        },
-        vertical_align: 'center',
-        icon: {
-          tag: 'standard_icon',
-          token: 'down-small-ccm_outlined',
-          size: '16px 16px',
-        },
-        icon_position: 'follow_text',
-        icon_expanded_angle: -180,
-      },
-      border: { color: 'grey', corner_radius: '5px' },
-      vertical_spacing: '8px',
-      padding: '8px 8px 8px 8px',
-      elements: [
-        {
-          tag: 'markdown',
-          content: reasoningText,
-          text_size: 'notation',
-        },
-      ],
-    });
+  if (showReasoning) {
+    elements.push(
+      buildReasoningPanel({
+        reasoningSteps,
+        reasoningElapsedMs,
+        titleSuffix: reasoningTitleSuffix,
+      }),
+    );
   }
 
   // Full text content
@@ -353,20 +336,6 @@ function buildCompleteCard(params: {
     tag: 'markdown',
     content: optimizeMarkdownStyle(text),
   });
-
-  // Tool calls summary
-  if (toolCalls.length > 0) {
-    const toolSummaryLines = toolCalls.map((tc) => {
-      const statusIcon = tc.status === 'complete' ? '\u2705' : '\u274c';
-      return `${statusIcon} **${tc.name}** - ${tc.status}`;
-    });
-
-    elements.push({
-      tag: 'markdown',
-      content: toolSummaryLines.join('\n'),
-      text_size: 'notation',
-    });
-  }
 
   // Footer meta-info: each metadata item is independently controlled via
   // the `footer` config. Both status and elapsed default to hidden.
@@ -494,6 +463,47 @@ function buildConfirmCard(confirmData: ConfirmData): FeishuCard {
  * Convert an old-format FeishuCard to CardKit JSON 2.0 format.
  * JSON 2.0 uses `body.elements` instead of top-level `elements`.
  */
+/**
+ * Build the initial CardKit 2.0 streaming card with a loading icon.
+ * Optionally includes a reasoning pending panel above the streaming area.
+ */
+export function buildStreamingThinkingCard(showReasoning = true): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    config: {
+      streaming_mode: true,
+      locales: ['zh_cn', 'en_us'],
+      summary: {
+        content: 'Thinking...',
+        i18n_content: { zh_cn: '思考中...', en_us: 'Thinking...' },
+      },
+    },
+    body: {
+      elements: [
+        ...(showReasoning ? [buildStreamingReasoningPendingPanel()] : []),
+        {
+          tag: 'markdown',
+          content: '',
+          text_align: 'left',
+          text_size: 'normal_v2',
+          margin: '0px 0px 0px 0px',
+          element_id: STREAMING_ELEMENT_ID,
+        },
+        {
+          tag: 'markdown',
+          content: ' ',
+          icon: {
+            tag: 'custom_icon',
+            img_key: 'img_v3_02vb_496bec09-4b43-4773-ad6b-0cdd103cd2bg',
+            size: '16px 16px',
+          },
+          element_id: 'loading_icon',
+        },
+      ],
+    },
+  };
+}
+
 export function toCardKit2(card: FeishuCard): Record<string, unknown> {
   const result: Record<string, unknown> = {
     schema: '2.0',
@@ -502,4 +512,120 @@ export function toCardKit2(card: FeishuCard): Record<string, unknown> {
   };
   if (card.header) result.header = card.header;
   return result;
+}
+
+function buildStreamingReasoningPendingPanel(): CardElement {
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: '💭 Thinking...',
+        i18n_content: {
+          zh_cn: '💭 思考中...',
+          en_us: '💭 Thinking...',
+        },
+        text_color: 'grey',
+        text_size: 'notation',
+      },
+      vertical_align: 'center',
+      icon: {
+        tag: 'standard_icon',
+        token: 'down-small-ccm_outlined',
+        color: 'grey',
+        size: '16px 16px',
+      },
+      icon_position: 'right',
+      icon_expanded_angle: -180,
+    },
+    border: { color: 'grey', corner_radius: '5px' },
+    vertical_spacing: '8px',
+    padding: '8px 8px 8px 8px',
+    elements: [],
+  };
+}
+
+function buildReasoningPanel(params: {
+  reasoningSteps?: ReasoningDisplayStep[];
+  reasoningElapsedMs?: number;
+  titleSuffix?: { zh: string; en: string };
+}): CardElement {
+  const { reasoningSteps = [], reasoningElapsedMs, titleSuffix } = params;
+  const duration = reasoningElapsedMs ? formatReasoningDuration(reasoningElapsedMs) : null;
+  const zhTitleParts = [duration?.zh ?? '思考过程'];
+  const enTitleParts = [duration?.en ?? 'Thought process'];
+  if (titleSuffix) {
+    zhTitleParts.push(titleSuffix.zh);
+    enTitleParts.push(titleSuffix.en);
+  }
+
+  const stepElements = reasoningSteps.length > 0
+    ? reasoningSteps.map((step) => buildReasoningStepElement(step))
+    : [buildReasoningPlaceholder()];
+
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: {
+      title: {
+        tag: 'plain_text',
+        content: `💭 ${enTitleParts.join(' · ')}`,
+        i18n_content: {
+          zh_cn: `💭 ${zhTitleParts.join(' · ')}`,
+          en_us: `💭 ${enTitleParts.join(' · ')}`,
+        },
+        text_color: 'grey',
+        text_size: 'notation',
+      },
+      vertical_align: 'center',
+      icon: {
+        tag: 'standard_icon',
+        token: 'down-small-ccm_outlined',
+        color: 'grey',
+        size: '16px 16px',
+      },
+      icon_position: 'right',
+      icon_expanded_angle: -180,
+    },
+    border: { color: 'grey', corner_radius: '5px' },
+    vertical_spacing: '8px',
+    padding: '8px 8px 8px 8px',
+    elements: stepElements,
+  };
+}
+
+function buildReasoningStepElement(step: ReasoningDisplayStep): CardElement {
+  return {
+    tag: 'div',
+    icon: {
+      tag: 'standard_icon',
+      token: step.iconToken,
+      color: 'grey',
+    },
+    text: {
+      tag: 'plain_text',
+      content: step.detail ? `${step.title}\n${step.detail}` : step.title,
+      text_color: 'grey',
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildReasoningPlaceholder(labels?: { zh: string; en: string }): CardElement {
+  const zh = labels?.zh ?? '暂无可展示的思考内容';
+  const en = labels?.en ?? EMPTY_REASONING_PLACEHOLDER;
+  return {
+    tag: 'div',
+    text: {
+      tag: 'plain_text',
+      content: en,
+      i18n_content: {
+        zh_cn: zh,
+        en_us: en,
+      },
+      text_color: 'grey',
+      text_size: 'notation',
+    },
+  };
 }
