@@ -23,10 +23,12 @@ import { extractToolSend, jsonResult, readStringParam, readReactionParams } from
 
 import { addReactionFeishu, removeReactionFeishu, listReactionsFeishu } from './reactions';
 import { sendTextLark, sendCardLark } from './deliver';
+import { sendMarkdownCardFeishu } from './send';
 import { uploadAndSendMediaLark } from './media';
 import { LarkClient } from '../../core/lark-client';
 import { getEnabledLarkAccounts } from '../../core/accounts';
 import { larkLogger } from '../../core/lark-logger';
+import { shouldUseCard } from '../../card/reply-mode';
 
 const log = larkLogger('outbound/actions');
 
@@ -257,6 +259,19 @@ async function deliverMessage(
   }
 
   // Text-only path.
+  if (shouldUseCard(text)) {
+    const result = await sendMarkdownCardFeishu({
+      cfg,
+      to,
+      text,
+      replyToMessageId,
+      replyInThread,
+      accountId,
+    });
+    log.info(`deliverMessage: markdown card sent, messageId=${result.messageId}`);
+    return jsonResult({ ok: true, messageId: result.messageId, chatId: result.chatId });
+  }
+
   const result = await sendTextLark({ ...sendCtx, text });
   log.info(`deliverMessage: text sent, messageId=${result.messageId}`);
   return jsonResult({ ok: true, messageId: result.messageId, chatId: result.chatId });
