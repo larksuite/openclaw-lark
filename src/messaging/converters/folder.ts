@@ -26,6 +26,6 @@ export const convertFolder: ContentConverterFn = (raw) => {
 
   return {
     content: `<folder key="${fileKey}"${nameAttr}/>`,
-    resources: [{ type: 'file', fileKey, fileName: fileName || undefined }],
+    resources: [],
   };
 };
