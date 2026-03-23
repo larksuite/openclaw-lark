@@ -75,6 +75,7 @@ function _optimizeMarkdownStyle(text: string, cardVersion = 2): string {
   }
 
   // ── 6. 压缩多余空行（3 个以上连续换行 → 2 个）────────────────────
+  r = r.replace(/^\s*-{3,}\s*$/gm, '');
   r = r.replace(/\n{3,}/g, '\n\n');
 
   return r;

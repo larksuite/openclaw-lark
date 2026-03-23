@@ -13,6 +13,7 @@ import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from 
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import type { MentionInfo } from '../types';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
+import { splitMarkdownToElements } from '../../card/markdown-splitter';
 import { buildMentionedMessage, buildMentionedCardContent } from '../inbound/mention';
 
 // ---------------------------------------------------------------------------
@@ -334,7 +335,8 @@ export async function updateCardFeishu(params: {
  * @returns A card JSON object ready to be sent via {@link sendCardFeishu}.
  */
 export function buildMarkdownCard(text: string): Record<string, unknown> {
-  const optimizedText = optimizeMarkdownStyle(text);
+  const optimizedText = optimizeMarkdownStyle(text, 1);
+  const elements = splitMarkdownToElements(optimizedText);
 
   return {
     schema: '2.0',
@@ -342,12 +344,7 @@ export function buildMarkdownCard(text: string): Record<string, unknown> {
       wide_screen_mode: true,
     },
     body: {
-      elements: [
-        {
-          tag: 'markdown',
-          content: optimizedText,
-        },
-      ],
+      elements: elements.length > 0 ? elements : [{ tag: 'markdown', content: '' }],
     },
   };
 }

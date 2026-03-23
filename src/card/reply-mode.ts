@@ -37,7 +37,7 @@ export function resolveReplyMode(params: {
   const replyMode = feishuCfg?.replyMode;
   if (!replyMode) return 'auto';
 
-  if (typeof replyMode === 'string') return replyMode;
+  if (typeof replyMode === 'string') return replyMode as ReplyModeValue;
 
   // Object form: pick scene-specific value
   const sceneMode = chatType === 'group' ? replyMode.group : chatType === 'p2p' ? replyMode.direct : undefined;
@@ -75,13 +75,14 @@ export function expandAutoMode(params: {
  * markdown tables).
  */
 export function shouldUseCard(text: string): boolean {
-  // Fenced code blocks
-  if (/```[\s\S]*?```/.test(text)) {
-    return true;
-  }
-  // Markdown tables (header + separator rows separated by pipes)
-  if (/\|.+\|[\r\n]+\|[-:| ]+\|/.test(text)) {
-    return true;
-  }
+  const t = String(text ?? '');
+
+  if (/```[\s\S]*?```/.test(t)) return true;
+  if (/\|.+\|[\r\n]+\|[-:| ]+\|/.test(t)) return true;
+  if (/^\s*(?:[-*+]\s+|[•·]\s+|\d+[.)]\s+|\d+、\s+)/m.test(t)) return true;
+
+  const newlines = (t.match(/\n/g) ?? []).length;
+  if (t.length >= 2000 && newlines >= 20) return true;
+
   return false;
 }
