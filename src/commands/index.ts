@@ -31,6 +31,9 @@ const T: Record<FeishuLocale, {
   helpAuth: string;
   helpDoctor: string;
   helpHelp: string;
+  helpSession: string;
+  helpSessionAlt: string;
+  helpSessionIntent: string;
   // errors
   diagFailed: (msg: string) => string;
   authFailed: (msg: string) => string;
@@ -56,6 +59,9 @@ const T: Record<FeishuLocale, {
     helpAuth: '/feishu auth - 批量授权用户权限',
     helpDoctor: '/feishu doctor - 运行诊断',
     helpHelp: '/feishu help - 显示此帮助',
+    helpSession: '/codex_thread [task] - 在当前话题开启 Codex ACP 持久会话',
+    helpSessionAlt: '/feishu session [task] - 同上，走统一命令入口',
+    helpSessionIntent: '自然语言也可触发：明确要求“实际调用 sessions_spawn，在当前话题开启 Codex ACP 持久会话”',
     diagFailed: (msg) => `诊断执行失败: ${msg}`,
     authFailed: (msg) => `授权执行失败: ${msg}`,
     execFailed: (msg) => `执行失败: ${msg}`,
@@ -80,6 +86,9 @@ const T: Record<FeishuLocale, {
     helpAuth: '/feishu auth - Batch authorize user permissions',
     helpDoctor: '/feishu doctor - Run diagnostics',
     helpHelp: '/feishu help - Show this help',
+    helpSession: '/codex_thread [task] - Start a persistent Codex ACP session in the current thread',
+    helpSessionAlt: '/feishu session [task] - Same as above through the unified Feishu command',
+    helpSessionIntent: 'Natural language also works when you explicitly ask it to actually call sessions_spawn and bind a persistent Codex ACP session to the current thread',
     diagFailed: (msg) => `Diagnostics failed: ${msg}`,
     authFailed: (msg) => `Authorization failed: ${msg}`,
     execFailed: (msg) => `Execution failed: ${msg}`,
@@ -149,7 +158,10 @@ export function getFeishuHelp(locale: FeishuLocale = 'zh_cn'): string {
     `  ${t.helpStart}\n` +
     `  ${t.helpAuth}\n` +
     `  ${t.helpDoctor}\n` +
-    `  ${t.helpHelp}`
+    `  ${t.helpHelp}\n` +
+    `  ${t.helpSession}\n` +
+    `  ${t.helpSessionAlt}\n\n` +
+    `${t.helpSessionIntent}`
   );
 }
 
