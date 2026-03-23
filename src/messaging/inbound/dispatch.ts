@@ -14,8 +14,9 @@
  * - dispatch-commands.ts — system command & permission notification
  */
 
-import type { RuntimeEnv, HistoryEntry } from 'openclaw/plugin-sdk';
-import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
+import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import type { FeishuGroupConfig } from '../../core/types';

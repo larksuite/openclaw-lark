@@ -11,7 +11,7 @@
  */
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
-import { buildRandomTempFilePath } from 'openclaw/plugin-sdk';
+import { buildRandomTempFilePath } from 'openclaw/plugin-sdk/temp-path';
 import { Type } from '@sinclair/typebox';
 import { json, createToolContext, handleInvokeErrorWithAutoAuth, registerTool, StringEnum } from '../helpers';
 import * as fs from 'node:fs/promises';

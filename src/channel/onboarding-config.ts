@@ -9,8 +9,11 @@
  * in CLI commands and other configuration flows.
  */
 
-import type { ClawdbotConfig, DmPolicy } from 'openclaw/plugin-sdk';
-import { addWildcardAllowFrom } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import { addWildcardAllowFrom } from 'openclaw/plugin-sdk/setup';
+
+// Mirrors openclaw DmPolicy values (removed from plugin-sdk exports in 2026.3.22)
+type DmPolicy = 'pairing' | 'allowlist' | 'open' | 'disabled';
 
 // ---------------------------------------------------------------------------
 // Config mutation helpers

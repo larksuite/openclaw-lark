@@ -11,7 +11,7 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk';
+import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import type { FeishuConfig } from '../core/types';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';
 import { collectIsolationWarnings } from '../core/security-check';

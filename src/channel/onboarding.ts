@@ -4,18 +4,18 @@
  *
  * Onboarding wizard adapter for the Lark/Feishu channel plugin.
  *
- * Implements the ChannelOnboardingAdapter interface so the `openclaw
+ * Implements the ChannelSetupWizardAdapter interface so the `openclaw
  * setup` wizard can configure Feishu credentials, domain, group
  * policies, and DM allowlists interactively.
  */
 
 import type {
-  ChannelOnboardingAdapter,
-  ChannelOnboardingDmPolicy,
   ClawdbotConfig,
   WizardPrompter,
 } from 'openclaw/plugin-sdk';
-import { DEFAULT_ACCOUNT_ID, formatDocsLink } from 'openclaw/plugin-sdk';
+import type { ChannelSetupWizardAdapter, ChannelSetupDmPolicy } from 'openclaw/plugin-sdk/setup';
+import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
+import { formatDocsLink } from 'openclaw/plugin-sdk/setup';
 import type { FeishuConfig } from '../core/types';
 import { getLarkCredentials } from '../core/accounts';
 import { probeFeishu } from './probe';
@@ -178,7 +178,7 @@ async function acquireCredentials(params: {
 // DM policy
 // ---------------------------------------------------------------------------
 
-const dmPolicy: ChannelOnboardingDmPolicy = {
+const dmPolicy: ChannelSetupDmPolicy = {
   label: 'Feishu',
   channel,
   policyKey: 'channels.feishu.dmPolicy',
@@ -192,7 +192,7 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
 // Adapter
 // ---------------------------------------------------------------------------
 
-export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
+export const feishuOnboardingAdapter: ChannelSetupWizardAdapter = {
   channel,
 
   // -----------------------------------------------------------------------

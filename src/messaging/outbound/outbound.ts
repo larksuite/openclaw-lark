@@ -11,7 +11,8 @@
  * parameters and delegates to standalone sending functions.
  */
 
-import type { ChannelOutboundAdapter, ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
 import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { sendTextLark, sendMediaLark, sendCardLark } from './deliver';

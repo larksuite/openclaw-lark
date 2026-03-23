@@ -15,13 +15,10 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
-import {
-  recordPendingHistoryEntryIfEnabled,
-  DEFAULT_GROUP_HISTORY_LIMIT,
-  resolveSenderCommandAuthorization,
-  isNormalizedSenderAllowed,
-  type HistoryEntry,
-} from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
+import { recordPendingHistoryEntryIfEnabled, DEFAULT_GROUP_HISTORY_LIMIT } from 'openclaw/plugin-sdk/reply-history';
+import { resolveSenderCommandAuthorization } from 'openclaw/plugin-sdk/command-auth';
+import { isNormalizedSenderAllowed } from 'openclaw/plugin-sdk/allow-from';
 import type { FeishuMessageEvent } from '../types';
 import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';

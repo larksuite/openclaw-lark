@@ -16,10 +16,12 @@
 import type {
   ChannelMessageActionAdapter,
   ChannelMessageActionName,
-  ChannelThreadingToolContext,
   OpenClawConfig,
 } from 'openclaw/plugin-sdk';
-import { extractToolSend, jsonResult, readStringParam, readReactionParams } from 'openclaw/plugin-sdk';
+import type { ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
+import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
+import { readStringParam } from 'openclaw/plugin-sdk/param-readers';
+import { jsonResult, readReactionParams } from 'openclaw/plugin-sdk/agent-runtime';
 
 import { addReactionFeishu, removeReactionFeishu, listReactionsFeishu } from './reactions';
 import { sendTextLark, sendCardLark } from './deliver';
@@ -158,16 +160,19 @@ function readFeishuSendParams(
 // ---------------------------------------------------------------------------
 
 export const feishuMessageActions: ChannelMessageActionAdapter = {
-  listActions: ({ cfg }) => {
+  describeMessageTool: ({ cfg }) => {
     const accounts = getEnabledLarkAccounts(cfg);
-    if (accounts.length === 0) return [];
-    return Array.from(SUPPORTED_ACTIONS);
+    if (accounts.length === 0) {
+      return { actions: [], capabilities: [], schema: null };
+    }
+    return {
+      actions: Array.from(SUPPORTED_ACTIONS),
+      capabilities: ['cards'],
+      schema: null,
+    };
   },
 
   supportsAction: ({ action }) => SUPPORTED_ACTIONS.has(action),
-
-  supportsButtons: ({ cfg }) => getEnabledLarkAccounts(cfg).length > 0,
-  supportsCards: ({ cfg }) => getEnabledLarkAccounts(cfg).length > 0,
 
   extractToolSend: ({ args }) => extractToolSend(args, 'sendMessage'),
 

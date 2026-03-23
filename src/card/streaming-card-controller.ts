@@ -11,7 +11,8 @@
  * detection to UnavailableGuard.
  */
 
-import { SILENT_REPLY_TOKEN, type ReplyPayload } from 'openclaw/plugin-sdk';
+import type { ReplyPayload } from 'openclaw/plugin-sdk';
+import { SILENT_REPLY_TOKEN } from 'openclaw/plugin-sdk/reply-runtime';
 import { extractLarkApiCode } from '../core/api-error';
 import { larkLogger } from '../core/lark-logger';
 import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';

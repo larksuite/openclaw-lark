@@ -9,7 +9,8 @@
  * appropriate handlers.
  */
 
-import type { ClawdbotConfig, RuntimeEnv, HistoryEntry } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { getLarkAccount, getEnabledLarkAccounts } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { MessageDedup } from '../messaging/inbound/dedup';

@@ -23,7 +23,8 @@
  *       `"disabled"` → block all senders
  */
 
-import type { ClawdbotConfig, HistoryEntry } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
 import type { FeishuConfig } from '../../core/types';
 import type { LarkAccount } from '../../core/types';

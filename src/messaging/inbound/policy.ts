@@ -8,7 +8,8 @@
  * extraction, and group access checks.
  */
 
-import type { ChannelGroupContext, GroupToolPolicyConfig } from 'openclaw/plugin-sdk';
+import type { ChannelGroupContext } from 'openclaw/plugin-sdk/channel-contract';
+import type { GroupToolPolicyConfig } from 'openclaw/plugin-sdk/channel-policy';
 import type { FeishuConfig, FeishuGroupConfig } from '../../core/types';
 import { getLarkAccount } from '../../core/accounts';
 

@@ -10,7 +10,7 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
-import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk';
+import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk/core';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
