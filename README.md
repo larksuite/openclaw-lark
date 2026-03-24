@@ -1,5 +1,9 @@
 # OpenClaw Lark/Feishu Plugin
 
+> **🍴 Fork Notice**: This is a community fork of [larksuite/openclaw-lark](https://github.com/larksuite/openclaw-lark). This fork adds **Tenant Access Token (TAT) support** for MCP tools, allowing them to operate without user authorization. For the official version, please visit the upstream repository.
+>
+> **新增功能**: 此 fork 添加了 MCP 工具的 **Tenant Access Token (TAT) 支持**，允许 MCP 工具使用应用权限运行，无需用户授权。详见 [PR #263](https://github.com/larksuite/openclaw-lark/pull/263)。
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
@@ -26,6 +30,45 @@ Additionally, the plugin supports:
 - **🌊 Streaming Responses**: Live streaming text directly within message cards
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
+- **🔑 MCP Auth Mode** (This Fork): Support for `user`/`tenant`/`auto` authentication modes for MCP tools. See [TAT Support](#tat-support) below.
+
+---
+
+## 🆕 TAT Support (This Fork)
+
+This fork adds **Tenant Access Token (TAT) support** for MCP tools, allowing them to operate with application-level permissions without requiring individual user authorization.
+
+### Configuration
+
+Add to your OpenClaw config (`.openclaw/openclaw.json`):
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "mcpAuthMode": "tenant"  // or "auto" or "user"
+    }
+  }
+}
+```
+
+### Auth Modes
+
+| Mode | Description |
+|------|-------------|
+| `user` (default) | Use User Access Token (UAT) - requires user authorization |
+| `tenant` | Use Tenant Access Token (TAT) - app-level permissions, no user auth needed |
+| `auto` | Try TAT first, fallback to UAT if TAT fails |
+
+### Use Cases
+
+- **Background automation**: Schedule tasks that run without user interaction
+- **Service accounts**: Run tools with consistent app identity
+- **Batch operations**: Process large volumes without per-user auth overhead
+
+See [PR #263](https://github.com/larksuite/openclaw-lark/pull/263) for implementation details.
+
+---
 
 ## Security & Risk Warnings (Read Before Use)
 
