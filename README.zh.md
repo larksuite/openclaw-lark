@@ -1,5 +1,9 @@
 # OpenClaw  Lark/飞书 插件
 
+> **🍴 Fork 说明**: 这是 [larksuite/openclaw-lark](https://github.com/larksuite/openclaw-lark) 的社区 fork。本 fork 添加了 **Tenant Access Token (TAT) 支持**，允许 MCP 工具无需用户授权即可运行。如需使用官方版本，请访问上游仓库。
+>
+> **English**: This fork adds **Tenant Access Token (TAT) support** for MCP tools, allowing them to operate without user authorization. See [PR #263](https://github.com/larksuite/openclaw-lark/pull/263).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
@@ -26,6 +30,45 @@
 - **🌊 流式回复**：在消息卡片中提供实时的流式响应
 - **🔒 权限策略**：为私聊和群聊提供灵活的访问控制策略
 - **⚙️ 高级群组配置**：每个群聊的独立设置，包括白名单、技能绑定和自定义系统提示词
+- **🔑 MCP 认证模式** (本 Fork)：支持 MCP 工具的 `user`/`tenant`/`auto` 三种认证模式，详见下文 [TAT 支持](#tat-支持)。
+
+---
+
+## 🆕 TAT 支持 (本 Fork)
+
+本 fork 为 MCP 工具添加了 **Tenant Access Token (TAT) 支持**，允许 MCP 工具使用应用级权限运行，无需单个用户授权。
+
+### 配置方法
+
+在 OpenClaw 配置文件 (`.openclaw/openclaw.json`) 中添加：
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "mcpAuthMode": "tenant"  // 或 "auto" 或 "user"
+    }
+  }
+}
+```
+
+### 认证模式
+
+| 模式 | 说明 |
+|------|------|
+| `user` (默认) | 使用 User Access Token (UAT) - 需要用户授权 |
+| `tenant` | 使用 Tenant Access Token (TAT) - 应用级权限，无需用户授权 |
+| `auto` | 先尝试 TAT，失败时回退到 UAT |
+
+### 适用场景
+
+- **后台自动化**: 定时任务无需用户交互即可运行
+- **服务账号**: 以统一的应用身份运行工具
+- **批量操作**: 处理大量数据时避免逐用户授权开销
+
+详见 [PR #263](https://github.com/larksuite/openclaw-lark/pull/263) 了解实现细节。
+
+---
 
 ## 安全与风险提示（使用前必读）
 本插件对接 OpenClaw AI 自动化能力，存在模型幻觉、执行不可控、提示词注入等固有风险；授权飞书权限后，OpenClaw 将以您的用户身份在授权范围内执行操作，可能导致敏感数据泄露、越权操作等高风险后果，请您谨慎操作和使用。

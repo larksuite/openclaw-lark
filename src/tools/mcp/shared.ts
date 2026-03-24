@@ -13,6 +13,7 @@ import { handleInvokeErrorWithAutoAuth } from '../oapi/helpers';
 import { getUserAgent } from '../../core/version';
 import { mcpDomain } from '../../core/domains';
 import type { LarkBrand } from '../../core/types';
+import { getResolvedConfig } from '../../core/lark-client';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -138,6 +139,28 @@ function getMcpEndpoint(brand?: LarkBrand): string {
   );
 }
 
+/**
+ * 从配置中获取 MCP 认证模式
+ */
+function getMcpAuthMode(): 'user' | 'tenant' | 'auto' {
+  try {
+    const p = path.join(process.cwd(), '.openclaw', 'openclaw.json');
+    if (!fs.existsSync(p)) return 'user';
+    const raw = fs.readFileSync(p, 'utf8');
+    const cfg = JSON.parse(raw) as unknown;
+    if (!isRecord(cfg)) return 'user';
+    const channels = cfg.channels;
+    if (!isRecord(channels)) return 'user';
+    const feishu = channels.feishu;
+    if (!isRecord(feishu)) return 'user';
+    const mode = feishu.mcpAuthMode;
+    if (mode === 'tenant' || mode === 'auto') return mode;
+    return 'user';
+  } catch {
+    return 'user';
+  }
+}
+
 function buildAuthHeader(): string | undefined {
   // 允许通过环境变量注入鉴权（若服务端要求）
   const token = process.env.FEISHU_MCP_BEARER_TOKEN?.trim() || process.env.FEISHU_MCP_TOKEN?.trim();
@@ -155,15 +178,17 @@ function buildAuthHeader(): string | undefined {
  * @param name MCP 工具名称
  * @param args 工具参数
  * @param toolCallId 工具调用 ID
- * @param uat 用户访问令牌(由 invoke 权限检查后传入)
+ * @param token 访问令牌(由 invoke 权限检查后传入，可能是 UAT 或 TAT)
  * @param brand 当前账号品牌，用于选择 MCP 端点域名
+ * @param isTat 是否为 Tenant Access Token
  */
 export async function callMcpTool(
   name: string,
   args: Record<string, unknown>,
   toolCallId: string,
-  uat: string,
+  token: string,
   brand?: LarkBrand,
+  isTat?: boolean,
 ): Promise<unknown> {
   const endpoint = getMcpEndpoint(brand);
   const auth = buildAuthHeader();
@@ -180,10 +205,16 @@ export async function callMcpTool(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Lark-MCP-UAT': uat,
-    'X-Lark-MCP-Allowed-Tools': name,
     'User-Agent': getUserAgent(),
   };
+
+  if (isTat) {
+    headers['X-Lark-MCP-TAT'] = token;
+  } else {
+    headers['X-Lark-MCP-UAT'] = token;
+  }
+  headers['X-Lark-MCP-Allowed-Tools'] = name;
+
   if (auth) headers.authorization = auth;
 
   const res = await fetch(endpoint, {
@@ -227,6 +258,7 @@ export function registerMcpTool<T extends Record<string, unknown>>(
   config: McpToolConfig<T>,
 ): boolean {
   const { toolClient, log } = createToolContext(api, config.name);
+  const authMode = getMcpAuthMode();
 
   return registerTool(
     api,
@@ -247,34 +279,60 @@ export function registerMcpTool<T extends Record<string, unknown>>(
           const client = toolClient();
           const brand = client.account.brand;
 
-          // 通过 invoke 进行权限检查并调用 MCP
-          // 严格模式：必须拥有 toolActionKey 所需的所有 scope
+          // 根据认证模式选择调用方式
+          if (authMode === 'tenant') {
+            // TAT 模式：直接使用应用身份调用
+            const result = await client.invoke(
+              config.toolActionKey,
+              async (_sdk, _opts, token) => {
+                return callMcpTool(config.mcpToolName, p, toolCallId, token ?? '', brand, true);
+              },
+              { as: 'tenant' },
+            );
+
+            const duration = Date.now() - startTime;
+            log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms`);
+            return formatToolResult(result);
+          }
+
+          if (authMode === 'auto') {
+            // Auto 模式：先尝试 TAT，失败回退到 UAT
+            try {
+              const result = await client.invoke(
+                config.toolActionKey,
+                async (_sdk, _opts, token) => {
+                  return callMcpTool(config.mcpToolName, p, toolCallId, token ?? '', brand, true);
+                },
+                { as: 'tenant' },
+              );
+
+              const duration = Date.now() - startTime;
+              log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms (auto-TAT)`);
+              return formatToolResult(result);
+            } catch (tatErr) {
+              log.debug?.(`TAT call failed, falling back to UAT: ${tatErr instanceof Error ? tatErr.message : String(tatErr)}`);
+              // 继续走 UAT 逻辑
+            }
+          }
+
+          // UAT 模式（默认）：通过 invoke 进行权限检查并调用 MCP
           const result = await client.invoke(
             config.toolActionKey,
-            async (_sdk, _opts, uat) => {
-              // 权限检查已通过，直接使用 invoke 传入的 UAT
-              if (!uat) {
+            async (_sdk, _opts, token) => {
+              if (!token) {
                 throw new Error('UAT not available');
               }
-              return callMcpTool(config.mcpToolName, p, toolCallId, uat, brand);
+              return callMcpTool(config.mcpToolName, p, toolCallId, token, brand, false);
             },
-            {
-              as: 'user',
-            },
+            { as: 'user' },
           );
 
           const duration = Date.now() - startTime;
           log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms`);
 
-          // MCP tools/call 返回值已经是 { content: [{ type, text }] } 格式，
-          // 直接透传 content，避免被 formatToolResult 再包一层
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (isRecord(result) && Array.isArray((result as any).content)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const mcpContent = (result as any).content as Array<{
-              type: string;
-              text: string;
-            }>;
+          // MCP tools/call 返回值已经是 { content: [{ type, text }] } 格式
+          if (isRecord(result) && Array.isArray((result as { content?: unknown }).content)) {
+            const mcpContent = (result as { content: Array<{ type: string; text: string }> }).content;
             let details: unknown = result;
             if (mcpContent.length === 1 && mcpContent[0]?.type === 'text') {
               try {
