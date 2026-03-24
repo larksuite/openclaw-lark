@@ -13,7 +13,8 @@
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import { LarkClient } from './lark-client';
+// NOTE: LarkClient is lazy-imported in getChatInfo() to break a circular
+// dependency: lark-client → chat-info-cache → lark-client.
 import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/chat-info-cache');
@@ -147,6 +148,7 @@ export async function getChatInfo(params: {
   if (cached) return cached;
 
   try {
+    const { LarkClient } = await import('./lark-client');
     const sdk = LarkClient.fromCfg(cfg, accountId).sdk;
     const response = await sdk.im.chat.get({
       path: { chat_id: chatId },

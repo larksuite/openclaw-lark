@@ -65,7 +65,10 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
     const event = data as FeishuMessageEvent;
     const msgId = event.message?.message_id ?? 'unknown';
     const chatId = event.message?.chat_id ?? '';
-    const threadId = event.message?.thread_id || undefined;
+    // In topic groups, reply events carry root_id but not thread_id.
+    // Use root_id as fallback so different topics get separate queue keys
+    // and can be processed in parallel.
+    const threadId = event.message?.thread_id || event.message?.root_id || undefined;
 
     // Dedup — skip duplicate messages (e.g. from WebSocket reconnects).
     if (!ctx.messageDedup.tryRecord(msgId, accountId)) {
