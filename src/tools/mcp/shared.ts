@@ -12,6 +12,7 @@ import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import type { TSchema } from '@sinclair/typebox';
 import { createToolContext, formatToolResult, registerTool } from '../helpers';
 import { handleInvokeErrorWithAutoAuth } from '../oapi/helpers';
+import { NeedAuthorizationError, UserAuthRequiredError, UserScopeInsufficientError } from '../../core/auth-errors';
 import { getUserAgent } from '../../core/version';
 import { mcpDomain } from '../../core/domains';
 import type { LarkBrand } from '../../core/types';
@@ -36,14 +37,46 @@ export type McpRpcResponse = McpRpcSuccess | McpRpcError;
 
 import type { ToolActionKey } from '../../core/scope-manager';
 
+export type McpAuthMode = 'user' | 'tenant';
+
 export interface McpToolConfig<T = unknown> {
   name: string;
   mcpToolName: string;
   toolActionKey: ToolActionKey; // 新增：工具动作键
+  /**
+   * 工具支持的鉴权模式。缺省时按服务端兼容矩阵自动推断：
+   * - search-user / search-doc: 仅 UAT
+   * - 其他工具: UAT + TAT
+   */
+  supportedAuthModes?: ReadonlyArray<McpAuthMode>;
   label: string;
   description: string;
   schema: TSchema;
   validate?: (params: T) => void;
+}
+
+const UAT_ONLY_MCP_TOOLS = new Set<string>(['search-user', 'search-doc']);
+const DEFAULT_AUTH_MODES: ReadonlyArray<McpAuthMode> = ['user', 'tenant'];
+
+function resolveSupportedAuthModes(config: McpToolConfig<unknown>): ReadonlyArray<McpAuthMode> {
+  const explicit = config.supportedAuthModes?.filter((m) => m === 'user' || m === 'tenant');
+  if (explicit && explicit.length > 0) {
+    return [...new Set(explicit)];
+  }
+  return UAT_ONLY_MCP_TOOLS.has(config.mcpToolName) ? ['user'] : DEFAULT_AUTH_MODES;
+}
+
+function shouldFallbackToTenant(err: unknown): boolean {
+  if (
+    err instanceof NeedAuthorizationError ||
+    err instanceof UserAuthRequiredError ||
+    err instanceof UserScopeInsufficientError
+  ) {
+    return true;
+  }
+
+  if (!(err instanceof Error)) return false;
+  return err.message === 'need_user_authorization' || err.message === 'user_scope_insufficient';
 }
 
 // ---------------------------------------------------------------------------
@@ -158,15 +191,17 @@ function buildAuthHeader(): string | undefined {
  * @param name MCP 工具名称
  * @param args 工具参数
  * @param toolCallId 工具调用 ID
- * @param uat 用户访问令牌(由 invoke 权限检查后传入)
+ * @param token 访问令牌(由 invoke 权限检查后传入，可能是 UAT 或 TAT)
  * @param brand 当前账号品牌，用于选择 MCP 端点域名
+ * @param authMode MCP 调用使用的鉴权模式
  */
 export async function callMcpTool(
   name: string,
   args: Record<string, unknown>,
   toolCallId: string,
-  uat: string,
+  token: string,
   brand?: LarkBrand,
+  authMode: McpAuthMode = 'user',
 ): Promise<unknown> {
   const endpoint = getMcpEndpoint(brand);
   const auth = buildAuthHeader();
@@ -183,10 +218,16 @@ export async function callMcpTool(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Lark-MCP-UAT': uat,
-    'X-Lark-MCP-Allowed-Tools': name,
     'User-Agent': getUserAgent(),
   };
+
+  if (authMode === 'tenant') {
+    headers['X-Lark-MCP-TAT'] = token;
+  } else {
+    headers['X-Lark-MCP-UAT'] = token;
+  }
+  headers['X-Lark-MCP-Allowed-Tools'] = name;
+
   if (auth) headers.authorization = auth;
 
   const res = await fetch(endpoint, {
@@ -249,35 +290,69 @@ export function registerMcpTool<T extends Record<string, unknown>>(
 
           const client = toolClient();
           const brand = client.account.brand;
+          const supportedAuthModes = resolveSupportedAuthModes(config);
+          const supportsUser = supportedAuthModes.includes('user');
+          const supportsTenant = supportedAuthModes.includes('tenant');
 
-          // 通过 invoke 进行权限检查并调用 MCP
-          // 严格模式：必须拥有 toolActionKey 所需的所有 scope
-          const result = await client.invoke(
-            config.toolActionKey,
-            async (_sdk, _opts, uat) => {
-              // 权限检查已通过，直接使用 invoke 传入的 UAT
-              if (!uat) {
-                throw new Error('UAT not available');
+          if (!supportsUser && !supportsTenant) {
+            throw new Error(`No supported auth mode configured for MCP tool: ${config.mcpToolName}`);
+          }
+
+          const invokeWithUser = async () =>
+            client.invoke(
+              config.toolActionKey,
+              async (_sdk, _opts, token) => {
+                if (!token) {
+                  throw new Error('UAT not available');
+                }
+                return callMcpTool(config.mcpToolName, p, toolCallId, token, brand, 'user');
+              },
+              { as: 'user' },
+            );
+
+          const invokeWithTenant = async () =>
+            client.invoke(
+              config.toolActionKey,
+              async (_sdk, _opts, token) => {
+                if (!token) {
+                  throw new Error('TAT not available');
+                }
+                return callMcpTool(config.mcpToolName, p, toolCallId, token, brand, 'tenant');
+              },
+              { as: 'tenant' },
+            );
+
+          let result: unknown;
+          let modeUsed: McpAuthMode;
+
+          // 优先 UAT，避免 UAT-only 工具出现无效 TAT 预请求。
+          if (supportsUser) {
+            try {
+              result = await invokeWithUser();
+              modeUsed = 'user';
+            } catch (userErr) {
+              if (!supportsTenant || !shouldFallbackToTenant(userErr)) {
+                throw userErr;
               }
-              return callMcpTool(config.mcpToolName, p, toolCallId, uat, brand);
-            },
-            {
-              as: 'user',
-            },
-          );
+              log.debug?.(
+                `UAT unavailable for ${config.mcpToolName}, fallback to TAT: ${
+                  userErr instanceof Error ? userErr.message : String(userErr)
+                }`,
+              );
+              result = await invokeWithTenant();
+              modeUsed = 'tenant';
+            }
+          } else {
+            result = await invokeWithTenant();
+            modeUsed = 'tenant';
+          }
 
           const duration = Date.now() - startTime;
-          log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms`);
+          log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms (${modeUsed})`);
 
-          // MCP tools/call 返回值已经是 { content: [{ type, text }] } 格式，
-          // 直接透传 content，避免被 formatToolResult 再包一层
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (isRecord(result) && Array.isArray((result as any).content)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const mcpContent = (result as any).content as Array<{
-              type: string;
-              text: string;
-            }>;
+          // MCP tools/call 返回值已经是 { content: [{ type, text }] } 格式
+          if (isRecord(result) && Array.isArray((result as { content?: unknown }).content)) {
+            const mcpContent = (result as { content: Array<{ type: string; text: string }> }).content;
             let details: unknown = result;
             if (mcpContent.length === 1 && mcpContent[0]?.type === 'text') {
               try {
