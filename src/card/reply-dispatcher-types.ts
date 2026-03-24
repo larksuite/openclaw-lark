@@ -165,4 +165,9 @@ export interface StreamingCardDeps {
   replyToMessageId: string | undefined;
   replyInThread: boolean | undefined;
   resolvedFooter: Required<FeishuFooterConfig>;
+  model?: {
+    provider: string;
+    model: string;
+    thinkLevel?: string;
+  };
 }

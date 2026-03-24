@@ -140,12 +140,17 @@ export class StreamingCardController {
   private cardCreationPromise: Promise<void> | null = null;
   private disposeShutdownHook: (() => void) | null = null;
   private readonly dispatchStartTime = Date.now();
+  private model: { provider: string; model: string; thinkLevel?: string } | null = null;
 
   // ---- Injected dependencies ----
   private readonly deps: StreamingCardDeps;
 
   private elapsed(): number {
     return Date.now() - this.dispatchStartTime;
+  }
+
+  setModel(ctx: { provider: string; model: string; thinkLevel?: string }): void {
+    this.model = ctx;
   }
 
   constructor(deps: StreamingCardDeps) {
@@ -407,6 +412,7 @@ export class StreamingCardController {
           elapsedMs: this.elapsed(),
           isError: true,
           footer: this.deps.resolvedFooter,
+          model: this.model ?? undefined,
         });
         if (errorEffectiveCardId) {
           await this.closeStreamingAndUpdate(errorEffectiveCardId, errorCard, 'onError');
@@ -484,6 +490,7 @@ export class StreamingCardController {
           reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
           elapsedMs: this.elapsed(),
           footer: this.deps.resolvedFooter,
+          model: this.model ?? undefined,
         });
 
         if (idleEffectiveCardId) {
@@ -557,6 +564,7 @@ export class StreamingCardController {
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          model: this.model ?? undefined,
         });
         await this.closeStreamingAndUpdate(effectiveCardId, abortCardContent, 'abortCard');
         log.info('abortCard completed', { effectiveCardId });
@@ -577,6 +585,7 @@ export class StreamingCardController {
           elapsedMs,
           isAborted: true,
           footer: this.deps.resolvedFooter,
+          model: this.model ?? undefined,
         });
         await updateCardFeishu({
           cfg: this.deps.cfg,
