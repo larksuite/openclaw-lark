@@ -26,6 +26,7 @@ Additionally, the plugin supports:
 - **🌊 Streaming Responses**: Live streaming text directly within message cards
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
+- **🔔 Base Record Change Notifications**: Subscribe to record change events in specified bases and automatically forward changes to the Agent
 
 ## Security & Risk Warnings (Read Before Use)
 
@@ -64,6 +65,51 @@ Before you start, make sure you have the following:
 ## Usage Guide
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
+
+## Base Record Change Notifications
+
+The plugin supports subscribing to Base record change events (`drive.file.bitable_record_changed_v1`). When records are added, edited, or deleted in a Base table, the plugin automatically forwards the change details to the Agent in a specified Feishu chat.
+
+### Prerequisites
+
+1. **Enable the event subscription**: In the [Feishu Developer Console](https://open.feishu.cn/) → Your App → Events & Callbacks → Event Configuration, add the **Base Record Changed** event (`drive.file.bitable_record_changed_v1`) and set the subscription method to **Persistent Connection (长连接)**.
+
+2. **Subscribe to the specific file**: Call the Feishu Drive subscribe API (`drive.file.subscribe`) for the target Base file. You can do this via the `feishu_drive` tool in OpenClaw Agent or using the Feishu API Explorer manually.
+
+### Configuration
+
+Add `bitableNotifications` to your Feishu account config in `openclaw.json`:
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "appId": "cli_xxxxxxxx",
+      "appSecret": "xxxxxxxx",
+      "bitableNotifications": [
+        {
+          "fileToken": "RyGZbWS8ia64cbsBsrAc0tzCnXy",
+          "chatId": "oc_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "label": "Requirements Tracker"
+        },
+        {
+          "fileToken": "AbCdEfGhIjKlMnOpQrStUvWxYz1",
+          "chatId": "oc_yyyyyyyyyyyyyyyyyyyyyyyy",
+          "tableIds": ["tblABC123"],
+          "label": "Project Progress (Sprint table only)"
+        }
+      ]
+    }
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `fileToken` | ✅ | The Base app token (the part after `base/` in the URL) |
+| `chatId` | ✅ | Target Feishu chat ID to receive notifications (`oc_xxx` for both DMs and group chats) |
+| `tableIds` | ❌ | Only listen to specific table IDs; omit to monitor all tables in the Base |
+| `label` | ❌ | Human-readable name shown in the notification message to help distinguish multiple bases |
 
 ## Contributing
 

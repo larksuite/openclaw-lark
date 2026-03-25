@@ -61,6 +61,66 @@ export interface FeishuReactionCreatedEvent {
   action_time?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Bitable record changed event
+// ---------------------------------------------------------------------------
+
+/** A single field value in a bitable record action. */
+export interface FeishuBitableFieldValue {
+  field_id: string;
+  /** JSON-serialised field value string. Deserialise with JSON.parse() for the actual value. */
+  field_value: string;
+  field_identity_value?: {
+    users?: Array<{
+      user_id?: { union_id?: string; user_id?: string; open_id?: string };
+      name?: string;
+      en_name?: string;
+      avatar_url?: string;
+    }>;
+  };
+}
+
+/** A single record action (edit / add / delete) in a bitable record changed event. */
+export interface FeishuBitableRecordAction {
+  record_id: string;
+  /** "record_edited" | "record_added" | "record_deleted" */
+  action: string;
+  before_value?: FeishuBitableFieldValue[];
+  after_value?: FeishuBitableFieldValue[];
+}
+
+/**
+ * Event payload for `drive.file.bitable_record_changed_v1`.
+ *
+ * The SDK's EventDispatcher delivers the `event` sub-object directly as the
+ * handler data, so the top-level fields here map to `event.*` in the raw
+ * webhook body.
+ */
+export interface FeishuBitableRecordChangedEvent {
+  /** Always "bitable". */
+  file_type: string;
+  /** The bitable app token (table file token). */
+  file_token: string;
+  /** ID of the data-table where the change occurred. */
+  table_id: string;
+  /** Revision number of the table after the change. */
+  revision?: number;
+  /** The user who triggered the change. */
+  operator_id?: {
+    union_id?: string;
+    user_id?: string;
+    open_id?: string;
+  };
+  /** List of record-level actions (edit / add / delete). */
+  action_list?: FeishuBitableRecordAction[];
+  /** Users subscribed to this bitable. */
+  subscriber_id_list?: Array<{ union_id?: string; user_id?: string; open_id?: string }>;
+  /** Unix timestamp (seconds) of the edit. */
+  update_time?: number;
+  /** Available when event is delivered via the SDK dispatcher (v2 envelope). */
+  app_id?: string;
+}
+
 export interface FeishuBotAddedEvent {
   chat_id: string;
   operator_id: {

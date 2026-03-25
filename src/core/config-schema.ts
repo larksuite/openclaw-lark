@@ -118,6 +118,23 @@ const DedupSchema = z
 
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
 
+/**
+ * Per-bitable subscription: which chat to forward record-changed events to.
+ *
+ * `fileToken` is the bitable app token (used to match the incoming event).
+ * `chatId`    is the target Feishu chat (p2p or group) to post the notification.
+ * `tableIds`  optional list of table IDs to filter (defaults to all tables).
+ */
+const BitableNotificationEntrySchema = z.object({
+  fileToken: z.string(),
+  chatId: z.string(),
+  tableIds: z.array(z.string()).optional(),
+  /** Human-readable label shown in the notification prefix (e.g. "需求跟踪表"). */
+  label: z.string().optional(),
+});
+
+const BitableNotificationsSchema = z.array(BitableNotificationEntrySchema).optional();
+
 export const UATConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -185,6 +202,7 @@ export const FeishuAccountConfigSchema = z.object({
   capabilities: CapabilitiesSchema,
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
+  bitableNotifications: BitableNotificationsSchema,
   threadSession: z.boolean().optional(),
   uat: UATConfigSchema,
 });
