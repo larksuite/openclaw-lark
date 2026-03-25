@@ -139,6 +139,7 @@ const DmConfigSchema = z
 export const FeishuGroupSchema = z.object({
   groupPolicy: GroupPolicyEnum.optional(),
   requireMention: z.boolean().optional(),
+  replyInThread: z.enum(['enabled', 'disabled']).optional(),
   tools: ToolPolicySchema,
   skills: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
@@ -186,6 +187,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  replyInThread: z.enum(['enabled', 'disabled']).optional(),
   uat: UATConfigSchema,
 });
 

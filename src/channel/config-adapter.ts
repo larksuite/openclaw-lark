@@ -14,6 +14,7 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import type { FeishuConfig } from '../core/types';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';
+import type { FeishuGroupConfig } from '../core/types';
 import { collectIsolationWarnings } from '../core/security-check';
 
 /** Generic Feishu account config merge. */
@@ -96,6 +97,21 @@ export function deleteAccount(cfg: ClawdbotConfig, accountId: string): ClawdbotC
   };
 }
 
+function isReplyInThreadEnabled(groupConfig?: FeishuGroupConfig): boolean {
+  return groupConfig?.replyInThread === 'enabled';
+}
+
+export function hasReplyInThreadWithoutThreadSession(feishuCfg?: FeishuConfig): boolean {
+  const groups = feishuCfg?.groups;
+  const defaultGroupConfig = groups?.['*'];
+  const hasReplyInThreadEnabled =
+    feishuCfg?.replyInThread === 'enabled'
+    || isReplyInThreadEnabled(defaultGroupConfig)
+    || Object.entries(groups ?? {}).some(([groupId, groupConfig]) => groupId !== '*' && isReplyInThreadEnabled(groupConfig));
+
+  return hasReplyInThreadEnabled && feishuCfg?.threadSession !== true;
+}
+
 /** Collect security warnings for a Feishu account. */
 export function collectFeishuSecurityWarnings(params: { cfg: ClawdbotConfig; accountId: string }): string[] {
   const { cfg, accountId } = params;
@@ -111,6 +127,12 @@ export function collectFeishuSecurityWarnings(params: { cfg: ClawdbotConfig; acc
   if (groupPolicy === 'open') {
     warnings.push(
       `- Feishu[${account.accountId}] groups: groupPolicy="open" allows any group to interact (mention-gated). To restrict which groups are allowed, set groupPolicy="allowlist" and list group IDs in channels.feishu.groups. To restrict which senders can trigger the bot, set channels.feishu.groupAllowFrom with user open_ids (ou_xxx).`,
+    );
+  }
+
+  if (hasReplyInThreadWithoutThreadSession(feishuCfg)) {
+    warnings.push(
+      `- Feishu[${account.accountId}] replyInThread is enabled but threadSession is not. Replies may open separate threads while still sharing one conversation session. Consider enabling channels.feishu.threadSession to avoid context bleeding across threads.`,
     );
   }
 

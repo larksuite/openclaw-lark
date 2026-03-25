@@ -92,7 +92,7 @@ async function dispatchNormalMessage(
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
     skipTyping,
-    replyInThread: dc.isThread,
+    replyInThread: dc.forceReplyInThread || dc.isThread,
   });
 
   // Create an AbortController so the abort fast-path can cancel the
@@ -321,7 +321,7 @@ export async function dispatchToAgent(params: {
         card,
         replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
         accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
+        replyInThread: dc.forceReplyInThread || dc.isThread,
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -332,7 +332,7 @@ export async function dispatchToAgent(params: {
         text: `${i18nCommandName} failed: ${errMsg}`,
         replyToMessageId: params.replyToMessageId ?? dc.ctx.messageId,
         accountId: dc.account.accountId,
-        replyInThread: dc.isThread,
+        replyInThread: dc.forceReplyInThread || dc.isThread,
       });
     }
     return;

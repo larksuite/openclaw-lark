@@ -12,7 +12,7 @@
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
 import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk/routing';
 import type { MessageContext } from '../types';
-import type { LarkAccount } from '../../core/types';
+import type { FeishuGroupConfig, LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
@@ -40,6 +40,7 @@ export interface DispatchContext {
   envelopeOptions: ReturnType<typeof LarkClient.runtime.channel.reply.resolveEnvelopeFormatOptions>;
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
   threadSessionKey?: string;
+  forceReplyInThread: boolean;
   commandAuthorized?: boolean;
 }
 
@@ -74,6 +75,8 @@ export function buildDispatchContext(params: {
   accountScopedCfg: ClawdbotConfig;
   runtime?: RuntimeEnv;
   commandAuthorized?: boolean;
+  groupConfig?: FeishuGroupConfig;
+  defaultGroupConfig?: FeishuGroupConfig;
 }): DispatchContext {
   const { ctx, account, accountScopedCfg } = params;
 
@@ -90,6 +93,11 @@ export function buildDispatchContext(params: {
   const envelopeFrom = isGroup ? `${ctx.chatId}:${ctx.senderId}` : ctx.senderId;
 
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(accountScopedCfg);
+
+  const replyInThreadSetting = isGroup
+    ? (params.groupConfig?.replyInThread ?? params.defaultGroupConfig?.replyInThread ?? account.config?.replyInThread)
+    : undefined;
+  const forceReplyInThread = isGroup && replyInThreadSetting === 'enabled';
 
   // ---- Route resolution ----
   const route = core.channel.routing.resolveAgentRoute({
@@ -132,6 +140,7 @@ export function buildDispatchContext(params: {
     core,
     isGroup,
     isThread,
+    forceReplyInThread,
     feishuFrom,
     feishuTo,
     envelopeFrom,

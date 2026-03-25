@@ -25,7 +25,9 @@ Additionally, the plugin supports:
 - **📱 Interactive Cards**: Real-time status updates (Thinking/Generating/Complete), plus confirmation buttons for sensitive operations
 - **🌊 Streaming Responses**: Live streaming text directly within message cards
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
-- **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
+- **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, custom system prompts, and thread-reply controls
+
+> Note: When `replyInThread` is enabled, a single bot turn that emits multiple messages (for example, a card plus a follow-up text) may create multiple threads in non-thread parents. This is a current platform limitation because the first created thread ID is not yet captured and reused for subsequent messages in the same turn.
 
 ## Security & Risk Warnings (Read Before Use)
 

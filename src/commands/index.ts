@@ -10,6 +10,7 @@ import { runDiagnosis, formatDiagReportText } from './diagnose';
 import { runFeishuDoctor } from './doctor';
 import { runFeishuAuth } from './auth';
 import { getPluginVersion } from '../core/version';
+import { hasReplyInThreadWithoutThreadSession } from '../channel/config-adapter';
 
 import type { FeishuLocale } from './locale';
 
@@ -21,6 +22,7 @@ const T: Record<FeishuLocale, {
   // start
   legacyNotDisabled: string;
   toolsProfileWarn: (profile: string) => string;
+  replyInThreadWarn: string;
   startFailed: (details: string) => string;
   startWithWarnings: (version: string, details: string) => string;
   startOk: (version: string) => string;
@@ -46,6 +48,8 @@ const T: Record<FeishuLocale, {
       '```',
     toolsProfileWarn: (profile) =>
       `⚠️ 工具 Profile 当前为 \`${profile}\`，飞书工具可能无法加载。请检查配置是否正确。\n`,
+    replyInThreadWarn:
+      '⚠️ 已启用 `replyInThread`，但未启用 `threadSession`。机器人可能会在群里为每次回复新开话题，但这些话题仍共享同一个会话上下文，导致上下文串线。建议同时开启 `channels.feishu.threadSession`。\n',
     startFailed: (details) => `❌ 飞书 OpenClaw 插件启动失败：\n\n${details}`,
     startWithWarnings: (version, details) =>
       `⚠️ 飞书 OpenClaw 插件已启动 v${version}（存在警告）\n\n${details}`,
@@ -70,6 +74,8 @@ const T: Record<FeishuLocale, {
       '```',
     toolsProfileWarn: (profile) =>
       `⚠️ Tools profile is currently set to \`${profile}\`. Feishu tools may not load properly. Please check your configuration.\n`,
+    replyInThreadWarn:
+      '⚠️ `replyInThread` is enabled, but `threadSession` is not. The bot may open a new thread for each group reply while still sharing one conversation session across those threads. Consider enabling `channels.feishu.threadSession` to avoid context bleeding.\n',
     startFailed: (details) => `❌ Feishu OpenClaw plugin failed to start:\n\n${details}`,
     startWithWarnings: (version, details) =>
       `⚠️ Feishu OpenClaw plugin started v${version} (with warnings)\n\n${details}`,
@@ -114,6 +120,10 @@ export function runFeishuStart(
   const incompleteProfiles = new Set(['minimal', 'coding', 'messaging']);
   if (profile && incompleteProfiles.has(profile)) {
     warnings.push(t.toolsProfileWarn(profile));
+  }
+
+  if (hasReplyInThreadWithoutThreadSession(cfg.channels?.feishu)) {
+    warnings.push(t.replyInThreadWarn);
   }
 
   if (errors.length > 0) {
