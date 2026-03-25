@@ -2,7 +2,9 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 以用户身份获取/搜索飞书消息
+ * 消息读取工具集
+ * - list（会话/话题历史）走 TAT（应用身份），因 im.v1.message.list 仅支持 TAT
+ * - search（跨会话搜索）走 UAT（用户身份）
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -207,7 +209,7 @@ function registerGetMessages(api: OpenClawPluginApi): boolean {
                 opts,
               ),
             {
-              as: 'user',
+              as: 'tenant',
             },
           );
           assertLarkOk(res);
@@ -287,7 +289,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
                 opts,
               ),
             {
-              as: 'user',
+              as: 'tenant',
             },
           );
           assertLarkOk(res);
