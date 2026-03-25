@@ -152,7 +152,7 @@ function registerGetMessages(api: OpenClawPluginApi): boolean {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
       description:
-        '【以用户身份】获取群聊或单聊的历史消息。' +
+        '获取群聊或单聊的历史消息。' +
         '\n\n用法：' +
         '\n- 通过 chat_id 获取群聊/单聊消息' +
         '\n- 通过 open_id 获取与指定用户的单聊消息（自动解析 chat_id）' +
@@ -257,7 +257,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
       description:
-        '【以用户身份】获取话题（thread）内的消息列表。' +
+        '获取话题（thread）内的消息列表。' +
         '\n\n用法：' +
         '\n- 通过 thread_id（omt_xxx）获取话题内的所有消息' +
         '\n- 支持分页：page_size + page_token' +
