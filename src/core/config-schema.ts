@@ -135,12 +135,12 @@ const DmConfigSchema = z
 export const FeishuGroupSchema = z.object({
   groupPolicy: GroupPolicyEnum.optional(),
   requireMention: z.boolean().optional(),
+  replyInThread: z.enum(['enabled', 'disabled']).optional(),
   tools: ToolPolicySchema,
   skills: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
   allowFrom: AllowFromSchema,
   systemPrompt: z.string().optional(),
-  replyInThread: z.enum(['enabled', 'disabled']).optional(),
 });
 
 // ---------------------------------------------------------------------------
