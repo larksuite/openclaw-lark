@@ -249,14 +249,22 @@ async function deliverMessage(
     await sendTextLark({ ...sendCtx, text });
   }
 
-  // Card path.
+  // Card + media path: send card first, then media separately (like reply-dispatcher).
+  if (card && mediaUrl) {
+    const cardResult = await sendCardLark({ ...sendCtx, card });
+    log.info(`deliverMessage: card sent, messageId=${cardResult.messageId}, now sending media`);
+    const mediaResult = await deliverMedia(cfg, sp, accountId, mediaLocalRoots);
+    return mediaResult;
+  }
+
+  // Card-only path.
   if (card) {
     const result = await sendCardLark({ ...sendCtx, card });
     log.info(`deliverMessage: card sent, messageId=${result.messageId}`);
     return jsonResult({ ok: true, messageId: result.messageId, chatId: result.chatId });
   }
 
-  // Media path — uses uploadAndSendMediaLark directly to support fileName.
+  // Media-only path — uses uploadAndSendMediaLark directly to support fileName.
   if (mediaUrl) {
     return await deliverMedia(cfg, sp, accountId, mediaLocalRoots);
   }
