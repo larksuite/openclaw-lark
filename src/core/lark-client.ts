@@ -483,12 +483,24 @@ injectLarkClient(LarkClient);
  * `LarkClient.runtime.config.loadConfig()` always returns the current live
  * config, so account lookups pick up any changes made since plugin load.
  *
+ * In isolated sessions (e.g. cron jobs with `sessionTarget: isolated`),
+ * `loadConfig()` may succeed but return an empty config without
+ * `channels.feishu` credentials.  In that case we fall back to the global
+ * config stored at monitor startup, and then to the provided fallback.
+ *
  * @param fallback - Config to use when the runtime is not yet initialised
  *   (e.g. during early startup before the first `LarkClient.runtime` attach).
  */
 export function getResolvedConfig(fallback: ClawdbotConfig): ClawdbotConfig {
   try {
-    return LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+    const live = LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+    // In isolated sessions loadConfig() returns a valid but empty config (no
+    // channels.feishu).  Prefer the global config captured at startup so that
+    // tools and cron jobs can still resolve Feishu credentials.
+    if ((live as ClawdbotConfig | null)?.channels?.feishu) {
+      return live;
+    }
+    return LarkClient.globalConfig ?? fallback;
   } catch {
     // runtime not yet initialised — fall back to passed config
     return fallback;
