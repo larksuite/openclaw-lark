@@ -123,6 +123,12 @@ export const UATConfigSchema = z
     enabled: z.boolean().optional(),
     allowedScopes: z.array(z.string()).optional(),
     blockedScopes: z.array(z.string()).optional(),
+    /**
+     * 允许使用 API 功能的用户 open_id 白名单。
+     * 白名单中的用户与应用 Owner 享有相同的 API 调用权限。
+     * 设为 ["*"] 允许所有用户。
+     */
+    allowedUsers: z.array(z.string()).optional(),
   })
   .optional();
 
