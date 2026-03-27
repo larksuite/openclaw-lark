@@ -38,7 +38,7 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
-  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread, mediaLocalRoots } = params;
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -228,6 +228,20 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
         if (controller.cardMessageId) {
           await controller.onDeliver(payload);
+          // Send attached media even in streaming card mode
+          if (payloadMediaUrls.length > 0) {
+            log.info('deliver: sending attached media in streaming mode', { count: payloadMediaUrls.length });
+            for (const mediaUrl of payloadMediaUrls) {
+              if (!mediaUrl?.trim()) continue;
+              try {
+                await sendMediaLark({
+                  cfg, to: chatId, mediaUrl, accountId, replyToMessageId, replyInThread, mediaLocalRoots,
+                });
+              } catch (mediaErr) {
+                log.error('deliver: streaming media send failed', { error: String(mediaErr) });
+              }
+            }
+          }
           return;
         }
         // Card creation failed — fall through to static delivery
@@ -334,6 +348,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             accountId,
             replyToMessageId,
             replyInThread,
+            mediaLocalRoots,
           });
         } catch (mediaErr) {
           if (staticGuard?.terminate('deliver.media', mediaErr)) return;

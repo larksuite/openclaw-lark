@@ -92,6 +92,17 @@ async function dispatchNormalMessage(
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.isThread,
+    // TODO: Extract from dispatch context once OpenClaw core exposes
+    // mediaLocalRoots to channel plugins (e.g. via dc.mediaLocalRoots).
+    // For now, fall back to the same defaults used by the OpenClaw
+    // web-media resolution layer.
+    mediaLocalRoots: dc.mediaLocalRoots ?? [
+      '/tmp/openclaw',
+      '/root/.openclaw/media',
+      '/root/.openclaw/agents',
+      '/root/.openclaw/workspace',
+      '/root/.openclaw/sandboxes',
+    ],
   });
 
   // Create an AbortController so the abort fast-path can cancel the
