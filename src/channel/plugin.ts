@@ -25,6 +25,7 @@ import { triggerOnboarding } from '../tools/onboarding-auth';
 import { larkLogger } from '../core/lark-logger';
 import { FEISHU_CONFIG_JSON_SCHEMA } from '../core/config-schema';
 import { applyAccountConfig, collectFeishuSecurityWarnings, deleteAccount, setAccountEnabled } from './config-adapter';
+import { runFeishuQrLoginCli, startFeishuQrLogin, waitForFeishuQrLogin } from './qr-login';
 import {
   listFeishuDirectoryGroups,
   listFeishuDirectoryGroupsLive,
@@ -67,7 +68,7 @@ const meta = {
   docsPath: '/channels/feishu',
   docsLabel: 'feishu',
   blurb: '\u98DE\u4E66/Lark enterprise messaging.',
-  aliases: ['lark'],
+  aliases: ['lark', 'openclaw-lark'],
   order: 70,
 };
 
@@ -221,6 +222,16 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
   },
 
   // -------------------------------------------------------------------------
+  // Auth
+  // -------------------------------------------------------------------------
+
+  auth: {
+    login: async ({ accountId, runtime }) => {
+      await runFeishuQrLoginCli({ accountId, runtime });
+    },
+  },
+
+  // -------------------------------------------------------------------------
   // Messaging
   // -------------------------------------------------------------------------
 
@@ -334,6 +345,14 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
       ctx.log?.info(`stopping feishu[${ctx.accountId}]`);
       await LarkClient.clearCache(ctx.accountId);
       ctx.log?.info(`stopped feishu[${ctx.accountId}]`);
+    },
+
+    loginWithQrStart: async ({ accountId, force }) => {
+      return await startFeishuQrLogin({ accountId, force });
+    },
+
+    loginWithQrWait: async ({ accountId, timeoutMs }) => {
+      return await waitForFeishuQrLogin({ accountId, timeoutMs });
     },
   },
 };
