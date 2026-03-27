@@ -204,6 +204,7 @@ export async function sendCardByCardId(params: {
     return {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
+      ...(response?.data?.thread_id ? { threadId: String(response.data.thread_id) } : {}),
     };
   }
 

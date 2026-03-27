@@ -191,6 +191,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       channel: 'feishu',
       messageId: result.messageId,
       chatId: result.chatId,
+      ...(result.threadId ? { threadId: result.threadId } : {}),
       ...(result.warning ? { meta: { warnings: [result.warning] } } : {}),
     };
   },
@@ -233,6 +234,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
         channel: 'feishu',
         messageId: cardResult.messageId,
         chatId: cardResult.chatId,
+        ...(cardResult.threadId ? { threadId: cardResult.threadId } : {}),
         ...(warnings.length > 0 ? { meta: { warnings } } : {}),
       };
     }

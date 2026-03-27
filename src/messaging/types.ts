@@ -208,6 +208,7 @@ export interface FeishuMediaInfo {
 export interface FeishuSendResult {
   messageId: string;
   chatId: string;
+  threadId?: string;
   /**
    * Human-readable warning when the send succeeded but with degradation
    * (e.g. media upload failed, fell back to a text link).

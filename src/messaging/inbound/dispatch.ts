@@ -182,11 +182,11 @@ export async function dispatchToAgent(params: {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
   dc.turnThreadContext = createTurnThreadContext({
+    accountId: dc.account.accountId,
     chatId: dc.ctx.chatId,
-    messageId: dc.ctx.messageId,
-    threadId: dc.ctx.threadId,
+    inboundMessageId: dc.ctx.messageId,
+    inboundThreadId: dc.ctx.threadId,
     forceReplyInThread: dc.forceReplyInThread,
-    isThread: dc.isThread,
   });
 
   // 1b. Resolve thread session isolation (async: may query group info API)

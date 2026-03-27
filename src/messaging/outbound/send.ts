@@ -60,6 +60,16 @@ export interface SendFeishuCardParams {
   replyInThread?: boolean;
 }
 
+export function normalizeSendResult(response: {
+  data?: { message_id?: string; chat_id?: string; thread_id?: string };
+}): FeishuSendResult {
+  return {
+    messageId: response.data?.message_id ?? '',
+    chatId: response.data?.chat_id ?? '',
+    ...(response.data?.thread_id ? { threadId: response.data.thread_id } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // sendMessageFeishu
 // ---------------------------------------------------------------------------
@@ -166,10 +176,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
         }),
     });
 
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+    return normalizeSendResult(response ?? {});
   }
 
   // Send as a new message.
@@ -192,10 +199,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     },
   });
 
-  return {
-    messageId: response?.data?.message_id ?? '',
-    chatId: response?.data?.chat_id ?? '',
-  };
+  return normalizeSendResult(response ?? {});
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +238,7 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
         }),
     });
 
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+    return normalizeSendResult(response ?? {});
   }
 
   const target = normalizeFeishuTarget(to);
@@ -259,10 +260,7 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
     },
   });
 
-  return {
-    messageId: response?.data?.message_id ?? '',
-    chatId: response?.data?.chat_id ?? '',
-  };
+  return normalizeSendResult(response ?? {});
 }
 
 // ---------------------------------------------------------------------------

@@ -24,8 +24,11 @@ const log = larkLogger('inbound/dispatch-context');
 // ---------------------------------------------------------------------------
 
 export interface TurnThreadContext {
+  effectiveIsThread: boolean;
   pendingThreadKey?: string;
+  effectiveThreadKey?: string;
   resolvedThreadId?: string;
+  threadSource: 'inbound' | 'forced';
 }
 
 export interface DispatchContext {
@@ -50,43 +53,53 @@ export interface DispatchContext {
   commandAuthorized?: boolean;
 }
 
-export function createPendingThreadKey(params: { chatId: string; messageId: string }): string {
-  return `pending-thread:${params.chatId}:${params.messageId}`;
+export function createPendingThreadKey(params: {
+  accountId: string;
+  chatId: string;
+  inboundMessageId: string;
+}): string {
+  return `pending:${params.accountId}:${params.chatId}:${params.inboundMessageId}`;
 }
 
 export function createTurnThreadContext(params: {
+  accountId: string;
   chatId: string;
-  messageId: string;
-  threadId?: string;
+  inboundMessageId: string;
+  inboundThreadId?: string;
   forceReplyInThread: boolean;
-  isThread: boolean;
-}): TurnThreadContext | undefined {
-  if (params.isThread && params.threadId) {
-    return { resolvedThreadId: params.threadId };
-  }
-
-  if (params.forceReplyInThread) {
+}): TurnThreadContext {
+  if (params.inboundThreadId) {
     return {
-      pendingThreadKey: createPendingThreadKey({
-        chatId: params.chatId,
-        messageId: params.messageId,
-      }),
+      effectiveIsThread: true,
+      effectiveThreadKey: params.inboundThreadId,
+      resolvedThreadId: params.inboundThreadId,
+      threadSource: 'inbound',
     };
   }
 
-  return undefined;
+  if (params.forceReplyInThread) {
+    const pendingThreadKey = createPendingThreadKey(params);
+    return {
+      effectiveIsThread: true,
+      pendingThreadKey,
+      effectiveThreadKey: pendingThreadKey,
+      threadSource: 'forced',
+    };
+  }
+
+  return {
+    effectiveIsThread: false,
+    threadSource: 'inbound',
+  };
 }
 
-export function resolveEffectiveThreadKey(turnThreadContext?: TurnThreadContext): string | undefined {
-  return turnThreadContext?.resolvedThreadId ?? turnThreadContext?.pendingThreadKey;
+export function resolveEffectiveThreadKey(turnThreadContext: TurnThreadContext): string | undefined {
+  return turnThreadContext.effectiveThreadKey;
 }
 
-export function reconcileResolvedThreadId(
-  turnThreadContext: TurnThreadContext | undefined,
-  resolvedThreadId: string | undefined,
-): void {
-  if (!turnThreadContext || !resolvedThreadId) return;
+export function reconcileResolvedThreadId(turnThreadContext: TurnThreadContext, resolvedThreadId: string): void {
   turnThreadContext.resolvedThreadId = resolvedThreadId;
+  turnThreadContext.effectiveThreadKey = resolvedThreadId;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,17 +139,15 @@ export function buildDispatchContext(params: {
   const { ctx, account, accountScopedCfg } = params;
 
   const runtime = ensureRuntime(params.runtime);
-  const log = runtime.log;
-  const error = runtime.error;
+  const runtimeLog = runtime.log;
+  const runtimeError = runtime.error;
   const isGroup = ctx.chatType === 'group';
   const isThread = isGroup && Boolean(ctx.threadId);
   const core = LarkClient.runtime;
 
   const feishuFrom = `feishu:${ctx.senderId}`;
   const feishuTo = isGroup ? `chat:${ctx.chatId}` : `user:${ctx.senderId}`;
-
   const envelopeFrom = isGroup ? `${ctx.chatId}:${ctx.senderId}` : ctx.senderId;
-
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(accountScopedCfg);
 
   const replyInThreadSetting = isGroup
@@ -144,7 +155,6 @@ export function buildDispatchContext(params: {
     : undefined;
   const forceReplyInThread = isGroup && replyInThreadSetting === 'enabled';
 
-  // ---- Route resolution ----
   const route = core.channel.routing.resolveAgentRoute({
     cfg: accountScopedCfg,
     channel: 'feishu',
@@ -155,7 +165,6 @@ export function buildDispatchContext(params: {
     },
   });
 
-  // ---- System event ----
   const sender = ctx.senderName ? `${ctx.senderName} (${ctx.senderId})` : ctx.senderId;
   const location = isGroup ? `group ${ctx.chatId}` : 'DM';
 
@@ -180,8 +189,8 @@ export function buildDispatchContext(params: {
     accountScopedCfg,
     account,
     runtime,
-    log,
-    error,
+    log: runtimeLog,
+    error: runtimeError,
     core,
     isGroup,
     isThread,
@@ -233,12 +242,11 @@ export async function resolveThreadSessionKey(params: {
     return undefined;
   }
 
-  // 使用 SDK 标准函数，保证分隔符格式与 resolveThreadParentSessionKey 兼容
   const { sessionKey } = resolveThreadSessionKeys({
     baseSessionKey,
     threadId,
     parentSessionKey: baseSessionKey,
-    normalizeThreadId: (id) => id, // 飞书 thread ID (omt_xxx) 区分大小写，不做 lowercase
+    normalizeThreadId: (id) => id,
   });
   return sessionKey;
 }
