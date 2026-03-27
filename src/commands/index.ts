@@ -123,7 +123,7 @@ export function runFeishuStart(
   }
 
   if (hasReplyInThreadWithoutThreadSession(cfg.channels?.feishu)) {
-    warnings.push(t.replyInThreadWarn);
+    errors.push(t.replyInThreadWarn);
   }
 
   if (errors.length > 0) {

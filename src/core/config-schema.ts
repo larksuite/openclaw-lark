@@ -143,6 +143,21 @@ export const FeishuGroupSchema = z.object({
   systemPrompt: z.string().optional(),
 });
 
+function addReplyInThreadPrerequisiteIssue(
+  ctx: z.RefinementCtx,
+  path: Array<string | number>,
+  threadSession: boolean | undefined,
+  replyInThread: 'enabled' | 'disabled' | undefined,
+): void {
+  if (replyInThread === 'enabled' && threadSession !== true) {
+    ctx.addIssue({
+      code: 'custom',
+      path,
+      message: 'replyInThread requires threadSession: true',
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Account config schema (same shape as top-level minus `accounts`)
 // ---------------------------------------------------------------------------
@@ -201,10 +216,38 @@ export const FeishuConfigSchema = FeishuAccountConfigSchema.extend({
 
     if (!hasWildcard) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['allowFrom'],
         message: 'When dmPolicy is "open", allowFrom must include "*" to permit all senders.',
       });
+    }
+  }
+
+  addReplyInThreadPrerequisiteIssue(ctx, ['replyInThread'], data.threadSession, data.replyInThread);
+  addReplyInThreadPrerequisiteIssue(ctx, ['groups', '*', 'replyInThread'], data.threadSession, data.groups?.['*']?.replyInThread);
+
+  for (const [groupId, groupConfig] of Object.entries(data.groups ?? {})) {
+    if (groupId === '*') continue;
+    addReplyInThreadPrerequisiteIssue(ctx, ['groups', groupId, 'replyInThread'], data.threadSession, groupConfig?.replyInThread);
+  }
+
+  for (const [accountId, accountConfig] of Object.entries(data.accounts ?? {})) {
+    addReplyInThreadPrerequisiteIssue(ctx, ['accounts', accountId, 'replyInThread'], accountConfig.threadSession, accountConfig.replyInThread);
+    addReplyInThreadPrerequisiteIssue(
+      ctx,
+      ['accounts', accountId, 'groups', '*', 'replyInThread'],
+      accountConfig.threadSession,
+      accountConfig.groups?.['*']?.replyInThread,
+    );
+
+    for (const [groupId, groupConfig] of Object.entries(accountConfig.groups ?? {})) {
+      if (groupId === '*') continue;
+      addReplyInThreadPrerequisiteIssue(
+        ctx,
+        ['accounts', accountId, 'groups', groupId, 'replyInThread'],
+        accountConfig.threadSession,
+        groupConfig?.replyInThread,
+      );
     }
   }
 });

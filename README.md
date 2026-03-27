@@ -27,6 +27,8 @@ Additionally, the plugin supports:
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, custom system prompts, and thread-reply controls
 
+> Note: `replyInThread` requires `threadSession: true`. The plugin now treats this as a hard prerequisite and will report configuration errors if thread replies are enabled without thread-scoped sessions.
+
 > Note: When `replyInThread` is enabled, a single bot turn that emits multiple messages (for example, a card plus a follow-up text) may create multiple threads in non-thread parents. This is a current platform limitation because the first created thread ID is not yet captured and reused for subsequent messages in the same turn.
 
 ## Security & Risk Warnings (Read Before Use)

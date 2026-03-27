@@ -13,6 +13,41 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 
 import { getEnabledLarkAccounts } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
+import { hasReplyInThreadWithoutThreadSession } from '../channel/config-adapter';
+import type { FeishuLocale } from './locale';
+import type { FeishuConfig } from '../core/types';
+import type { ConfiguredLarkAccount } from '../core/types';
+
+import { getAppGrantedScopes, missingScopes } from '../core/app-scope-checker';
+import { getAppOwnerFallback } from '../core/app-owner-fallback';
+import { getStoredToken, tokenStatus } from '../core/token-store';
+
+import { filterSensitiveScopes, REQUIRED_APP_SCOPES, TOOL_SCOPES } from '../core/tool-scopes';
+import { probeFeishu } from '../channel/probe';
+import { AppScopeCheckFailedError } from '../core/tool-client';
+import { getPluginVersion } from '../core/version';
+import { openPlatformDomain } from '../core/domains';
+
+// TODO: 暂时注释掉，等产品策略明确后再放开
+// import { checkMultiAccountIsolation, formatIsolationWarning } from "../core/security-check";
+
+function getReplyInThreadPrerequisiteWarning(locale: FeishuLocale): string {
+  return locale === 'zh_cn'
+    ? '❌ **replyInThread 配置**: 已启用 `replyInThread`，但未启用 `threadSession`。请先设置 `channels.feishu.threadSession: true`，否则配置无效。'
+    : '❌ **replyInThread Config**: `replyInThread` is enabled, but `threadSession` is not. Set `channels.feishu.threadSession: true` first, or this configuration is invalid.';
+}
+
+function resolveAccountFeishuConfig(config: OpenClawConfig, accountId: string): FeishuConfig | undefined {
+  const globalConfig = resolveGlobalConfig(config);
+  const feishu = globalConfig.channels?.feishu as FeishuConfig | undefined;
+  const accounts = feishu?.accounts;
+  return accountId && accounts?.[accountId] ? ({ ...feishu, ...accounts[accountId] } as FeishuConfig) : feishu;
+}
+
+function hasAccountReplyInThreadWithoutThreadSession(config: OpenClawConfig, accountId: string): boolean {
+  return hasReplyInThreadWithoutThreadSession(resolveAccountFeishuConfig(config, accountId));
+}
+
 
 /**
  * Resolve the global config for cross-account operations.
@@ -25,18 +60,8 @@ import { LarkClient } from '../core/lark-client';
 function resolveGlobalConfig(config: OpenClawConfig): OpenClawConfig {
   return LarkClient.globalConfig ?? config;
 }
-import type { ConfiguredLarkAccount } from '../core/types';
-import { getAppGrantedScopes, missingScopes } from '../core/app-scope-checker';
-import { getAppOwnerFallback } from '../core/app-owner-fallback';
-import { getStoredToken, tokenStatus } from '../core/token-store';
 
-import { filterSensitiveScopes, REQUIRED_APP_SCOPES, TOOL_SCOPES } from '../core/tool-scopes';
-import { probeFeishu } from '../channel/probe';
-import { AppScopeCheckFailedError } from '../core/tool-client';
-import { getPluginVersion } from '../core/version';
-import { openPlatformDomain } from '../core/domains';
-// TODO: 暂时注释掉，等产品策略明确后再放开
-// import { checkMultiAccountIsolation, formatIsolationWarning } from "../core/security-check";
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,14 +70,12 @@ import { openPlatformDomain } from '../core/domains';
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
 export type { FeishuLocale } from './locale';
-/** @deprecated Use FeishuLocale instead */
-export type DoctorLocale = import('./locale').FeishuLocale;
 
 // ---------------------------------------------------------------------------
 // I18n text map
 // ---------------------------------------------------------------------------
 
-const T: Record<DoctorLocale, {
+const T: Record<FeishuLocale, {
   // maskSecret
   notSet: string;
   // checkBasicInfo
@@ -282,7 +305,7 @@ function getAllToolScopes(): string[] {
 /**
  * 掩码敏感信息（appSecret）
  */
-function maskSecret(secret: string | undefined, locale: DoctorLocale): string {
+function maskSecret(secret: string | undefined, locale: FeishuLocale): string {
   if (!secret) return T[locale].notSet;
   if (secret.length <= 4) return '****';
   return secret.slice(0, 4) + '****';
@@ -294,7 +317,7 @@ function maskSecret(secret: string | undefined, locale: DoctorLocale): string {
 async function checkBasicInfo(
   account: ConfiguredLarkAccount,
   config: OpenClawConfig,
-  locale: DoctorLocale,
+  locale: FeishuLocale,
 ): Promise<{ status: CheckStatus; markdown: string }> {
   const t = T[locale];
   const lines: string[] = [];
@@ -312,6 +335,11 @@ async function checkBasicInfo(
 
   lines.push(`${t.credentials}: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret, locale)}`);
   lines.push(t.accountEnabled);
+
+  if (hasAccountReplyInThreadWithoutThreadSession(config, account.accountId)) {
+    status = 'fail';
+    lines.push(getReplyInThreadPrerequisiteWarning(locale));
+  }
 
   // API 连通性
   try {
@@ -345,7 +373,7 @@ async function checkBasicInfo(
 
 const INCOMPLETE_PROFILES = new Set(['minimal', 'coding', 'messaging']);
 
-function checkToolsProfile(config: OpenClawConfig, locale: DoctorLocale): { status: CheckStatus; markdown: string } {
+function checkToolsProfile(config: OpenClawConfig, locale: FeishuLocale): { status: CheckStatus; markdown: string } {
   const t = T[locale];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tools = (config as any).tools;
@@ -388,7 +416,7 @@ function checkToolsProfile(config: OpenClawConfig, locale: DoctorLocale): { stat
 async function checkAppPermissions(
   account: ConfiguredLarkAccount,
   sdk: Lark.Client,
-  locale: DoctorLocale,
+  locale: FeishuLocale,
 ): Promise<{ status: CheckStatus; markdown: string; missingScopes: string[] }> {
   const t = T[locale];
   const { appId } = account;
@@ -458,7 +486,7 @@ function generatePermissionTable(
   appGrantedScopes: string[],
   userGrantedScopes: string[],
   hasValidUser: boolean,
-  locale: DoctorLocale,
+  locale: FeishuLocale,
 ): string {
   let allScopes = getAllToolScopes();
   allScopes = filterSensitiveScopes(allScopes);
@@ -485,7 +513,7 @@ function generatePermissionTable(
 async function checkUserPermissions(
   account: ConfiguredLarkAccount,
   sdk: Lark.Client,
-  locale: DoctorLocale,
+  locale: FeishuLocale,
 ): Promise<{
   status: CheckStatus;
   markdown: string;
@@ -660,7 +688,7 @@ async function checkUserPermissions(
 export async function runFeishuDoctor(
   config: OpenClawConfig,
   currentAccountId?: string,
-  locale: DoctorLocale = 'zh_cn',
+  locale: FeishuLocale = 'zh_cn',
 ): Promise<string> {
   const t = T[locale];
   const lines: string[] = [];
@@ -765,7 +793,7 @@ export async function runFeishuDoctor(
 export async function runFeishuDoctorI18n(
   config: OpenClawConfig,
   currentAccountId?: string,
-): Promise<Record<DoctorLocale, string>> {
+): Promise<Record<FeishuLocale, string>> {
   const [zh_cn, en_us] = await Promise.all([
     runFeishuDoctor(config, currentAccountId, 'zh_cn'),
     runFeishuDoctor(config, currentAccountId, 'en_us'),

@@ -14,7 +14,6 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk';
 import type { FeishuConfig } from '../core/types';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';
-import type { FeishuGroupConfig } from '../core/types';
 import { collectIsolationWarnings } from '../core/security-check';
 
 /** Generic Feishu account config merge. */
@@ -97,19 +96,39 @@ export function deleteAccount(cfg: ClawdbotConfig, accountId: string): ClawdbotC
   };
 }
 
-function isReplyInThreadEnabled(groupConfig?: FeishuGroupConfig): boolean {
-  return groupConfig?.replyInThread === 'enabled';
+export function validateReplyInThreadPrerequisite(config: {
+  threadSession?: boolean;
+  replyInThread?: 'enabled' | 'disabled';
+}): void {
+  if (config.replyInThread === 'enabled' && config.threadSession !== true) {
+    throw new Error('replyInThread requires threadSession: true');
+  }
 }
 
 export function hasReplyInThreadWithoutThreadSession(feishuCfg?: FeishuConfig): boolean {
   const groups = feishuCfg?.groups;
   const defaultGroupConfig = groups?.['*'];
-  const hasReplyInThreadEnabled =
-    feishuCfg?.replyInThread === 'enabled'
-    || isReplyInThreadEnabled(defaultGroupConfig)
-    || Object.entries(groups ?? {}).some(([groupId, groupConfig]) => groupId !== '*' && isReplyInThreadEnabled(groupConfig));
 
-  return hasReplyInThreadEnabled && feishuCfg?.threadSession !== true;
+  try {
+    validateReplyInThreadPrerequisite({
+      threadSession: feishuCfg?.threadSession,
+      replyInThread: feishuCfg?.replyInThread,
+    });
+    validateReplyInThreadPrerequisite({
+      threadSession: feishuCfg?.threadSession,
+      replyInThread: defaultGroupConfig?.replyInThread,
+    });
+    for (const [groupId, groupConfig] of Object.entries(groups ?? {})) {
+      if (groupId === '*') continue;
+      validateReplyInThreadPrerequisite({
+        threadSession: feishuCfg?.threadSession,
+        replyInThread: groupConfig?.replyInThread,
+      });
+    }
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /** Collect security warnings for a Feishu account. */
