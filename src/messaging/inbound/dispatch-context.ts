@@ -102,6 +102,15 @@ export function reconcileResolvedThreadId(turnThreadContext: TurnThreadContext, 
   turnThreadContext.effectiveThreadKey = resolvedThreadId;
 }
 
+export function applySendResultToTurnThreadContext(
+  turnThreadContext: TurnThreadContext | undefined,
+  result: { threadId?: string },
+): void {
+  if (turnThreadContext && result.threadId) {
+    reconcileResolvedThreadId(turnThreadContext, result.threadId);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // RuntimeEnv fallback
 // ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ import {
 import { isLikelyAbortText } from '../../channel/abort-detect';
 import {
   type DispatchContext,
+  applySendResultToTurnThreadContext,
   buildDispatchContext,
   createTurnThreadContext,
   resolveThreadSessionKey,
@@ -95,6 +96,7 @@ async function dispatchNormalMessage(
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.forceReplyInThread || dc.isThread,
+    turnThreadContext: dc.turnThreadContext,
   });
 
   // Create an AbortController so the abort fast-path can cancel the
@@ -306,7 +308,7 @@ export async function dispatchToAgent(params: {
         i18nTexts = getFeishuHelpI18n();
       }
       const card = buildI18nMarkdownCard(i18nTexts);
-      await sendCardFeishu({
+      const result = await sendCardFeishu({
         cfg: dc.accountScopedCfg,
         to: dc.ctx.chatId,
         card,
@@ -314,10 +316,11 @@ export async function dispatchToAgent(params: {
         accountId: dc.account.accountId,
         replyInThread: dc.forceReplyInThread || dc.isThread,
       });
+      applySendResultToTurnThreadContext(dc.turnThreadContext, result);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       dc.error(`feishu[${dc.account.accountId}]: ${i18nCommandName} i18n dispatch failed: ${errMsg}`);
-      await sendMessageFeishu({
+      const result = await sendMessageFeishu({
         cfg: dc.accountScopedCfg,
         to: dc.ctx.chatId,
         text: `${i18nCommandName} failed: ${errMsg}`,
@@ -325,6 +328,7 @@ export async function dispatchToAgent(params: {
         accountId: dc.account.accountId,
         replyInThread: dc.forceReplyInThread || dc.isThread,
       });
+      applySendResultToTurnThreadContext(dc.turnThreadContext, result);
     }
     return;
   }

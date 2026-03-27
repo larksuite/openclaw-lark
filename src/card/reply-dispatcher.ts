@@ -22,6 +22,7 @@ import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { sendMessageFeishu, sendMarkdownCardFeishu } from '../messaging/outbound/send';
+import { applySendResultToTurnThreadContext } from '../messaging/inbound/dispatch-context';
 import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } from '../messaging/outbound/typing';
 import { resolveReplyMode, expandAutoMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
@@ -84,6 +85,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         chatId,
         replyToMessageId,
         replyInThread,
+        turnThreadContext: params.turnThreadContext,
         resolvedFooter,
       })
     : null;
@@ -221,7 +223,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         log.info('deliver: sending card chunks', { count: chunks.length, chatId });
         for (const chunk of chunks) {
           try {
-            await sendMarkdownCardFeishu({
+            const result = await sendMarkdownCardFeishu({
               cfg,
               to: chatId,
               text: chunk,
@@ -229,6 +231,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               replyInThread,
               accountId,
             });
+            applySendResultToTurnThreadContext(params.turnThreadContext, result);
           } catch (err) {
             if (staticGuard?.terminate('deliver.cardChunk', err)) return;
             throw err;
@@ -240,7 +243,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         log.info('deliver: sending text chunks', { count: chunks.length, chatId });
         for (const chunk of chunks) {
           try {
-            await sendMessageFeishu({
+            const result = await sendMessageFeishu({
               cfg,
               to: chatId,
               text: chunk,
@@ -248,6 +251,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               replyInThread,
               accountId,
             });
+            applySendResultToTurnThreadContext(params.turnThreadContext, result);
           } catch (err) {
             if (staticGuard?.terminate('deliver.textChunk', err)) return;
             throw err;

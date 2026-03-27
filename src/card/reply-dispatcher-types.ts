@@ -11,6 +11,7 @@
 
 import type { ClawdbotConfig, ReplyPayload } from 'openclaw/plugin-sdk';
 import type { FeishuFooterConfig } from '../core/types';
+import type { TurnThreadContext } from '../messaging/inbound/dispatch-context';
 
 // ---------------------------------------------------------------------------
 // CardPhase — explicit state machine replacing boolean flags
@@ -121,6 +122,7 @@ export interface CreateFeishuReplyDispatcherParams {
   skipTyping?: boolean;
   /** When true, replies are sent into the thread instead of main chat. */
   replyInThread?: boolean;
+  turnThreadContext?: TurnThreadContext;
 }
 
 /**
@@ -164,5 +166,6 @@ export interface StreamingCardDeps {
   chatId: string;
   replyToMessageId: string | undefined;
   replyInThread: boolean | undefined;
+  turnThreadContext?: TurnThreadContext;
   resolvedFooter: Required<FeishuFooterConfig>;
 }

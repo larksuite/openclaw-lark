@@ -8,7 +8,7 @@
  * and permission-error notifications via the streaming card flow.
  */
 
-import type { DispatchContext } from './dispatch-context';
+import { applySendResultToTurnThreadContext, type DispatchContext } from './dispatch-context';
 import type { PermissionError } from './permission';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
@@ -67,6 +67,7 @@ export async function dispatchPermissionNotification(
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
     replyInThread: dc.forceReplyInThread || dc.isThread,
+    turnThreadContext: dc.turnThreadContext,
   });
 
   dc.log(`feishu[${dc.account.accountId}]: dispatching permission error notification to agent`);
@@ -117,7 +118,7 @@ export async function dispatchSystemCommand(
         if (suppressReply) return;
         const text = payload.text?.trim() ?? '';
         if (!text) return;
-        await sendMessageFeishu({
+        const result = await sendMessageFeishu({
           cfg: dc.accountScopedCfg,
           to: dc.ctx.chatId,
           text,
@@ -125,6 +126,7 @@ export async function dispatchSystemCommand(
           accountId: dc.account.accountId,
           replyInThread: dc.forceReplyInThread || dc.isThread,
         });
+        applySendResultToTurnThreadContext(dc.turnThreadContext, result);
         delivered = true;
       },
       onSkip: (_payload, info) => {

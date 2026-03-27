@@ -15,6 +15,7 @@ import { SILENT_REPLY_TOKEN, type ReplyPayload } from 'openclaw/plugin-sdk';
 import { extractLarkApiCode } from '../core/api-error';
 import { larkLogger } from '../core/lark-logger';
 import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';
+import { applySendResultToTurnThreadContext } from '../messaging/inbound/dispatch-context';
 import {
   createCardEntity,
   sendCardByCardId,
@@ -599,6 +600,7 @@ export class StreamingCardController {
               replyInThread: this.deps.replyInThread,
               accountId: this.deps.accountId,
             });
+            applySendResultToTurnThreadContext(this.deps.turnThreadContext, result);
 
             if (this.isStaleCreate(epoch)) {
               log.info('ensureCardCreated: stale epoch after sendCardByCardId, bailing out', {
@@ -641,6 +643,7 @@ export class StreamingCardController {
             replyInThread: this.deps.replyInThread,
             accountId: this.deps.accountId,
           });
+          applySendResultToTurnThreadContext(this.deps.turnThreadContext, result);
 
           if (this.isStaleCreate(epoch)) {
             log.info('ensureCardCreated: stale epoch after IM fallback send, bailing out', {
