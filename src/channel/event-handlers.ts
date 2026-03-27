@@ -16,7 +16,12 @@ import { isMessageExpired } from '../messaging/inbound/dedup';
 import { withTicket } from '../core/lark-ticket';
 import { larkLogger } from '../core/lark-logger';
 import { handleCardAction } from '../tools/auto-auth';
-import { enqueueFeishuChatTask, buildQueueKey, hasActiveTask, getActiveDispatcher } from './chat-queue';
+import {
+  buildAbortLookupKeys,
+  enqueueFeishuChatTask,
+  findActiveDispatcher,
+  hasAnyActiveTask,
+} from './chat-queue';
 import { extractRawTextFromEvent, isLikelyAbortText } from './abort-detect';
 import type { MonitorContext } from './types';
 
@@ -85,9 +90,9 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
     // card is terminated without waiting for the current task.
     const abortText = extractRawTextFromEvent(event);
     if (abortText && isLikelyAbortText(abortText)) {
-      const queueKey = buildQueueKey(accountId, chatId, threadId);
-      if (hasActiveTask(queueKey)) {
-        const active = getActiveDispatcher(queueKey);
+      const lookupKeys = buildAbortLookupKeys({ accountId, chatId, threadId });
+      if (hasAnyActiveTask(lookupKeys)) {
+        const active = findActiveDispatcher(lookupKeys);
         if (active) {
           log(`feishu[${accountId}]: abort fast-path triggered for chat ${chatId} (text="${abortText}")`);
           active.abortController?.abort();

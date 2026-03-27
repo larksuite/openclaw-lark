@@ -25,9 +25,10 @@ import { ticketElapsed } from '../../core/lark-ticket';
 import { createFeishuReplyDispatcher } from '../../card/reply-dispatcher';
 import { mentionedBot } from './mention';
 import {
-  buildQueueKey,
-  threadScopedKey,
   registerActiveDispatcher,
+  registerQueueBridge,
+  resolveThreadQueueKey,
+  threadScopedKey,
   unregisterActiveDispatcher,
 } from '../../channel/chat-queue';
 import { isLikelyAbortText } from '../../channel/abort-detect';
@@ -103,9 +104,34 @@ async function dispatchNormalMessage(
   // underlying LLM request (not just the streaming card UI).
   const abortController = new AbortController();
 
+  const turnThreadContext = dc.turnThreadContext;
+  if (turnThreadContext) {
+    turnThreadContext.onResolvedThreadId = (resolvedThreadId) => {
+      registerQueueBridge({
+        accountId: dc.account.accountId,
+        chatId: dc.ctx.chatId,
+        pendingThreadKey: turnThreadContext.pendingThreadKey,
+        resolvedThreadId,
+      });
+    };
+  }
+
+  registerQueueBridge({
+    accountId: dc.account.accountId,
+    chatId: dc.ctx.chatId,
+    pendingThreadKey: turnThreadContext?.pendingThreadKey,
+    resolvedThreadId: turnThreadContext?.resolvedThreadId,
+  });
+
   // Register the active dispatcher so the monitor abort fast-path can
   // terminate the streaming card before this task completes.
-  const queueKey = buildQueueKey(dc.account.accountId, dc.ctx.chatId, dc.ctx.threadId);
+  const queueKey = resolveThreadQueueKey({
+    accountId: dc.account.accountId,
+    chatId: dc.ctx.chatId,
+    inboundThreadId: dc.ctx.threadId,
+    pendingThreadKey: dc.turnThreadContext?.pendingThreadKey,
+    resolvedThreadId: dc.turnThreadContext?.resolvedThreadId,
+  });
   registerActiveDispatcher(queueKey, { abortCard, abortController });
 
   const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;

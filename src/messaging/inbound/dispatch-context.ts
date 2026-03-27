@@ -29,6 +29,7 @@ export interface TurnThreadContext {
   effectiveThreadKey?: string;
   resolvedThreadId?: string;
   threadSource: 'inbound' | 'forced';
+  onResolvedThreadId?: (threadId: string) => void;
 }
 
 export interface DispatchContext {
@@ -98,8 +99,10 @@ export function resolveEffectiveThreadKey(turnThreadContext: TurnThreadContext):
 }
 
 export function reconcileResolvedThreadId(turnThreadContext: TurnThreadContext, resolvedThreadId: string): void {
+  if (turnThreadContext.resolvedThreadId === resolvedThreadId) return;
   turnThreadContext.resolvedThreadId = resolvedThreadId;
   turnThreadContext.effectiveThreadKey = resolvedThreadId;
+  turnThreadContext.onResolvedThreadId?.(resolvedThreadId);
 }
 
 export function applySendResultToTurnThreadContext(
