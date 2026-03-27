@@ -13,9 +13,10 @@ import type { HistoryEntry } from 'openclaw/plugin-sdk';
 import { buildPendingHistoryContextFromMap } from 'openclaw/plugin-sdk';
 import type { MessageContext } from '../types';
 import type { DispatchContext } from './dispatch-context';
+import { buildHistoryScopeKey } from './dispatch-context';
 import { LarkClient } from '../../core/lark-client';
 import { nonBotMentions } from './mention';
-import { threadScopedKey } from '../../channel/chat-queue';
+
 
 // ---------------------------------------------------------------------------
 // Mention annotation
@@ -170,7 +171,16 @@ export function buildEnvelopeWithHistory(
   });
 
   let combinedBody = body;
-  const historyKey = dc.isGroup ? threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined) : undefined;
+  const historyKey =
+    dc.isGroup && dc.turnThreadContext
+      ? buildHistoryScopeKey({
+          chatId: dc.ctx.chatId,
+          effectiveIsThread: dc.turnThreadContext.effectiveIsThread,
+          effectiveThreadKey: dc.turnThreadContext.effectiveThreadKey,
+        })
+      : dc.isGroup
+        ? dc.ctx.chatId
+        : undefined;
 
   if (dc.isGroup && historyKey && chatHistories) {
     combinedBody = buildPendingHistoryContextFromMap({

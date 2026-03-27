@@ -28,7 +28,6 @@ import {
   registerActiveDispatcher,
   registerQueueBridge,
   resolveThreadQueueKey,
-  threadScopedKey,
   unregisterActiveDispatcher,
 } from '../../channel/chat-queue';
 import { isLikelyAbortText } from '../../channel/abort-detect';
@@ -36,6 +35,8 @@ import {
   type DispatchContext,
   applySendResultToTurnThreadContext,
   buildDispatchContext,
+  buildHistoryScopeKey,
+  buildOriginatingThreadRoute,
   createTurnThreadContext,
   resolveThreadSessionKey,
 } from './dispatch-context';
@@ -46,7 +47,6 @@ import {
   buildEnvelopeWithHistory,
 } from './dispatch-builders';
 import { dispatchPermissionNotification, dispatchSystemCommand } from './dispatch-commands';
-import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
 import { runFeishuDoctorI18n } from '../../commands/doctor';
@@ -217,13 +217,16 @@ export async function dispatchToAgent(params: {
     forceReplyInThread: dc.forceReplyInThread,
   });
 
+  const effectiveIsThread = dc.turnThreadContext?.effectiveIsThread ?? dc.isThread;
+  const effectiveThreadKey = dc.turnThreadContext?.effectiveThreadKey;
+
   // 1b. Resolve thread session isolation (async: may query group info API)
-  if (dc.isThread && dc.ctx.threadId) {
+  if (effectiveIsThread && effectiveThreadKey) {
     dc.threadSessionKey = await resolveThreadSessionKey({
       accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,
       chatId: dc.ctx.chatId,
-      threadId: dc.ctx.threadId,
+      threadId: effectiveThreadKey,
       baseSessionKey: dc.route.sessionKey,
     });
   }
@@ -257,7 +260,11 @@ export async function dispatchToAgent(params: {
   // 6. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
   //    The SDK's buildInboundUserContextPrefix renders these as structured
   //    JSON blocks; earlier SDK versions simply ignore unknown fields.
-  const threadHistoryKey = threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined);
+  const threadHistoryKey = buildHistoryScopeKey({
+    chatId: dc.ctx.chatId,
+    effectiveIsThread,
+    effectiveThreadKey,
+  });
   const inboundHistory =
     dc.isGroup && params.chatHistories && params.historyLimit > 0
       ? (params.chatHistories.get(threadHistoryKey) ?? []).map((entry) => ({
@@ -272,14 +279,14 @@ export async function dispatchToAgent(params: {
   const groupSystemPrompt = dc.isGroup
     ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
     : undefined;
-  const originatingTo =
-    isBareNewOrReset && dc.isThread
-      ? encodeFeishuRouteTarget({
-          target: dc.feishuTo,
-          replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
-          threadId: dc.ctx.threadId,
-        })
-      : undefined;
+  const originatingTo = isBareNewOrReset
+    ? buildOriginatingThreadRoute({
+        target: dc.feishuTo,
+        replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
+        effectiveIsThread,
+        resolvedThreadId: dc.turnThreadContext?.resolvedThreadId,
+      })
+    : undefined;
   const ctxPayload = buildInboundPayload(dc, {
     body: combinedBody,
     bodyForAgent,
@@ -295,7 +302,7 @@ export async function dispatchToAgent(params: {
     extraFields: {
       ...params.mediaPayload,
       ...(groupSystemPrompt ? { GroupSystemPrompt: groupSystemPrompt } : {}),
-      ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
+      ...(dc.turnThreadContext?.resolvedThreadId ? { MessageThreadId: dc.turnThreadContext.resolvedThreadId } : {}),
     },
   });
 

@@ -16,6 +16,7 @@ import type { FeishuGroupConfig, LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
+import { encodeFeishuRouteTarget } from '../../core/targets';
 
 const log = larkLogger('inbound/dispatch-context');
 
@@ -112,6 +113,30 @@ export function applySendResultToTurnThreadContext(
   if (turnThreadContext && result.threadId) {
     reconcileResolvedThreadId(turnThreadContext, result.threadId);
   }
+}
+
+export function buildHistoryScopeKey(params: {
+  chatId: string;
+  effectiveIsThread: boolean;
+  effectiveThreadKey?: string;
+}): string {
+  return params.effectiveIsThread && params.effectiveThreadKey
+    ? `${params.chatId}:thread:${params.effectiveThreadKey}`
+    : params.chatId;
+}
+
+export function buildOriginatingThreadRoute(params: {
+  target: string;
+  replyToMessageId: string;
+  effectiveIsThread: boolean;
+  resolvedThreadId?: string;
+}): string | undefined {
+  if (!params.effectiveIsThread || !params.resolvedThreadId) return undefined;
+  return encodeFeishuRouteTarget({
+    target: params.target,
+    replyToMessageId: params.replyToMessageId,
+    threadId: params.resolvedThreadId,
+  });
 }
 
 // ---------------------------------------------------------------------------
