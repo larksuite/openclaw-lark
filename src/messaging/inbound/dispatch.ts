@@ -31,7 +31,12 @@ import {
   unregisterActiveDispatcher,
 } from '../../channel/chat-queue';
 import { isLikelyAbortText } from '../../channel/abort-detect';
-import { type DispatchContext, buildDispatchContext, resolveThreadSessionKey } from './dispatch-context';
+import {
+  type DispatchContext,
+  buildDispatchContext,
+  createTurnThreadContext,
+  resolveThreadSessionKey,
+} from './dispatch-context';
 import {
   buildMessageBody,
   buildBodyForAgent,
@@ -176,6 +181,13 @@ export async function dispatchToAgent(params: {
 }): Promise<void> {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
+  dc.turnThreadContext = createTurnThreadContext({
+    chatId: dc.ctx.chatId,
+    messageId: dc.ctx.messageId,
+    threadId: dc.ctx.threadId,
+    forceReplyInThread: dc.forceReplyInThread,
+    isThread: dc.isThread,
+  });
 
   // 1b. Resolve thread session isolation (async: may query group info API)
   if (dc.isThread && dc.ctx.threadId) {

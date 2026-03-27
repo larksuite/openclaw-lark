@@ -23,6 +23,11 @@ const log = larkLogger('inbound/dispatch-context');
 // DispatchContext type
 // ---------------------------------------------------------------------------
 
+export interface TurnThreadContext {
+  pendingThreadKey?: string;
+  resolvedThreadId?: string;
+}
+
 export interface DispatchContext {
   ctx: MessageContext;
   /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
@@ -40,8 +45,48 @@ export interface DispatchContext {
   envelopeOptions: ReturnType<typeof LarkClient.runtime.channel.reply.resolveEnvelopeFormatOptions>;
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
   threadSessionKey?: string;
+  turnThreadContext?: TurnThreadContext;
   forceReplyInThread: boolean;
   commandAuthorized?: boolean;
+}
+
+export function createPendingThreadKey(params: { chatId: string; messageId: string }): string {
+  return `pending-thread:${params.chatId}:${params.messageId}`;
+}
+
+export function createTurnThreadContext(params: {
+  chatId: string;
+  messageId: string;
+  threadId?: string;
+  forceReplyInThread: boolean;
+  isThread: boolean;
+}): TurnThreadContext | undefined {
+  if (params.isThread && params.threadId) {
+    return { resolvedThreadId: params.threadId };
+  }
+
+  if (params.forceReplyInThread) {
+    return {
+      pendingThreadKey: createPendingThreadKey({
+        chatId: params.chatId,
+        messageId: params.messageId,
+      }),
+    };
+  }
+
+  return undefined;
+}
+
+export function resolveEffectiveThreadKey(turnThreadContext?: TurnThreadContext): string | undefined {
+  return turnThreadContext?.resolvedThreadId ?? turnThreadContext?.pendingThreadKey;
+}
+
+export function reconcileResolvedThreadId(
+  turnThreadContext: TurnThreadContext | undefined,
+  resolvedThreadId: string | undefined,
+): void {
+  if (!turnThreadContext || !resolvedThreadId) return;
+  turnThreadContext.resolvedThreadId = resolvedThreadId;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +192,7 @@ export function buildDispatchContext(params: {
     envelopeOptions,
     route,
     threadSessionKey: undefined,
+    turnThreadContext: undefined,
     commandAuthorized: params.commandAuthorized,
   };
 }
