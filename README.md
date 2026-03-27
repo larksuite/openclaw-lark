@@ -65,6 +65,22 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+### QR Pairing
+
+After the plugin is installed and enabled, you can create and pair a new Feishu/Lark bot directly from OpenClaw:
+
+```bash
+openclaw channels login --channel feishu
+```
+
+`openclaw channels login --channel openclaw-lark` works as an alias as well.
+
+For control-plane or dashboard integrations, the plugin also supports the gateway `web.login.start` / `web.login.wait` flow:
+
+- `web.login.start` returns a QR data URL plus the login link.
+- `web.login.wait` polls the official registration session until the new bot is created.
+- On success, the plugin writes the generated `appId` / `appSecret` back into `channels.feishu` so the gateway can start the channel immediately.
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).
