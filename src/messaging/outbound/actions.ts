@@ -142,7 +142,12 @@ function readFeishuSendParams(
     readStringParam(params, 'replyTo') ??
     (replyInThread && toolContext?.currentMessageId ? String(toolContext.currentMessageId) : undefined);
 
-  const card = parseCardParam(params.card);
+  let card = parseCardParam(params.card);
+  // Guard: treat empty card objects as undefined when media is present
+  if (card && Object.keys(card).length === 0 && mediaUrl) {
+    log.info('params.card is empty object with media present, ignoring card');
+    card = undefined;
+  }
 
   return {
     to,
