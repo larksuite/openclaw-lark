@@ -152,7 +152,8 @@ export type ToolActionKey =
   | 'feishu_sheet.append'
   | 'feishu_sheet.find'
   | 'feishu_sheet.create'
-  | 'feishu_sheet.export';
+  | 'feishu_sheet.export'
+  | 'feishu_raw_api.call';
 /**
  * Tool Scope 映射类型
  *
@@ -326,6 +327,7 @@ export const TOOL_SCOPES: ToolScopeMapping = {
     'sheets:spreadsheet:write_only',
   ],
   'feishu_sheet.export': ['docs:document:export'],
+  'feishu_raw_api.call': [], // No predefined scopes — depends on the API being called
 } as const;
 
 // ===== 必需的应用身份权限 =====
