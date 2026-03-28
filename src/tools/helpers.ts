@@ -16,6 +16,11 @@ import { getTicket } from '../core/lark-ticket';
 import type { ToolClient } from '../core/tool-client';
 import { createToolClient } from '../core/tool-client';
 import { shouldRegisterTool } from '../core/tools-config';
+import {
+  runInToolExecutionContext,
+  getToolExecutionContext,
+  resolveAccountFromBindings,
+} from '../core/tool-execution-context';
 
 // ---------------------------------------------------------------------------
 // 类型定义
@@ -120,6 +125,13 @@ export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): Cl
       );
     }
 
+    // #321: Try resolving account from bindings (agentId → accountId)
+    const tecCtx = getToolExecutionContext();
+    const bindingAccount = resolveAccountFromBindings(resolveConfig, tecCtx?.agentId);
+    if (bindingAccount) {
+      return LarkClient.fromAccount(bindingAccount).sdk;
+    }
+
     if (accountIndex >= accounts.length) {
       throw new Error(`Requested account index ${accountIndex} but only ${accounts.length} accounts available`);
     }
@@ -165,6 +177,13 @@ export function getFirstAccount(config: ClawdbotConfig): LarkAccount {
     throw new Error(
       'No enabled Feishu accounts configured. ' + 'Please add appId and appSecret in config under channels.feishu',
     );
+  }
+
+  // #321: Try resolving account from bindings (agentId → accountId)
+  const tecCtx = getToolExecutionContext();
+  const bindingAccount = resolveAccountFromBindings(resolveConfig, tecCtx?.agentId);
+  if (bindingAccount) {
+    return bindingAccount;
   }
 
   return accounts[0];
@@ -294,8 +313,41 @@ export function registerTool(
     return false;
   }
 
-  // 通过检查，调用原始的 registerTool
-  api.registerTool(tool, opts);
+  // #321: Wrap tool execute() in ALS context to propagate agentId
+  if (typeof tool === 'function') {
+    // Factory tool — wrap the factory to return a tool with ALS-wrapped execute
+    const originalFactory = tool;
+    const wrappedFactory = (ctx: any) => {
+      const originalTool = originalFactory(ctx);
+      if (!originalTool) return originalTool;
+      const origExecute = originalTool.execute.bind(originalTool);
+      originalTool.execute = (toolCallId: string, params: Record<string, unknown>) => {
+        return runInToolExecutionContext(
+          { agentId: ctx?.agentId },
+          () => origExecute(toolCallId, params),
+        );
+      };
+      return originalTool;
+    };
+    Object.defineProperty(wrappedFactory, 'name', { value: originalFactory.name });
+    api.registerTool(wrappedFactory as any, opts);
+  } else {
+    // Static tool — wrap execute directly
+    const staticTool = tool as { name?: string; execute: (id: string, params: Record<string, unknown>) => any };
+    if (staticTool.execute) {
+      const origExecute = staticTool.execute;
+      staticTool.execute = (toolCallId: string, params: Record<string, unknown>) => {
+        // For static tools, try to get agentId from the plugin context if available
+        const ctx = (api as any).__currentContext;
+        return runInToolExecutionContext(
+          { agentId: ctx?.agentId },
+          () => origExecute.call(staticTool, toolCallId, params),
+        );
+      };
+    }
+    api.registerTool(staticTool as any, opts);
+  }
+
   return true;
 }
 
