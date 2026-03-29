@@ -19,6 +19,7 @@ import { handleCardAction } from '../tools/auto-auth';
 import { handleAskUserAction } from '../tools/ask-user-question';
 import { buildQueueKey, enqueueFeishuChatTask, getActiveDispatcher, hasActiveTask } from './chat-queue';
 import { extractRawTextFromEvent, isLikelyAbortText } from './abort-detect';
+import { recordFeishuInbound } from './status-registry';
 import type { MonitorContext } from './types';
 
 const elog = larkLogger('channel/event-handlers');
@@ -81,6 +82,8 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
       log(`feishu[${accountId}]: message ${msgId} expired, discarding`);
       return;
     }
+
+    recordFeishuInbound(accountId);
 
     // ---- Abort fast-path ----
     // If the message looks like an abort trigger and there is an active
@@ -167,6 +170,8 @@ export async function handleReactionEvent(ctx: MonitorContext, data: unknown): P
       return;
     }
 
+    recordFeishuInbound(accountId);
+
     // ---- Pre-resolve real chatId before enqueuing ----
     // The API call (3s timeout) runs outside the queue so it doesn't
     // block the serial chain, and is read-only so ordering is irrelevant.
@@ -231,6 +236,7 @@ export async function handleBotMembershipEvent(
   const { accountId, log, error } = ctx;
   try {
     const event = data as FeishuBotAddedEvent;
+    recordFeishuInbound(accountId);
     log(`feishu[${accountId}]: bot ${action} ${action === 'removed' ? 'from' : 'to'} chat ${event.chat_id}`);
   } catch (err) {
     error(`feishu[${accountId}]: error handling bot ${action} event: ${String(err)}`);
@@ -243,6 +249,8 @@ export async function handleBotMembershipEvent(
 
 export async function handleCardActionEvent(ctx: MonitorContext, data: unknown): Promise<unknown> {
   try {
+    recordFeishuInbound(ctx.accountId);
+
     // AskUserQuestion card interactions — injects synthetic message
     // carrying user answers for the AI to receive in a new turn.
     const askResult = handleAskUserAction(data, ctx.cfg, ctx.accountId);
