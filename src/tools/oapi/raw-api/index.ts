@@ -22,15 +22,16 @@ const FeishuRawApiSchema = Type.Object({
   }),
   path: Type.String({
     description: 'Feishu API path starting with /open-apis/, e.g. /open-apis/mail/v1/mailgroups',
+    pattern: '^/open-apis/',
   }),
   params: Type.Optional(
-    Type.Record(Type.String(), Type.Any(), {
-      description: 'URL query parameters as key-value pairs',
+    Type.Record(Type.String(), Type.String(), {
+      description: 'URL query parameters as key-value string pairs',
     }),
   ),
   data: Type.Optional(
-    Type.Record(Type.String(), Type.Any(), {
-      description: 'Request body JSON (for POST/PUT/PATCH)',
+    Type.Any({
+      description: 'Request body JSON (for POST/PUT/PATCH). Can be object, array, or primitive.',
     }),
   ),
   as: Type.Optional(
@@ -38,9 +39,7 @@ const FeishuRawApiSchema = Type.Object({
       description: 'Identity type. "tenant" = bot (default), "user" = user (requires OAuth)',
     }),
   ),
-  page_token: Type.Optional(
-    Type.String({ description: 'Pagination token from previous response' }),
-  ),
+  page_token: Type.Optional(Type.String({ description: 'Pagination token from previous response' })),
   page_size: Type.Optional(
     Type.Integer({
       description: 'Page size (API-specific, typically 10-100)',
@@ -57,8 +56,8 @@ const FeishuRawApiSchema = Type.Object({
 type FeishuRawApiParams = {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
-  params?: Record<string, unknown>;
-  data?: Record<string, unknown>;
+  params?: Record<string, string>;
+  data?: unknown;
   as?: 'user' | 'tenant';
   page_token?: string;
   page_size?: number;
@@ -91,7 +90,7 @@ export function registerFeishuRawApiTool(api: OpenClawPluginApi): boolean {
           const query: Record<string, string> = {};
           if (p.params) {
             for (const [k, v] of Object.entries(p.params)) {
-              query[k] = String(v);
+              query[k] = v;
             }
           }
           if (p.page_token) query.page_token = p.page_token;
@@ -99,16 +98,12 @@ export function registerFeishuRawApiTool(api: OpenClawPluginApi): boolean {
 
           log.info(`${p.method} ${p.path} as=${p.as ?? 'tenant'}`);
 
-          const res = await client.invokeByPath(
-            'feishu_raw_api.call',
-            p.path,
-            {
-              method: p.method,
-              body: p.data,
-              query: Object.keys(query).length > 0 ? query : undefined,
-              as: p.as ?? 'tenant',
-            },
-          );
+          const res = await client.invokeByPath('feishu_raw_api.call', p.path, {
+            method: p.method,
+            body: p.data,
+            query: Object.keys(query).length > 0 ? query : undefined,
+            as: p.as ?? 'tenant',
+          });
 
           return json(res);
         } catch (err) {
