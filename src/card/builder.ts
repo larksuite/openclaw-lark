@@ -222,8 +222,10 @@ export function formatFooterRuntimeSegments(params: {
   elapsedMs?: number;
   isError?: boolean;
   isAborted?: boolean;
+  /** Override the status text shown in the footer (replaces default '已完成'/'Completed'). */
+  statusOverride?: string;
 }): { primaryZh: string[]; primaryEn: string[]; detailZh: string[]; detailEn: string[] } {
-  const { footer, metrics, elapsedMs, isError, isAborted } = params;
+  const { footer, metrics, elapsedMs, isError, isAborted, statusOverride } = params;
   const primaryZh: string[] = [];
   const primaryEn: string[] = [];
   const detailZh: string[] = [];
@@ -238,6 +240,9 @@ export function formatFooterRuntimeSegments(params: {
     } else if (isAborted) {
       primaryZh.push('已停止');
       primaryEn.push('Stopped');
+    } else if (statusOverride) {
+      primaryZh.push(statusOverride);
+      primaryEn.push(statusOverride);
     } else {
       primaryZh.push('已完成');
       primaryEn.push('Completed');
@@ -330,6 +335,8 @@ export function buildCardContent(
       model?: boolean;
     };
     footerMetrics?: FooterSessionMetrics;
+    /** Override the footer status text (replaces default '已完成'/'Completed'). */
+    statusOverride?: string;
   } = {},
 ): FeishuCard {
   switch (state) {
@@ -348,6 +355,7 @@ export function buildCardContent(
         isAborted: data.isAborted,
         footer: data.footer,
         footerMetrics: data.footerMetrics,
+        statusOverride: data.statusOverride,
       });
     case 'confirm':
       return buildConfirmCard(data.confirmData!);
@@ -431,8 +439,9 @@ function buildCompleteCard(params: {
     model?: boolean;
   };
   footerMetrics?: FooterSessionMetrics;
+  statusOverride?: string;
 }): FeishuCard {
-  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer, footerMetrics } =
+  const { text, toolCalls, elapsedMs, isError, reasoningText, reasoningElapsedMs, isAborted, footer, footerMetrics, statusOverride } =
     params;
   const elements: CardElement[] = [];
 
@@ -504,6 +513,7 @@ function buildCompleteCard(params: {
     elapsedMs,
     isError,
     isAborted,
+    statusOverride,
   });
 
   const footerZhLines: string[] = [];

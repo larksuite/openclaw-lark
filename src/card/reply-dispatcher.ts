@@ -22,7 +22,9 @@ import { sendMediaLark } from '../messaging/outbound/deliver';
 import { sendMarkdownCardFeishu, sendMessageFeishu } from '../messaging/outbound/send';
 import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } from '../messaging/outbound/typing';
 import { isCardTableLimitError } from './card-error';
+import { registerCompletedCard } from './card-registry';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
+import { hasActiveSubagents } from './subagent-tracker';
 import { expandAutoMode, resolveReplyMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
@@ -38,7 +40,7 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
-  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread, threadId } = params;
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -377,7 +379,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       if (controller) {
         const mergeEnabled = feishuCfg?.subagent?.mergeToMain !== false;
-        const subagentsActive = mergeEnabled && hasActiveSubagents(chatId, accountId);
+        const subagentsActive = mergeEnabled && hasActiveSubagents(chatId, accountId, threadId);
 
         if (subagentsActive && controller.cardMessageId) {
           // SubAgents still running — do NOT finalize the streaming card.
@@ -386,12 +388,12 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           log.info('deferring card finalization (subagents active)');
 
           registerCompletedCard({
-            chatId,
-            accountId,
+            context: { to: chatId, accountId, threadId },
             messageId: controller.cardMessageId,
             cardKitCardId: controller.cardKitCardId,
             cardKitSequence: controller.cardKitSequence,
             completedText: controller.completedText,
+            phase: 'main_done_waiting_subagents',
             streamingOpen: true,
             startedAt: controller.startTime,
             footer: resolvedFooter,
@@ -402,12 +404,12 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
           if (mergeEnabled && controller.cardMessageId) {
             registerCompletedCard({
-              chatId,
-              accountId,
+              context: { to: chatId, accountId, threadId },
               messageId: controller.cardMessageId,
               cardKitCardId: controller.cardKitCardId,
               cardKitSequence: controller.cardKitSequence,
               completedText: controller.completedText,
+              phase: 'main_done_waiting_subagents',
               startedAt: controller.startTime,
               footer: resolvedFooter,
             });

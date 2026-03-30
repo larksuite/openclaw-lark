@@ -27,7 +27,7 @@ import {
 import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
 import { emitSecurityWarnings } from './src/core/security-check';
-import { trackSubagentSpawned, trackSubagentEnded } from './src/card/subagent-tracker';
+import { trackSubagentEnded, trackSubagentSpawned } from './src/card/subagent-tracker';
 import { normalizeFeishuTarget } from './src/core/targets';
 
 const log = larkLogger('plugin');
@@ -145,14 +145,18 @@ const plugin = {
     // ---- Subagent lifecycle hooks (card status tracking) ----
 
     api.on('subagent_spawned', (event) => {
-      const chatId = event.requester?.to ? normalizeFeishuTarget(event.requester.to) : undefined;
-      if (chatId) {
-        trackSubagentSpawned({
-          runId: event.runId,
-          chatId,
-          accountId: event.requester?.accountId,
-        });
-      }
+      const requester = event.requester;
+      if (requester?.channel && requester.channel.toLowerCase() !== 'feishu') return;
+      const rawTo = requester?.to;
+      if (!rawTo) return;
+      const to = normalizeFeishuTarget(rawTo) ?? rawTo;
+      const threadId = requester?.threadId != null ? String(requester.threadId) : undefined;
+      trackSubagentSpawned({
+        runId: event.runId,
+        to,
+        accountId: requester?.accountId,
+        threadId,
+      });
     });
 
     api.on('subagent_ended', (event) => {

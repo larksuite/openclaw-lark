@@ -122,6 +122,8 @@ export interface CreateFeishuReplyDispatcherParams {
   skipTyping?: boolean;
   /** When true, replies are sent into the thread instead of main chat. */
   replyInThread?: boolean;
+  /** Thread ID for conversation-scoped card registry key. */
+  threadId?: string;
 }
 
 /**
@@ -136,6 +138,7 @@ export interface ReplyDispatcher {
   sendFinalReply: (payload: ReplyPayload) => boolean;
   waitForIdle: () => Promise<void>;
   getQueuedCounts: () => Record<string, number>;
+  getFailedCounts: () => Record<string, number>;
   markComplete: () => void;
 }
 
