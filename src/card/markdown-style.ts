@@ -51,8 +51,12 @@ function _optimizeMarkdownStyle(text: string, cardVersion = 2): string {
     r = r.replace(/^([^|\n].*)\n(\|.+\|)/gm, '$1\n\n$2');
     // 4b. 表格前：在空行之前插入 <br>（即 \n\n| → \n<br>\n\n| ）
     r = r.replace(/\n\n((?:\|.+\|[^\S\n]*\n?)+)/g, '\n\n<br>\n\n$1');
-    // 4c. 表格后：在表格块末尾追加 <br>
-    r = r.replace(/((?:^\|.+\|[^\S\n]*\n?)+)/gm, '$1\n<br>\n');
+    // 4c. 表格后：在表格块末尾追加 <br>（跳过后接分隔线/标题/加粗/文末的情况）
+    r = r.replace(/((?:^\|.+\|[^\S\n]*\n?)+)/gm, (m, _table, offset) => {
+      const after = r.slice(offset + m.length).replace(/^\n+/, '');
+      if (!after || /^(---|#{4,5} |\*\*)/.test(after)) return m;
+      return m + '\n<br>\n';
+    });
     // 4d. 表格前是普通文本（非标题、非加粗行）时，只需 <br>，去掉多余空行
     //     "text\n\n<br>\n\n|" → "text\n<br>\n|"
     r = r.replace(/^((?!#{4,5} )(?!\*\*).+)\n\n(<br>)\n\n(\|)/gm, '$1\n$2\n$3');
