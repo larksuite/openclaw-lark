@@ -253,7 +253,7 @@ export async function dispatchToAgent(params: {
     ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
     : undefined;
   const originatingTo =
-    isBareNewOrReset && dc.isThread
+    dc.isThread
       ? encodeFeishuRouteTarget({
           target: dc.feishuTo,
           replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
