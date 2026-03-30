@@ -13,6 +13,7 @@ import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from 
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
+import { isBotOpenId, triggerBotToBotMessage } from '../cross-bot/trigger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,7 +110,8 @@ function convertMarkdownTablesForFeishu(cfg: ClawdbotConfig, text: string, accou
 export async function sendMessageFeishu(params: SendFeishuMessageParams): Promise<FeishuSendResult> {
   const { cfg, to, text, replyToMessageId, mentions, accountId, replyInThread, i18nTexts } = params;
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  const larkClient = LarkClient.fromCfg(cfg, accountId);
+  const client = larkClient.sdk;
 
   // Build the post-format content envelope.
   let contentPayload: string;
@@ -178,10 +180,39 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
         }),
     });
 
-    return {
+    const result: FeishuSendResult = {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
     };
+
+    // ========== 跨Bot消息触发 ==========
+    // 检测mentions中是否有@其他bot，如果有则触发跨bot消息
+    if (mentions && mentions.length > 0) {
+      const mentionedBotOpenIds = mentions
+        .filter((m) => isBotOpenId(m.openId))
+        .map((m) => m.openId);
+
+      if (mentionedBotOpenIds.length > 0) {
+        const senderBotOpenId = larkClient.botOpenId;
+        if (senderBotOpenId && accountId) {
+          // 异步触发，不阻塞主流程
+          void triggerBotToBotMessage({
+            senderAccountId: accountId,
+            senderBotOpenId,
+            mentionedBotOpenIds,
+            chatId: result.chatId,
+            content: contentPayload,
+            messageType: 'post',
+            threadId: undefined,
+            rootId: undefined,
+          }).catch((err) => {
+            console.error(`Failed to trigger cross-bot message: ${String(err)}`);
+          });
+        }
+      }
+    }
+
+    return result;
   }
 
   // Send as a new message.
@@ -204,10 +235,40 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     },
   });
 
-  return {
+  const result: FeishuSendResult = {
     messageId: response?.data?.message_id ?? '',
     chatId: response?.data?.chat_id ?? '',
   };
+
+  // ========== 跨Bot消息触发 ==========
+  // 检测mentions中是否有@其他bot，如果有则触发跨bot消息
+  if (mentions && mentions.length > 0) {
+    const mentionedBotOpenIds = mentions
+      .filter((m) => isBotOpenId(m.openId))
+      .map((m) => m.openId);
+
+    if (mentionedBotOpenIds.length > 0) {
+      log.info(`[跨Bot] 检测到跨Bot提及: count=${mentionedBotOpenIds.length}, botOpenIds=${mentionedBotOpenIds.join(',')}`);
+      const senderBotOpenId = larkClient.botOpenId;
+      if (senderBotOpenId && accountId) {
+        // 异步触发，不阻塞主流程
+        void triggerBotToBotMessage({
+          senderAccountId: accountId,
+          senderBotOpenId,
+          mentionedBotOpenIds,
+          chatId: result.chatId,
+          content: contentPayload,
+          messageType: 'post',
+          threadId: undefined,
+          rootId: undefined,
+        }).catch((err) => {
+          console.error(`Failed to trigger cross-bot message: ${String(err)}`);
+        });
+      }
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

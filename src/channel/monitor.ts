@@ -92,23 +92,31 @@ async function monitorSingleAccount(params: {
     error,
   };
 
+  // Define handlers for WebSocket events
+  const handlers = {
+    'im.message.receive_v1': (data: unknown) => handleMessageEvent(ctx, data),
+    'im.message.message_read_v1': async () => {},
+    'im.message.reaction.created_v1': (data: unknown) => handleReactionEvent(ctx, data),
+    // These events are expected in normal usage but do not affect the
+    // plugin's current behavior. Register no-op handlers to avoid SDK
+    // warnings about missing handlers.
+    'im.message.reaction.deleted_v1': async () => {},
+    'im.chat.access_event.bot_p2p_chat_entered_v1': async () => {},
+    'im.chat.member.bot.added_v1': (data: unknown) => handleBotMembershipEvent(ctx, data, 'added'),
+    'im.chat.member.bot.deleted_v1': (data: unknown) => handleBotMembershipEvent(ctx, data, 'removed'),
+    // 飞书 SDK EventDispatcher.register 不支持带返回值的处理器，此处 as any 是 SDK 类型限制的变通
+    'card.action.trigger': ((data: unknown) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handleCardActionEvent(ctx, data)) as any,
+  };
+
+  // Register handlers to LarkClient for cross-bot @mentions
+  log(`[跨Bot] 注册handlers: accountId=${accountId}, handlerCount=${Object.keys(handlers).length}`);
+  LarkClient.registerBotHandlers(accountId, handlers);
+  log(`[跨Bot] 注册完成: accountId=${accountId}`);
+
   await lark.startWS({
-    handlers: {
-      'im.message.receive_v1': (data) => handleMessageEvent(ctx, data),
-      'im.message.message_read_v1': async () => {},
-      'im.message.reaction.created_v1': (data) => handleReactionEvent(ctx, data),
-      // These events are expected in normal usage but do not affect the
-      // plugin's current behavior. Register no-op handlers to avoid SDK
-      // warnings about missing handlers.
-      'im.message.reaction.deleted_v1': async () => {},
-      'im.chat.access_event.bot_p2p_chat_entered_v1': async () => {},
-      'im.chat.member.bot.added_v1': (data) => handleBotMembershipEvent(ctx, data, 'added'),
-      'im.chat.member.bot.deleted_v1': (data) => handleBotMembershipEvent(ctx, data, 'removed'),
-      // 飞书 SDK EventDispatcher.register 不支持带返回值的处理器，此处 as any 是 SDK 类型限制的变通
-      'card.action.trigger': ((data: unknown) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        handleCardActionEvent(ctx, data)) as any,
-    },
+    handlers,
     abortSignal,
   });
 
