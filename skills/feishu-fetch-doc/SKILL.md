@@ -4,7 +4,7 @@ description: |
   获取飞书云文档内容。返回文档的 Markdown 内容，支持处理文档中的图片、文件和画板（需配合 feishu_doc_media 工具）。
 ---
 
-# feishu_mcp_fetch_doc
+# feishu_fetch_doc
 
 获取飞书云文档的 Markdown 内容（Lark-flavored 格式）。
 
@@ -68,7 +68,7 @@ description: |
 
 | obj_type | 工具 | 传参 |
 |----------|------|------|
-| `docx` | `feishu_mcp_fetch_doc` | doc_id = obj_token |
+| `docx` | `feishu_fetch_doc` | doc_id = obj_token |
 | `sheet` | `feishu_sheet` | spreadsheet_token = obj_token |
 | `bitable` | `feishu_bitable_*` 系列 | app_token = obj_token |
 | 其他 | 告知用户暂不支持该类型 | — |
@@ -80,13 +80,13 @@ description: |
 
 1. 调用 `feishu_wiki_space_node`（action: get, token: ABC123）
 2. 返回 `obj_type: "docx"`, `obj_token: "doxcnXYZ789"`
-3. 调用 `feishu_mcp_fetch_doc`（doc_id: doxcnXYZ789）
+3. 调用 `feishu_fetch_doc`（doc_id: doxcnXYZ789）
 
 ## 工具组合
 
 | 需求 | 工具 |
 |------|------|
-| 获取文档文本 | `feishu_mcp_fetch_doc` |
+| 获取文档文本 | `feishu_fetch_doc` |
 | 下载图片/文件/画板 | `feishu_doc_media`（action: download） |
 | 解析 wiki token 类型 | `feishu_wiki_space_node`（action: get） |
 | 读写电子表格 | `feishu_sheet` |
