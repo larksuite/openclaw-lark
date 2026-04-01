@@ -189,6 +189,25 @@ export class UserAuthRequiredError extends Error {
  *
  * 需要增量授权：用缺失的 scope 发起新 Device Flow。
  */
+/**
+ * 配置中 uat.enabled 为 false，禁止使用用户授权链路。
+ *
+ * auto-auth 不识别此错误类型，会走 formatLarkError 兜底返回 error message，
+ * 不会触发 OAuth Device Flow。
+ */
+export class UATDisabledError extends Error {
+  readonly appId: string;
+  readonly apiName: string;
+
+  constructor(appId: string, apiName: string) {
+    super(`User access token (UAT) is disabled for app ${appId}. ` +
+      `Set channels.feishu.uat.enabled to true to enable user authorization.`);
+    this.name = 'UATDisabledError';
+    this.appId = appId;
+    this.apiName = apiName;
+  }
+}
+
 export class UserScopeInsufficientError extends Error {
   readonly userOpenId: string;
   readonly apiName: string;
