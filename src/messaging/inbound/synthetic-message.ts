@@ -10,6 +10,7 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { enqueueFeishuChatTask } from '../../channel/chat-queue';
+import type { AuthResumeTarget } from '../../core/auth-resume-target';
 import { withTicket } from '../../core/lark-ticket';
 import { getInboundHandler } from './handler-registry';
 
@@ -23,6 +24,7 @@ export async function dispatchSyntheticTextMessage(params: {
   replyToMessageId: string;
   chatType?: 'p2p' | 'group';
   threadId?: string;
+  sessionRouteOverride?: AuthResumeTarget;
   runtime?: {
     log?: (msg: string) => void;
     error?: (msg: string) => void;
@@ -40,6 +42,7 @@ export async function dispatchSyntheticTextMessage(params: {
     replyToMessageId,
     chatType,
     threadId,
+    sessionRouteOverride,
     runtime,
     forceMention = true,
   } = params;
@@ -83,6 +86,7 @@ export async function dispatchSyntheticTextMessage(params: {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             runtime: runtime as any,
             replyToMessageId,
+            sessionRouteOverride,
           }),
       );
     },

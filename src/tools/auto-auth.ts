@@ -44,6 +44,8 @@ import { LarkClient } from '../core/lark-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
 import { OwnerAccessDeniedError } from '../core/owner-policy';
 import { dispatchSyntheticTextMessage } from '../messaging/inbound/synthetic-message';
+import type { AuthResumeTarget } from '../core/auth-resume-target';
+import { getAuthResumeTarget } from '../core/auth-resume-target';
 import { executeAuthorize } from './oauth';
 import { formatToolResult, getResolvedConfig } from './helpers';
 import type { ToolResult } from './helpers';
@@ -260,6 +262,7 @@ interface PendingAppAuthFlow {
   tokenType?: 'user' | 'tenant';
   cfg: ClawdbotConfig;
   ticket: LarkTicket;
+  resumeTarget?: AuthResumeTarget;
 }
 
 /** TTL：15 分钟后自动清理，防止内存泄漏。 */
@@ -711,6 +714,7 @@ async function sendAppScopeCard(params: {
     tokenType,
     cfg,
     ticket,
+    resumeTarget: getAuthResumeTarget(),
   };
   appAuthFlows.register(operationId, flow, dedup, activeCardKey);
 
@@ -881,6 +885,7 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
           replyToMessageId: flow.ticket.messageId,
           chatType: flow.ticket.chatType,
           threadId: flow.ticket.threadId,
+          sessionRouteOverride: flow.resumeTarget,
           runtime: syntheticRuntime,
         });
         log.info('synthetic message dispatched after app-auth-only completion');
@@ -893,6 +898,7 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
           forceAuth: true, // 应用权限刚经历移除→补回，不信任本地 UAT 缓存
           cfg: flow.cfg,
           ticket: flow.ticket,
+          resumeTarget: flow.resumeTarget,
         });
       }
     } catch (err) {

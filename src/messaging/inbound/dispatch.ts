@@ -47,6 +47,7 @@ import { type DispatchContext, buildDispatchContext, resolveThreadSessionKey } f
 import type { PermissionError } from './permission';
 import { mentionedBot } from './mention';
 import { resolveRespondToMentionAll } from './gate';
+import type { AuthResumeTarget } from '../../core/auth-resume-target';
 
 const log = larkLogger('inbound/dispatch');
 
@@ -175,6 +176,7 @@ export async function dispatchToAgent(params: {
   defaultGroupConfig?: FeishuGroupConfig;
   /** When true, the reply dispatcher skips typing indicators. */
   skipTyping?: boolean;
+  sessionRouteOverride?: AuthResumeTarget;
 }): Promise<void> {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
@@ -198,7 +200,7 @@ export async function dispatchToAgent(params: {
   }
 
   // 1b. Resolve thread session isolation (async: may query group info API)
-  if (dc.isThread && dc.ctx.threadId) {
+  if (!dc.routeOverrideApplied && dc.isThread && dc.ctx.threadId) {
     dc.threadSessionKey = await resolveThreadSessionKey({
       accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,

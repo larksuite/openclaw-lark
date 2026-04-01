@@ -23,6 +23,8 @@ import { getLarkAccount } from '../core/accounts';
 import { OwnerAccessDeniedError, assertOwnerAccessStrict } from '../core/owner-policy';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
+import type { AuthResumeTarget } from '../core/auth-resume-target';
+import { getAuthResumeTarget } from '../core/auth-resume-target';
 import type { LarkTicket } from '../core/lark-ticket';
 import { getTicket } from '../core/lark-ticket';
 import { larkLogger } from '../core/lark-logger';
@@ -80,6 +82,7 @@ interface PendingFlow {
   superseded: boolean;
   /** 当前 flow 请求的 scope（空格分隔），用于后续 scope 合并 */
   scope?: string;
+  resumeTarget?: AuthResumeTarget;
 }
 
 const pendingFlows = new Map<string, PendingFlow>();
@@ -249,6 +252,7 @@ export interface ExecuteAuthorizeParams {
   onAuthComplete?: () => void | Promise<void>; // 授权完成回调（用于批量授权链式触发）
   cfg: ClawdbotConfig;
   ticket: LarkTicket | undefined;
+  resumeTarget?: AuthResumeTarget;
 }
 
 /**
@@ -272,8 +276,10 @@ export async function executeAuthorize(
     onAuthComplete,
     cfg,
     ticket,
+    resumeTarget: resumeTargetParam,
   } = params;
   const { appId, appSecret, brand, accountId } = account;
+  const resumeTarget = resumeTargetParam ?? getAuthResumeTarget();
 
   // 0. Check if the user is the app owner (fail-close: 安全优先).
   const sdk = LarkClient.fromAccount(account).sdk;
@@ -527,6 +533,7 @@ export async function executeAuthorize(
     messageId: ticket?.messageId ?? '',
     superseded: false,
     scope: effectiveScope,
+    resumeTarget,
   };
   pendingFlows.set(flowKey, currentFlow);
   let pendingFlowDelete = false;
@@ -637,6 +644,7 @@ export async function executeAuthorize(
               replyToMessageId: ticket.messageId,
               chatType: ticket.chatType,
               threadId: ticket.threadId,
+              sessionRouteOverride: currentFlow.resumeTarget,
               runtime: syntheticRuntime,
             });
             log.info(`synthetic message queued (${status})`);

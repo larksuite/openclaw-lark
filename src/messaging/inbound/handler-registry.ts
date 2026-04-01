@@ -9,6 +9,7 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { AuthResumeTarget } from '../../core/auth-resume-target';
 import type { FeishuMessageEvent } from '../types';
 
 export interface InboundHandlerParams {
@@ -20,6 +21,7 @@ export interface InboundHandlerParams {
   replyToMessageId?: string;
   forceMention?: boolean;
   skipTyping?: boolean;
+  sessionRouteOverride?: AuthResumeTarget;
 }
 
 type InboundHandler = (params: InboundHandlerParams) => Promise<void>;

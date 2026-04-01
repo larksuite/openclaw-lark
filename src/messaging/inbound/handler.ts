@@ -40,6 +40,7 @@ import { type GateResult, checkMessageGate, readFeishuAllowFromStore } from './g
 import { injectInboundHandler } from './handler-registry';
 import { dispatchToAgent } from './dispatch';
 import { resolveFeishuGroupConfig, splitLegacyGroupAllowFrom } from './policy';
+import type { AuthResumeTarget } from '../../core/auth-resume-target';
 
 const logger = larkLogger('inbound/handler');
 
@@ -63,8 +64,20 @@ export async function handleFeishuMessage(params: {
   forceMention?: boolean;
   /** When true, skip the typing indicator for this dispatch (e.g. reactions). */
   skipTyping?: boolean;
+  sessionRouteOverride?: AuthResumeTarget;
 }): Promise<void> {
-  const { cfg, event, botOpenId, runtime, chatHistories, accountId, replyToMessageId, forceMention, skipTyping } =
+  const {
+    cfg,
+    event,
+    botOpenId,
+    runtime,
+    chatHistories,
+    accountId,
+    replyToMessageId,
+    forceMention,
+    skipTyping,
+    sessionRouteOverride,
+  } =
     params;
 
   // 1. Account resolution
@@ -220,6 +233,7 @@ export async function handleFeishuMessage(params: {
       groupConfig,
       defaultGroupConfig,
       skipTyping,
+      sessionRouteOverride,
     });
   } catch (err) {
     error(`feishu[${account.accountId}]: failed to dispatch message: ${String(err)}`);
