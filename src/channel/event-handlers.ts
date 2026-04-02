@@ -37,11 +37,19 @@ const elog = larkLogger('channel/event-handlers');
  * Returns `false` (discard event) when the app_id does not match.
  */
 function isEventOwnershipValid(ctx: MonitorContext, data: unknown): boolean {
+  const event = data as FeishuMessageEvent;
+
+  // 检查是否是合成消息（跨Bot @mention）
+  // 合成消息的message_id以'synthetic_om_'开头，跳过app_id验证
+  if (event.message?.message_id?.startsWith('synthetic_om_')) {
+    return true;
+  }
+
   const expectedAppId = ctx.lark.account.appId;
   if (!expectedAppId) return true; // appId not configured — skip check
 
   const eventAppId = (data as Record<string, unknown>).app_id;
-  if (eventAppId == null) return true; // SDK did not provide app_id — defensive skip
+  if (eventAppId == null) return true; // SDK: did not provide app_id — defensive skip
 
   if (eventAppId !== expectedAppId) {
     elog.warn('event app_id mismatch, discarding', {

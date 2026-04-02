@@ -20,6 +20,7 @@ import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { sendMediaLark } from '../messaging/outbound/deliver';
 import { sendMarkdownCardFeishu, sendMessageFeishu } from '../messaging/outbound/send';
+import { extractAtMentionsFromText } from '../messaging/inbound/mention';
 import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } from '../messaging/outbound/typing';
 import { isCardTableLimitError } from './card-error';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
@@ -216,6 +217,16 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         : payload.mediaUrl
           ? [payload.mediaUrl]
           : [];
+
+      // 提取文本中的 <at> 标签为 MentionInfo[]，用于跨 Bot 触发
+      const extractedMentions = extractAtMentionsFromText(text);
+      if (extractedMentions.length > 0) {
+        log.info('deliver: extracted inline mentions from text', {
+          count: extractedMentions.length,
+          openIds: extractedMentions.map((m) => m.openId),
+        });
+      }
+
       if (!text.trim() && payloadMediaUrls.length === 0) {
         log.debug('deliver: empty text and no media, skipping');
         return;
@@ -255,6 +266,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                   replyToMessageId,
                   replyInThread,
                   accountId,
+                  mentions: extractedMentions.length > 0 ? extractedMentions : undefined,
                 });
               } catch (fallbackErr) {
                 if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
@@ -270,6 +282,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 replyToMessageId,
                 replyInThread,
                 accountId,
+                mentions: extractedMentions.length > 0 ? extractedMentions : undefined,
               });
             } catch (err) {
               if (staticGuard?.terminate('deliver.cardChunk', err)) return;
@@ -285,6 +298,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                     replyToMessageId,
                     replyInThread,
                     accountId,
+                    mentions: extractedMentions.length > 0 ? extractedMentions : undefined,
                   });
                 } catch (fallbackErr) {
                   if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
@@ -311,6 +325,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 replyToMessageId,
                 replyInThread,
                 accountId,
+                mentions: extractedMentions.length > 0 ? extractedMentions : undefined,
               });
             } catch (err) {
               if (staticGuard?.terminate('deliver.textChunk', err)) return;

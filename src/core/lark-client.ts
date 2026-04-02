@@ -130,6 +130,20 @@ export class LarkClient {
   /** Attached message deduplicator — disposed together with the client. */
   messageDedup: MessageDedup | null = null;
 
+  // ---- Bot-to-bot cross-mention support -----------------------------------------
+
+  /** Registry mapping accountId -> botOpenId for cross-bot @mentions. */
+  private static _botOpenIdRegistry: Map<string, string> = new Map();
+
+  /** Registry mapping accountId -> botName (from /bot/v3/info API). */
+  private static _botNameRegistry: Map<string, string> = new Map();
+
+  /** Registry mapping accountId -> WebSocket event handlers for cross-bot @mentions. */
+  private static _handlersRegistry: Map<
+    string,
+    Record<string, (data: unknown) => Promise<void>>
+  > = new Map();
+
   // ---- Plugin runtime (singleton) ------------------------------------------
 
   /** Persist the runtime instance for later retrieval (activate 阶段调用一次). */
@@ -159,6 +173,67 @@ export class LarkClient {
   /** Retrieve the stored global config, or `null` if not yet set. */
   static get globalConfig(): ClawdbotConfig | null {
     return LarkClient._globalConfig;
+  }
+
+  // ---- Bot-to-bot cross-mention support -----------------------------------------
+
+  /**
+   * Register WebSocket handlers for cross-bot @mentions.
+   */
+  static registerBotHandlers(
+    accountId: string,
+    handlers: Record<string, (data: unknown) => Promise<void>>
+  ): void {
+    LarkClient._handlersRegistry.set(accountId, handlers);
+    log.info(`[跨Bot] 注册Handlers: accountId=${accountId}, handlers=${Object.keys(handlers).join(', ')}`);
+  }
+
+  /**
+   * Get registered handlers for a specific account.
+   */
+  static getBotHandlers(
+    accountId: string
+  ): Record<string, (data: unknown) => Promise<void>> | undefined {
+    return LarkClient._handlersRegistry.get(accountId);
+  }
+
+  /**
+   * Get all registered bot open IDs.
+   * Returns a new Map to avoid external mutation.
+   */
+  static getAllBotOpenIds(): Map<string, string> {
+    return new Map(LarkClient._botOpenIdRegistry);
+  }
+
+  /**
+   * Register bot open ID for cross-bot @mentions.
+   */
+  static registerBotOpenId(accountId: string, botOpenId: string): void {
+    LarkClient._botOpenIdRegistry.set(accountId, botOpenId);
+    log.info(`[跨Bot] 注册Bot: accountId=${accountId}, botOpenId=${botOpenId}`);
+  }
+
+  /**
+   * Get the API-returned bot name for an account (from probe /bot/v3/info).
+   * Returns `undefined` if the account hasn't been probed yet.
+   */
+  static getBotName(accountId: string): string | undefined {
+    return LarkClient._botNameRegistry.get(accountId);
+  }
+
+  /**
+   * Find account ID by bot open ID.
+   * Returns undefined if bot open ID is not registered.
+   */
+  static getAccountIdByBotOpenId(botOpenId: string): string | undefined {
+    for (const [accountId, openId] of LarkClient._botOpenIdRegistry.entries()) {
+      if (openId === botOpenId) {
+        log.info(`[跨Bot] 查询成功: botOpenId=${botOpenId} -> accountId=${accountId}`);
+        return accountId;
+      }
+    }
+    log.info(`[跨Bot] 查询失败: botOpenId=${botOpenId} 未注册`);
+    return undefined;
   }
 
   // --------------------------------------------------------------------------
@@ -301,6 +376,14 @@ export class LarkClient {
       const botInfo = res.data?.pingBotInfo;
       this._botOpenId = botInfo?.botID;
       this._botName = botInfo?.botName;
+
+      // Register bot open ID for cross-bot @mentions
+      if (this._botOpenId) {
+        LarkClient.registerBotOpenId(this.accountId, this._botOpenId);
+        if (this._botName) {
+          LarkClient._botNameRegistry.set(this.accountId, this._botName);
+        }
+      }
 
       const result: FeishuProbeResult = {
         ok: true,

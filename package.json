@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "dev": "tsdown --watch",
     "release": "node scripts/release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

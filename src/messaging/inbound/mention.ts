@@ -16,6 +16,36 @@ import { escapeRegExp } from '../converters/utils';
 export type { MentionInfo } from '../types';
 
 // ---------------------------------------------------------------------------
+// Extract @mentions from outbound text
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract `MentionInfo` from `<at user_id="ou_xxx">name</at>` tags in text.
+ *
+ * Used when the AI generates text with inline @mentions — the mention info
+ * is needed for cross-bot triggering even though the `<at>` tags are already
+ * embedded in the message body.
+ */
+export function extractAtMentionsFromText(text: string): MentionInfo[] {
+  const mentions: MentionInfo[] = [];
+  const regex = /<at\s+user_id="([^"]+)">([^<]*)<\/at>/g;
+  let match: RegExpExecArray | null;
+  let idx = 0;
+  while ((match = regex.exec(text)) !== null) {
+    const openId = match[1]!;
+    const name = match[2]!;
+    mentions.push({
+      key: `@_at_extract_${idx}`,
+      openId,
+      name,
+      isBot: false, // will be checked by isBotOpenId at usage site
+    });
+    idx++;
+  }
+  return mentions;
+}
+
+// ---------------------------------------------------------------------------
 // Derive helpers (work on MentionInfo[])
 // ---------------------------------------------------------------------------
 
