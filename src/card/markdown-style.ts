@@ -85,6 +85,166 @@ function _optimizeMarkdownStyle(text: string, cardVersion = 2): string {
 }
 
 // ---------------------------------------------------------------------------
+// stripLeakedThinkingContent — channel-level safety net
+// ---------------------------------------------------------------------------
+
+const THINKING_TAGS_RE =
+  /<\s*(?:think(?:ing)?|thought|antthinking)\s*>[\s\S]*?<\s*\/\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
+const UNCLOSED_THINKING_RE =
+  /<\s*(?:think(?:ing)?|thought|antthinking)\s*>[\s\S]*$/gi;
+const ORPHAN_CLOSE_THINKING_RE =
+  /<\s*\/\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
+
+/**
+ * Safety net: strip any leaked `<thinking>` / `<think>` / `<thought>` /
+ * `<antthinking>` content from streaming snapshots.
+ *
+ * The main reasoning pipeline (`splitReasoningText`) handles this during
+ * normal flow, but partial chunks or edge cases may leak through.
+ * Call this right before handing content to CardKit / IM patch.
+ */
+export function stripLeakedThinkingContent(text: string): string {
+  if (!text) return text;
+  // 1. Remove fully-closed blocks
+  let r = text.replace(THINKING_TAGS_RE, '');
+  // 2. Remove unclosed tag at end (still streaming)
+  r = r.replace(UNCLOSED_THINKING_RE, '');
+  // 3. Remove orphaned closing tags
+  r = r.replace(ORPHAN_CLOSE_THINKING_RE, '');
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// sanitizeCardKitMarkdown — prevent streaming truncation
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize markdown for CardKit streaming to prevent rendering breakage
+ * from incomplete markdown in mid-stream snapshots:
+ *
+ * 1. Balance triple-backtick fences (close unclosed code blocks)
+ * 2. Balance inline backticks (outside fenced code blocks)
+ * 3. Escape bare angle brackets outside any code context
+ *
+ * Uses a segment-based approach instead of sentinels to correctly handle
+ * angle brackets inside inline code spans.
+ */
+export function sanitizeCardKitMarkdown(text: string): string {
+  if (!text) return text;
+
+  // ── Step 1: Balance triple-backtick fences ───────────────────────────
+  const fenceRe = /^```/gm;
+  const fenceCount = (text.match(fenceRe) || []).length;
+  let r = text;
+  if (fenceCount % 2 !== 0) {
+    r += '\n```';
+  }
+
+  // ── Step 2 & 3: Process content outside fenced code blocks ───────────
+  // Split by fenced code blocks, process only non-code segments
+  const parts = r.split(/(```[\s\S]*?```)/g);
+  for (let i = 0; i < parts.length; i++) {
+    // Odd indices are fenced code blocks — skip
+    if (i % 2 === 1) continue;
+    parts[i] = sanitizeInlineSegment(parts[i]);
+  }
+  return parts.join('');
+}
+
+/**
+ * Process a segment that is NOT inside a fenced code block:
+ * - Balance inline backticks
+ * - Escape bare `<` outside inline code spans
+ *
+ * Inline code spans follow CommonMark rules: a run of N backticks opens
+ * a code span that is closed by the next run of exactly N backticks.
+ * E.g. `` `code` ``, ``` ``code with `backtick` inside`` ```.
+ */
+function sanitizeInlineSegment(segment: string): string {
+  // Count inline backticks to check balance
+  const backtickCount = (segment.match(/`/g) || []).length;
+  let result = segment;
+
+  if (backtickCount % 2 !== 0) {
+    // Append closing backtick to balance
+    result += '`';
+  }
+
+  // Escape bare angle brackets outside inline code spans.
+  // Walk through the text, properly handling multi-backtick code spans.
+  const output: string[] = [];
+  let pos = 0;
+
+  while (pos < result.length) {
+    // Check for backtick run (start of inline code span)
+    if (result[pos] === '`') {
+      // Count the opening backtick run length
+      let openLen = 0;
+      const runStart = pos;
+      while (pos < result.length && result[pos] === '`') {
+        openLen++;
+        pos++;
+      }
+      // Look for a matching closing run of exactly the same length
+      const closePattern = '`'.repeat(openLen);
+      const closeIdx = findClosingBacktickRun(result, pos, openLen);
+      if (closeIdx !== -1) {
+        // Found matching close — emit the entire code span as-is
+        output.push(result.slice(runStart, closeIdx + openLen));
+        pos = closeIdx + openLen;
+      } else {
+        // No matching close — emit the backticks as literal text
+        output.push(closePattern);
+        // Continue processing (pos already advanced past the backticks)
+      }
+    } else if (result[pos] === '<') {
+      // Check if this looks like a known safe HTML tag (br, img)
+      const rest = result.slice(pos);
+      if (/^<\/?(?:br|img)\s*\/?>/.test(rest)) {
+        // Known safe tag — keep as-is
+        const tagMatch = rest.match(/^<\/?(?:br|img)\s*\/?>/);
+        if (tagMatch) {
+          output.push(tagMatch[0]);
+          pos += tagMatch[0].length;
+          continue;
+        }
+      }
+      output.push('&lt;');
+      pos++;
+    } else {
+      output.push(result[pos]);
+      pos++;
+    }
+  }
+
+  return output.join('');
+}
+
+/**
+ * Find the position of a closing backtick run of exactly `runLen` backticks,
+ * starting the search from `startPos`. Returns the index of the first
+ * backtick of the closing run, or -1 if not found.
+ */
+function findClosingBacktickRun(text: string, startPos: number, runLen: number): number {
+  let pos = startPos;
+  while (pos < text.length) {
+    if (text[pos] === '`') {
+      let len = 0;
+      const start = pos;
+      while (pos < text.length && text[pos] === '`') {
+        len++;
+        pos++;
+      }
+      if (len === runLen) return start;
+      // Otherwise, this run doesn't match — keep searching
+    } else {
+      pos++;
+    }
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------------------
 // stripInvalidImageKeys
 // ---------------------------------------------------------------------------
 

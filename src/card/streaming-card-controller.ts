@@ -36,7 +36,7 @@ import {
 } from './cardkit';
 import { FlushController } from './flush-controller';
 import { ImageResolver } from './image-resolver';
-import { optimizeMarkdownStyle } from './markdown-style';
+import { optimizeMarkdownStyle, stripLeakedThinkingContent, sanitizeCardKitMarkdown } from './markdown-style';
 import type {
   CardKitState,
   CardPhase,
@@ -900,6 +900,11 @@ export class StreamingCardController {
       // 流式中间帧使用同步 resolveImages（不等待异步上传）
       const resolvedText = this.imageResolver.resolveImages(displayText);
 
+      // Safety net: strip any leaked thinking tags, then sanitize for CardKit
+      const sanitizedText = sanitizeCardKitMarkdown(
+        stripLeakedThinkingContent(resolvedText),
+      );
+
       if (this.cardKit.cardKitCardId) {
         // CardKit streaming — typewriter effect
         const prevSeq = this.cardKit.cardKitSequence;
@@ -912,14 +917,14 @@ export class StreamingCardController {
           cfg: this.deps.cfg,
           cardId: this.cardKit.cardKitCardId,
           elementId: STREAMING_ELEMENT_ID,
-          content: optimizeMarkdownStyle(resolvedText),
+          content: optimizeMarkdownStyle(sanitizedText),
           sequence: this.cardKit.cardKitSequence,
           accountId: this.deps.accountId,
         });
       } else {
         log.debug('flushCardUpdate: IM patch fallback');
         const card = buildCardContent('streaming', {
-          text: this.reasoning.isReasoningPhase ? '' : resolvedText,
+          text: this.reasoning.isReasoningPhase ? '' : sanitizedText,
           reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
         });
         await updateCardFeishu({
