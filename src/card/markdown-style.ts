@@ -151,6 +151,10 @@ export function sanitizeCardKitMarkdown(text: string): string {
  * Process a segment that is NOT inside a fenced code block:
  * - Balance inline backticks
  * - Escape bare `<` outside inline code spans
+ *
+ * Inline code spans follow CommonMark rules: a run of N backticks opens
+ * a code span that is closed by the next run of exactly N backticks.
+ * E.g. `` `code` ``, ``` ``code with `backtick` inside`` ```.
  */
 function sanitizeInlineSegment(segment: string): string {
   // Count inline backticks to check balance
@@ -163,17 +167,33 @@ function sanitizeInlineSegment(segment: string): string {
   }
 
   // Escape bare angle brackets outside inline code spans.
-  // Walk through the text tracking code span boundaries.
+  // Walk through the text, properly handling multi-backtick code spans.
   const output: string[] = [];
-  let inCode = false;
   let pos = 0;
 
   while (pos < result.length) {
+    // Check for backtick run (start of inline code span)
     if (result[pos] === '`') {
-      inCode = !inCode;
-      output.push('`');
-      pos++;
-    } else if (!inCode && result[pos] === '<') {
+      // Count the opening backtick run length
+      let openLen = 0;
+      const runStart = pos;
+      while (pos < result.length && result[pos] === '`') {
+        openLen++;
+        pos++;
+      }
+      // Look for a matching closing run of exactly the same length
+      const closePattern = '`'.repeat(openLen);
+      const closeIdx = findClosingBacktickRun(result, pos, openLen);
+      if (closeIdx !== -1) {
+        // Found matching close — emit the entire code span as-is
+        output.push(result.slice(runStart, closeIdx + openLen));
+        pos = closeIdx + openLen;
+      } else {
+        // No matching close — emit the backticks as literal text
+        output.push(closePattern);
+        // Continue processing (pos already advanced past the backticks)
+      }
+    } else if (result[pos] === '<') {
       // Check if this looks like a known safe HTML tag (br, img)
       const rest = result.slice(pos);
       if (/^<\/?(?:br|img)\s*\/?>/.test(rest)) {
@@ -194,6 +214,30 @@ function sanitizeInlineSegment(segment: string): string {
   }
 
   return output.join('');
+}
+
+/**
+ * Find the position of a closing backtick run of exactly `runLen` backticks,
+ * starting the search from `startPos`. Returns the index of the first
+ * backtick of the closing run, or -1 if not found.
+ */
+function findClosingBacktickRun(text: string, startPos: number, runLen: number): number {
+  let pos = startPos;
+  while (pos < text.length) {
+    if (text[pos] === '`') {
+      let len = 0;
+      const start = pos;
+      while (pos < text.length && text[pos] === '`') {
+        len++;
+        pos++;
+      }
+      if (len === runLen) return start;
+      // Otherwise, this run doesn't match — keep searching
+    } else {
+      pos++;
+    }
+  }
+  return -1;
 }
 
 // ---------------------------------------------------------------------------
