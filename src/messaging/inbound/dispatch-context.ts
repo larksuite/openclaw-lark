@@ -16,6 +16,7 @@ import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
+import type { AuthResumeTarget } from '../../core/auth-resume-target';
 
 const log = larkLogger('inbound/dispatch-context');
 
@@ -40,7 +41,34 @@ export interface DispatchContext {
   envelopeOptions: ReturnType<typeof LarkClient.runtime.channel.reply.resolveEnvelopeFormatOptions>;
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
   threadSessionKey?: string;
+  routeOverrideApplied?: boolean;
   commandAuthorized?: boolean;
+}
+
+function resolveSessionRouteOverride(params: {
+  ctx: MessageContext;
+  account: LarkAccount;
+  route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
+  override?: AuthResumeTarget;
+}): { route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>; applied: boolean } {
+  const { ctx, account, route, override } = params;
+  if (!override) return { route, applied: false };
+  if (!override.agentId || !override.sessionKey) return { route, applied: false };
+  if (override.accountId !== account.accountId) return { route, applied: false };
+  if (override.chatId !== ctx.chatId) return { route, applied: false };
+  if (override.chatType !== ctx.chatType) return { route, applied: false };
+  const overrideThreadId = override.threadId ?? undefined;
+  const messageThreadId = ctx.threadId ?? undefined;
+  if (overrideThreadId !== messageThreadId) return { route, applied: false };
+
+  return {
+    route: {
+      ...route,
+      agentId: override.agentId,
+      sessionKey: override.sessionKey,
+    },
+    applied: true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +102,7 @@ export function buildDispatchContext(params: {
   accountScopedCfg: ClawdbotConfig;
   runtime?: RuntimeEnv;
   commandAuthorized?: boolean;
+  sessionRouteOverride?: AuthResumeTarget;
 }): DispatchContext {
   const { ctx, account, accountScopedCfg } = params;
 
@@ -92,7 +121,7 @@ export function buildDispatchContext(params: {
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(accountScopedCfg);
 
   // ---- Route resolution ----
-  const route = core.channel.routing.resolveAgentRoute({
+  const resolvedRoute = core.channel.routing.resolveAgentRoute({
     cfg: accountScopedCfg,
     channel: 'feishu',
     accountId: account.accountId,
@@ -100,6 +129,12 @@ export function buildDispatchContext(params: {
       kind: isGroup ? 'group' : 'direct',
       id: isGroup ? ctx.chatId : ctx.senderId,
     },
+  });
+  const { route, applied: routeOverrideApplied } = resolveSessionRouteOverride({
+    ctx,
+    account,
+    route: resolvedRoute,
+    override: params.sessionRouteOverride,
   });
 
   // ---- System event ----
@@ -138,6 +173,7 @@ export function buildDispatchContext(params: {
     envelopeOptions,
     route,
     threadSessionKey: undefined,
+    routeOverrideApplied,
     commandAuthorized: params.commandAuthorized,
   };
 }

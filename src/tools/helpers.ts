@@ -8,14 +8,20 @@
  */
 
 import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { AnyAgentTool, OpenClawPluginToolContext, OpenClawPluginToolFactory } from 'openclaw/plugin-sdk/core';
 import type { Client as LarkSdkClient } from '@larksuiteoapi/node-sdk';
 import { getEnabledLarkAccounts, getLarkAccount } from '../core/accounts';
 import { LarkClient, getResolvedConfig } from '../core/lark-client';
+import type { AuthResumeTarget } from '../core/auth-resume-target';
+import { withAuthResumeTarget } from '../core/auth-resume-target';
+import { normalizeFeishuTarget, parseFeishuRouteTarget } from '../core/targets';
 import type { LarkAccount } from '../core/types';
-import { getTicket } from '../core/lark-ticket';
+import type { LarkTicket } from '../core/lark-ticket';
+import { getTicket, withTicket } from '../core/lark-ticket';
 import type { ToolClient } from '../core/tool-client';
 import { createToolClient } from '../core/tool-client';
 import { shouldRegisterTool } from '../core/tools-config';
+import { getMessageFeishu } from '../messaging/shared/message-lookup';
 
 // ---------------------------------------------------------------------------
 // 类型定义
@@ -275,27 +281,175 @@ export function checkToolRegistration(api: OpenClawPluginApi, toolName: string):
  * registerTool(api, { name: 'feishu_my_tool', ... });
  * ```
  */
+function isFeishuToolContext(ctx: OpenClawPluginToolContext): boolean {
+  const channel = ctx.deliveryContext?.channel ?? ctx.messageChannel;
+  return channel === 'feishu' || channel === 'lark';
+}
+
+function buildSyntheticTicket(params: {
+  ctx: OpenClawPluginToolContext;
+  toolCallId: string;
+}): LarkTicket | null {
+  if (!isFeishuToolContext(params.ctx)) {
+    return null;
+  }
+
+  const to = params.ctx.deliveryContext?.to;
+  if (!to) {
+    return null;
+  }
+
+  const route = parseFeishuRouteTarget(to);
+  const chatId = normalizeFeishuTarget(route.target) ?? route.target;
+  const chatType: LarkTicket['chatType'] | undefined = route.target.startsWith('chat:')
+    ? 'group'
+    : route.target.startsWith('user:') || route.target.startsWith('open_id:')
+      ? 'p2p'
+      : undefined;
+  const accountId = String(params.ctx.deliveryContext?.accountId ?? params.ctx.agentAccountId ?? 'default');
+  const threadId = params.ctx.deliveryContext?.threadId ?? route.threadId;
+  const messageId = route.replyToMessageId
+    ? route.replyToMessageId
+    : params.ctx.sessionId
+      ? `session:${params.ctx.sessionId}`
+      : `tool:${params.toolCallId}`;
+
+  return {
+    messageId,
+    chatId,
+    accountId,
+    startTime: Date.now(),
+    senderOpenId: params.ctx.requesterSenderId,
+    chatType,
+    ...(threadId != null ? { threadId: String(threadId) } : {}),
+  };
+}
+
+function buildAuthResumeTarget(ctx: OpenClawPluginToolContext): AuthResumeTarget | null {
+  if (!isFeishuToolContext(ctx)) {
+    return null;
+  }
+
+  const to = ctx.deliveryContext?.to;
+  if (!to || !ctx.agentId || !ctx.sessionKey) {
+    return null;
+  }
+
+  const route = parseFeishuRouteTarget(to);
+  const chatId = normalizeFeishuTarget(route.target) ?? route.target;
+  const chatType: AuthResumeTarget['chatType'] | undefined = route.target.startsWith('chat:')
+    ? 'group'
+    : route.target.startsWith('user:') || route.target.startsWith('open_id:')
+      ? 'p2p'
+      : undefined;
+  const accountId = String(ctx.deliveryContext?.accountId ?? ctx.agentAccountId ?? 'default');
+  const threadId = ctx.deliveryContext?.threadId ?? route.threadId;
+
+  if (!chatType) {
+    return null;
+  }
+
+  return {
+    agentId: ctx.agentId,
+    sessionKey: ctx.sessionKey,
+    accountId,
+    chatId,
+    chatType,
+    ...(threadId != null ? { threadId: String(threadId) } : {}),
+  };
+}
+
+function wrapToolExecuteWithTicket(params: {
+  tool: AnyAgentTool | AnyAgentTool[] | null | undefined;
+  ctx: OpenClawPluginToolContext;
+  cfg: ClawdbotConfig;
+}): AnyAgentTool | AnyAgentTool[] | null | undefined {
+  if (!params.tool) return params.tool;
+  if (Array.isArray(params.tool)) {
+    return params.tool.map((item) => wrapToolExecuteWithTicket({ tool: item, ctx: params.ctx, cfg: params.cfg }) as any);
+  }
+
+  const tool = params.tool as any;
+  if (typeof tool?.execute !== 'function') return params.tool;
+
+  const originalExecute = tool.execute.bind(tool);
+
+  return {
+    ...tool,
+    execute: async (toolCallId: string, args: unknown) => {
+      if (getTicket()) {
+        return await originalExecute(toolCallId, args);
+      }
+
+      const ticket = buildSyntheticTicket({ ctx: params.ctx, toolCallId });
+      if (!ticket) {
+        return await originalExecute(toolCallId, args);
+      }
+
+      let effectiveTicket = ticket;
+      const resumeTarget = buildAuthResumeTarget(params.ctx);
+
+      if (!effectiveTicket.senderOpenId && effectiveTicket.messageId.startsWith('om_')) {
+        try {
+          const resolvedCfg = getResolvedConfig(params.cfg);
+          const info = await getMessageFeishu({
+            cfg: resolvedCfg,
+            messageId: effectiveTicket.messageId,
+            accountId: effectiveTicket.accountId,
+          });
+          if (info?.senderId) {
+            const resolvedChatType: LarkTicket['chatType'] | undefined =
+              info.chatType === 'p2p' || info.chatType === 'group' ? info.chatType : undefined;
+            effectiveTicket = {
+              ...effectiveTicket,
+              senderOpenId: info.senderId,
+              ...(info.chatId ? { chatId: info.chatId } : {}),
+              ...(resolvedChatType ? { chatType: resolvedChatType } : {}),
+              ...(!effectiveTicket.threadId && info.threadId ? { threadId: info.threadId } : {}),
+            };
+          }
+        } catch {
+        }
+      }
+
+      const run = async () =>
+        await withTicket(effectiveTicket, async () => {
+          return await originalExecute(toolCallId, args);
+        });
+
+      return resumeTarget ? await withAuthResumeTarget(resumeTarget, run) : await run();
+    },
+  };
+}
+
 export function registerTool(
   api: OpenClawPluginApi,
   tool: Parameters<OpenClawPluginApi['registerTool']>[0],
   opts?: Parameters<OpenClawPluginApi['registerTool']>[1],
 ): boolean {
-  // 提取工具名称
   const toolName = typeof tool === 'function' ? tool.name : (tool as { name?: string }).name;
 
   if (!toolName) {
-    // 如果无法提取工具名，直接注册（不拦截）
     api.registerTool(tool, opts);
     return true;
   }
 
-  // 检查是否应该注册
   if (!checkToolRegistration(api, toolName)) {
     return false;
   }
 
-  // 通过检查，调用原始的 registerTool
-  api.registerTool(tool, opts);
+  const cfg = api.config;
+  const wrapped = (ctx: OpenClawPluginToolContext) => {
+    if (typeof tool === 'function') {
+      const resolved = (tool as OpenClawPluginToolFactory)(ctx);
+      return wrapToolExecuteWithTicket({ tool: resolved, ctx, cfg }) as any;
+    }
+    return wrapToolExecuteWithTicket({ tool: tool as any, ctx, cfg }) as any;
+  };
+  const effectiveOpts =
+    opts ?? (typeof tool === 'function' ? undefined : ({ name: toolName } as Parameters<OpenClawPluginApi['registerTool']>[1]));
+
+  api.registerTool(wrapped, effectiveOpts);
   return true;
 }
 
