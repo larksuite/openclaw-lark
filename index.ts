@@ -27,6 +27,8 @@ import {
 import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
 import { emitSecurityWarnings } from './src/core/security-check';
+import { finalizeCardAfterSubagents, trackSubagentEnded, trackSubagentSpawned } from './src/card/subagent-tracker';
+import { normalizeFeishuTarget } from './src/core/targets';
 
 const log = larkLogger('plugin');
 
@@ -137,6 +139,38 @@ const plugin = {
         log.error(`tool fail: ${event.toolName} ${event.error} (${event.durationMs ?? 0}ms)`);
       } else {
         log.info(`tool done: ${event.toolName} ok (${event.durationMs ?? 0}ms)`);
+      }
+    });
+
+    // ---- Subagent lifecycle hooks (card status tracking) ----
+
+    api.on('subagent_spawned', (event) => {
+      const requester = event.requester;
+      if (requester?.channel && requester.channel.toLowerCase() !== 'feishu') return;
+      const rawTo = requester?.to;
+      if (!rawTo) return;
+      const to = normalizeFeishuTarget(rawTo) ?? rawTo;
+      const threadId = requester?.threadId != null ? String(requester.threadId) : undefined;
+      trackSubagentSpawned({
+        runId: event.runId,
+        to,
+        accountId: requester?.accountId,
+        threadId,
+      });
+    });
+
+    api.on('subagent_ended', async (event) => {
+      if (!event.runId) return;
+      const result = trackSubagentEnded(event.runId);
+      if (result.allDone && result.conversationContext) {
+        const cfg = LarkClient.runtime.config.loadConfig();
+        await finalizeCardAfterSubagents({
+          cfg,
+          to: result.conversationContext.to,
+          accountId: result.conversationContext.accountId,
+          threadId: result.conversationContext.threadId,
+          expectedDispatchId: result.dispatchId,
+        });
       }
     });
 

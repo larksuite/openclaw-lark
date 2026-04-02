@@ -326,6 +326,22 @@ export class StreamingCardController {
     return this.cardKit.cardMessageId;
   }
 
+  get cardKitCardId(): string | null {
+    return this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
+  }
+
+  get cardKitSequence(): number {
+    return this.cardKit.cardKitSequence;
+  }
+
+  get completedText(): string {
+    return this.text.completedText || this.text.accumulatedText;
+  }
+
+  get startTime(): number {
+    return this.dispatchStartTime;
+  }
+
   get isTerminalPhase(): boolean {
     return TERMINAL_PHASES.has(this.phase);
   }

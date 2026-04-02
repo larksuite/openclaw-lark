@@ -87,11 +87,13 @@ async function dispatchNormalMessage(
     agentId: dc.route.agentId,
     sessionKey: dc.threadSessionKey ?? dc.route.sessionKey,
     chatId: dc.ctx.chatId,
+    feishuTo: dc.feishuTo,
     replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
     accountId: dc.account.accountId,
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.isThread,
+    threadId: dc.ctx.threadId ? String(dc.ctx.threadId) : undefined,
   });
 
   // Create an AbortController so the abort fast-path can cancel the

@@ -15,9 +15,12 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
 import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
-import { larkLogger } from '../../core/lark-logger';
+import { getLarkAccount } from '../../core/accounts';
 import { parseFeishuRouteTarget } from '../../core/targets';
+import { larkLogger } from '../../core/lark-logger';
+import { buildMarkdownCard } from './send';
 import { sendCardLark, sendMediaLark, sendTextLark } from './deliver';
+import { tryMergeToMainCard } from './subagent-delivery';
 
 const log = larkLogger('outbound/outbound');
 
@@ -27,57 +30,6 @@ const log = larkLogger('outbound/outbound');
 
 /**
  * Channel-specific payload for Feishu, carried in `ReplyPayload.channelData.feishu`.
- *
- * Callers (skills, tools, programmatic code) populate this structure to send
- * Feishu-native content that the standard text/media path cannot express.
- *
- * Both card v1 (Message Card) and v2 (CardKit) formats are supported.
- * The Feishu server distinguishes the version by the presence of `schema: "2.0"`.
- *
- * @example
- * ```ts
- * // --- v1 Message Card (default) ---
- * const v1Reply: ReplyPayload = {
- *   channelData: {
- *     feishu: {
- *       card: {
- *         config: { wide_screen_mode: true },
- *         header: {
- *           title: { tag: "plain_text", content: "Task Created" },
- *           template: "green",
- *         },
- *         elements: [
- *           { tag: "div", text: { tag: "lark_md", content: "**Title:** Fix login bug" } },
- *           { tag: "action", actions: [
- *             { tag: "button", text: { tag: "plain_text", content: "View" }, type: "primary", url: "https://..." },
- *           ]},
- *         ],
- *       },
- *     },
- *   },
- * };
- *
- * // --- v2 CardKit ---
- * const v2Reply: ReplyPayload = {
- *   channelData: {
- *     feishu: {
- *       card: {
- *         schema: "2.0",
- *         config: { wide_screen_mode: true },
- *         header: {
- *           title: { tag: "plain_text", content: "Task Created" },
- *           template: "green",
- *         },
- *         body: {
- *           elements: [
- *             { tag: "markdown", content: "**Title:** Fix login bug" },
- *           ],
- *         },
- *       },
- *     },
- *   },
- * };
- * ```
  */
 export interface FeishuChannelData {
   /**
@@ -85,20 +37,6 @@ export interface FeishuChannelData {
    *
    * The card is sent as-is via `msg_type: "interactive"`. The Feishu server
    * uses the presence of `schema: "2.0"` to determine the card version.
-   *
-   * **v1 (Message Card)** — default when no `schema` field is present.
-   * Top-level fields: `config`, `header`, `elements`.
-   * Element tags: `div`, `action`, `button`, `button_group`, `note`,
-   * `img`, `hr`, `column_set`, `markdown` (limited), `lark_md` (in div.text).
-   *
-   * **v2 (CardKit)** — activated by `schema: "2.0"`.
-   * Top-level fields: `schema`, `config`, `header`, `body.elements`.
-   * Element tags: `markdown`, `plain_text`, `hr`, `collapsible_panel`,
-   * `column_set`, `table`, `image`, `button`, `select_static`, `overflow`.
-   * Not supported in v2: `action`, `button_group`, `note`, `div` + `lark_md`.
-   *
-   * @see https://open.larkoffice.com/document/feishu-cards/card-json-v2-structure (v2)
-   * @see https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-components (v1)
    */
   card?: Record<string, unknown>;
 }
@@ -107,23 +45,15 @@ export interface FeishuChannelData {
 // Shared context resolution
 // ---------------------------------------------------------------------------
 
-/**
- * Common send context extracted from outbound adapter parameters.
- */
 interface FeishuSendContext {
   cfg: ClawdbotConfig;
   to: string;
   replyToMessageId?: string;
   replyInThread: boolean;
   accountId?: string;
+  threadId?: string;
 }
 
-/**
- * Map adapter-level parameters to internal send context.
- *
- * Mirrors the pattern used by Telegram (`resolveTelegramSendContext`) and
- * Slack (`sendSlackOutboundMessage`) to centralise parameter mapping.
- */
 function resolveFeishuSendContext(params: {
   cfg: ClawdbotConfig;
   to: string;
@@ -148,6 +78,7 @@ function resolveFeishuSendContext(params: {
     replyToMessageId,
     replyInThread,
     accountId: params.accountId ?? undefined,
+    threadId: explicitThreadId,
   };
 }
 
@@ -167,6 +98,33 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   sendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {
     log.info(`sendText: target=${to}, textLength=${text.length}`);
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+
+    // ---- SubAgent merge pre-check ----
+    // Only activates when mergeToMain is enabled AND an active streaming
+    // card exists for this conversation.  On merge failure with delivery='card',
+    // subagent-delivery handles the standalone card with footer internally.
+    const merged = await tryMergeToMainCard({
+      cfg,
+      to,
+      text,
+      accountId: ctx.accountId,
+      threadId: ctx.threadId,
+      replyToMessageId: ctx.replyToMessageId,
+      replyInThread: ctx.replyInThread,
+    });
+    if (merged) return merged;
+
+    // ---- Normal delivery based on account delivery mode ----
+    const account = getLarkAccount(cfg, accountId);
+    const delivery = account.config?.delivery ?? 'text';
+
+    if (delivery === 'card') {
+      const card = buildMarkdownCard(text);
+      const result = await sendCardLark({ ...ctx, to: ctx.to, card });
+      return { channel: 'feishu', ...result };
+    }
+
+    // Default: plain text message
     const result = await sendTextLark({ ...ctx, to: ctx.to, text });
     return { channel: 'feishu', ...result };
   },
@@ -175,12 +133,10 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     log.info(`sendMedia: target=${to}, ` + `hasText=${Boolean(text?.trim())}, mediaUrl=${mediaUrl ?? '(none)'}`);
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
-    // Feishu media messages do not support inline captions — send text first.
     if (text?.trim()) {
       await sendTextLark({ ...ctx, to: ctx.to, text });
     }
 
-    // No mediaUrl — text-only fallback.
     if (!mediaUrl) {
       log.info('sendMedia: no mediaUrl provided, falling back to text-only');
       const result = await sendTextLark({ ...ctx, to: ctx.to, text: text ?? '' });
@@ -199,10 +155,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   sendPayload: async ({ cfg, to, payload, mediaLocalRoots, accountId, replyToId, threadId }) => {
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
-    // --- channelData.feishu: card message support ---
     const feishuData = payload.channelData?.feishu as FeishuChannelData | undefined;
-
-    // --- Resolve text + media from payload ---
     const text = payload.text ?? '';
     const mediaUrls = payload.mediaUrls?.length ? payload.mediaUrls : payload.mediaUrl ? [payload.mediaUrl] : [];
 
@@ -212,9 +165,6 @@ export const feishuOutbound: ChannelOutboundAdapter = {
         `hasCard=${Boolean(feishuData?.card)}`,
     );
 
-    // --- channelData.feishu.card: card message path ---
-    // Feishu card messages are standalone (msg_type="interactive"), so
-    // text and media must be sent as separate messages around the card.
     if (feishuData?.card) {
       if (text.trim()) {
         await sendTextLark({ ...ctx, to: ctx.to, text });
@@ -238,15 +188,11 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       };
     }
 
-    // --- Standard text + media orchestration (no card) ---
-
-    // No media: text-only
     if (mediaUrls.length === 0) {
       const result = await sendTextLark({ ...ctx, to: ctx.to, text });
       return { channel: 'feishu', ...result };
     }
 
-    // Has media: send leading text, then loop media URLs
     if (text.trim()) {
       await sendTextLark({ ...ctx, to: ctx.to, text });
     }

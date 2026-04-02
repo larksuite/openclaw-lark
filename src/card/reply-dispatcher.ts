@@ -18,11 +18,27 @@ import { createAccountScopedConfig, getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
+import { normalizeFeishuTarget } from '../core/targets';
 import { sendMediaLark } from '../messaging/outbound/deliver';
 import { sendMarkdownCardFeishu, sendMessageFeishu } from '../messaging/outbound/send';
 import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } from '../messaging/outbound/typing';
 import { isCardTableLimitError } from './card-error';
+import {
+  buildConversationKey,
+  generateDispatchId,
+  getCompletedCard,
+  registerCompletedCard,
+  updateCompletedCard,
+} from './card-registry';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
+import { flushPendingCompletions } from './subagent-completion-handler';
+import {
+  doFinalize,
+  evictSubagentsForDispatch,
+  hasActiveSubagents,
+  setCurrentDispatchId,
+  setCurrentSessionKey,
+} from './subagent-tracker';
 import { expandAutoMode, resolveReplyMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
@@ -38,7 +54,18 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
-  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, agentId, sessionKey, chatId, replyToMessageId, accountId, replyInThread, threadId } = params;
+
+  // registryTo is the normalised target that matches subagent-tracker and
+  // outbound sendText().  In DMs this is `ou_xxx` (user open_id), in groups
+  // it is `oc_xxx` (chat_id).  Falls back to chatId when feishuTo is absent.
+  const registryTo = (params.feishuTo ? normalizeFeishuTarget(params.feishuTo) : null) ?? chatId;
+
+  // Unique ID for this dispatch round — scopes subagent tracking so that a
+  // second request in the same conversation doesn't conflict with old subagents.
+  const dispatchId = generateDispatchId();
+  setCurrentDispatchId(registryTo, accountId, threadId, dispatchId);
+  setCurrentSessionKey(registryTo, accountId, threadId, sessionKey);
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -176,6 +203,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
   // ---- dispatchFullyComplete flag (static mode) ----
   let dispatchFullyComplete = false;
+  // ---- earlyRegistered flag (streaming mode) ----
+  let earlyRegistered = false;
 
   // ---- Build dispatcher ----
   const { dispatcher, replyOptions, markDispatchIdle } = core.channel.reply.createReplyDispatcherWithTyping({
@@ -227,6 +256,26 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         if (controller.isTerminated) return;
 
         if (controller.cardMessageId) {
+          // Early-register so subagent completions arriving during streaming can buffer
+          if (!earlyRegistered && feishuCfg?.subagent?.mergeToMain !== false) {
+            earlyRegistered = true;
+            const { evicted, oldDispatchId } = registerCompletedCard({
+              context: { to: registryTo, accountId, threadId },
+              messageId: controller.cardMessageId,
+              cardKitCardId: controller.cardKitCardId,
+              cardKitSequence: controller.cardKitSequence,
+              completedText: '',
+              phase: 'streaming',
+              streamingOpen: true,
+              startedAt: controller.startTime,
+              footer: resolvedFooter,
+              sessionKey,
+              dispatchId,
+            });
+            if (evicted && oldDispatchId) {
+              evictSubagentsForDispatch(registryTo, accountId, threadId, oldDispatchId);
+            }
+          }
           await controller.onDeliver(payload);
           return;
         }
@@ -376,7 +425,75 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       }
 
       if (controller) {
-        await controller.onIdle();
+        const mergeEnabled = feishuCfg?.subagent?.mergeToMain !== false;
+        const registryKey = buildConversationKey({ to: registryTo, accountId, threadId });
+        const cardEntry = mergeEnabled ? getCompletedCard(registryKey) : null;
+        const subagentsActive = mergeEnabled && hasActiveSubagents(registryTo, accountId, threadId);
+        // allSubagentsDone is set by finalizeCardAfterSubagents when all
+        // subagent_ended events arrived before this onIdle call.
+        const earlyFinish = mergeEnabled && cardEntry?.allSubagentsDone === true;
+
+        if ((subagentsActive || earlyFinish) && controller.cardMessageId) {
+          log.info('deferring card finalization (subagents active or early-finish)', {
+            subagentsActive,
+            earlyFinish,
+          });
+
+          // Transition from 'streaming' to 'waiting_subagents'
+          if (cardEntry) {
+            updateCompletedCard(registryKey, {
+              completedText: controller.completedText,
+              cardKitSequence: controller.cardKitSequence,
+              phase: 'waiting_subagents',
+            });
+          } else {
+            registerCompletedCard({
+              context: { to: registryTo, accountId, threadId },
+              messageId: controller.cardMessageId,
+              cardKitCardId: controller.cardKitCardId,
+              cardKitSequence: controller.cardKitSequence,
+              completedText: controller.completedText,
+              phase: 'waiting_subagents',
+              streamingOpen: true,
+              startedAt: controller.startTime,
+              footer: resolvedFooter,
+              sessionKey,
+              dispatchId,
+            });
+          }
+
+          // Flush any completions that arrived while main card was streaming.
+          const { failed } = await flushPendingCompletions({ cfg, chatId: registryTo, accountId, threadId });
+
+          // Send failed flush items as standalone messages so they aren't lost.
+          // Respect the thread context so messages land in the correct thread.
+          for (const item of failed) {
+            log.warn('onIdle: flush item failed, sending standalone', { text: item.text.slice(0, 80) });
+            try {
+              await sendMessageFeishu({
+                cfg,
+                to: chatId,
+                text: item.text,
+                accountId,
+                replyToMessageId,
+                replyInThread,
+              });
+            } catch (standaloneErr) {
+              log.error('onIdle: standalone fallback also failed', { error: String(standaloneErr) });
+            }
+          }
+
+          // If all subagents already done (early-finish), finalize now.
+          if (earlyFinish) {
+            const refreshed = getCompletedCard(registryKey);
+            if (refreshed) {
+              await doFinalize(cfg, registryKey, refreshed, accountId);
+            }
+          }
+        } else {
+          // No active subagents — finalize normally.
+          await controller.onIdle();
+        }
       }
 
       typingCallbacks.onIdle?.();
