@@ -92,3 +92,47 @@ test('sanitizeCardKitMarkdown: does NOT escape < inside fenced code block', () =
 test('sanitizeCardKitMarkdown: handles empty input', () => {
   assert.equal(sanitizeCardKitMarkdown(''), '');
 });
+
+test('sanitizeCardKitMarkdown: does NOT escape < inside double-backtick inline code', () => {
+  const input = 'Use ``x < 10`` in condition';
+  const result = sanitizeCardKitMarkdown(input);
+  assert.ok(result.includes('``x < 10``'), `Expected < preserved in double-backtick code, got: ${result}`);
+});
+
+test('sanitizeCardKitMarkdown: does NOT escape < inside fenced code block with language tag', () => {
+  const input = '```typescript\nconst x: Array<number> = [1];\n```';
+  const result = sanitizeCardKitMarkdown(input);
+  assert.ok(!result.includes('&lt;'), `Expected no &lt; in fenced code block, got: ${result}`);
+});
+
+test('sanitizeCardKitMarkdown: escapes < in long lines (no char limit)', () => {
+  const longComponent = '<' + 'A'.repeat(200) + '>';
+  const input = `Use ${longComponent} in your app`;
+  const result = sanitizeCardKitMarkdown(input);
+  assert.ok(result.includes('&lt;'), `Expected < to be escaped even in long lines, got: ${result}`);
+});
+
+test('sanitizeCardKitMarkdown: handles mixed fenced and inline code with angle brackets', () => {
+  const input = 'Use `<div>` before\n```html\n<span>hi</span>\n```\nand <p> after';
+  const result = sanitizeCardKitMarkdown(input);
+  // < in inline code preserved
+  assert.ok(result.includes('`<div>`'), `Expected inline code preserved, got: ${result}`);
+  // < in fenced code preserved
+  assert.ok(result.includes('<span>'), `Expected fenced code preserved, got: ${result}`);
+  // < outside code escaped
+  assert.ok(result.includes('&lt;p>'), `Expected bare < escaped, got: ${result}`);
+});
+
+test('sanitizeCardKitMarkdown: unclosed fenced code block with < inside gets protected', () => {
+  const input = 'text\n```js\nif (x < 10) {';
+  const result = sanitizeCardKitMarkdown(input);
+  assert.ok(!result.includes('&lt;'), `Expected < inside code block not escaped, got: ${result}`);
+});
+
+test('sanitizeCardKitMarkdown: multiple fenced code blocks preserve angle brackets', () => {
+  const input = '```\nfoo < bar\n```\noutside <tag>\n```\nbaz < qux\n```';
+  const result = sanitizeCardKitMarkdown(input);
+  assert.ok(result.includes('foo < bar'), `Expected < preserved in first code block`);
+  assert.ok(result.includes('baz < qux'), `Expected < preserved in second code block`);
+  assert.ok(result.includes('&lt;tag>'), `Expected bare < escaped outside code blocks`);
+});
