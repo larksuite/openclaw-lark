@@ -15,7 +15,6 @@ import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
-import { isThreadCapableGroup } from '../../core/chat-info-cache';
 
 const log = larkLogger('inbound/dispatch-context');
 
@@ -147,36 +146,26 @@ export function buildDispatchContext(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve thread session key for thread-capable groups.
+ * Resolve a thread-scoped session key for any inbound Feishu message that
+ * already carries a concrete thread ID.
  *
- * Returns a thread-scoped session key when ALL conditions are met:
- *   1. `threadSession` config is enabled on the account
- *   2. The group is a topic group (chat_mode=topic) or uses thread
- *      message mode (group_message_type=thread)
+ * Some Feishu groups surface reply threads in message events even when
+ * `im.chat.get` still reports `chat_mode=group` and
+ * `group_message_type=chat`. In that case, gating thread isolation on
+ * chat metadata causes distinct topics to collapse into the shared group
+ * session, which can leak prior topic context into a fresh request.
  *
- * The group info is fetched via `im.chat.get` with a 1-hour LRU cache
- * to minimise OAPI calls.
+ * Once the inbound event already provides `threadId`, we should trust the
+ * event payload and isolate the session by that thread ID directly.
  */
 export async function resolveThreadSessionKey(params: {
-  accountScopedCfg: ClawdbotConfig;
   account: LarkAccount;
-  chatId: string;
   threadId: string;
   baseSessionKey: string;
 }): Promise<string | undefined> {
-  const { accountScopedCfg, account, chatId, threadId, baseSessionKey } = params;
+  const { account, threadId, baseSessionKey } = params;
 
   if (account.config?.threadSession !== true) return undefined;
-
-  const threadCapable = await isThreadCapableGroup({
-    cfg: accountScopedCfg,
-    chatId,
-    accountId: account.accountId,
-  });
-  if (!threadCapable) {
-    log.info(`thread session skipped: group ${chatId} is not topic/thread mode`);
-    return undefined;
-  }
 
   // 使用 SDK 标准函数，保证分隔符格式与 resolveThreadParentSessionKey 兼容
   const { sessionKey } = resolveThreadSessionKeys({

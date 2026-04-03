@@ -216,9 +216,7 @@ export async function dispatchToAgent(params: {
   // 1b. Resolve thread session isolation (async: may query group info API)
   if (dc.isThread && dc.ctx.threadId) {
     dc.threadSessionKey = await resolveThreadSessionKey({
-      accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,
-      chatId: dc.ctx.chatId,
       threadId: dc.ctx.threadId,
       baseSessionKey: dc.route.sessionKey,
     });
