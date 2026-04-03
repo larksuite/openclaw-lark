@@ -18,10 +18,10 @@ import {
 } from './calendar/index';
 import {
   registerFeishuTaskCommentTool,
+  registerFeishuTaskSectionTool,
   registerFeishuTaskSubtaskTool,
   registerFeishuTaskTaskTool,
   registerFeishuTaskTasklistTool,
-  registerFeishuTaskSectionTool,
 } from './task/index';
 import {
   registerFeishuBitableAppTableFieldTool,
