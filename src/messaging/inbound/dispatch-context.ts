@@ -15,7 +15,6 @@ import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
-import { isThreadCapableGroup } from '../../core/chat-info-cache';
 
 const log = larkLogger('inbound/dispatch-context');
 
@@ -147,15 +146,11 @@ export function buildDispatchContext(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve thread session key for thread-capable groups.
+ * Resolve thread session key for an inbound thread message.
  *
- * Returns a thread-scoped session key when ALL conditions are met:
- *   1. `threadSession` config is enabled on the account
- *   2. The group is a topic group (chat_mode=topic) or uses thread
- *      message mode (group_message_type=thread)
- *
- * The group info is fetched via `im.chat.get` with a 1-hour LRU cache
- * to minimise OAPI calls.
+ * When `threadSession` is enabled and the inbound message already carries a
+ * concrete `threadId`, we trust that message-level signal and derive a
+ * thread-scoped session key directly.
  */
 export async function resolveThreadSessionKey(params: {
   accountScopedCfg: ClawdbotConfig;
@@ -164,19 +159,9 @@ export async function resolveThreadSessionKey(params: {
   threadId: string;
   baseSessionKey: string;
 }): Promise<string | undefined> {
-  const { accountScopedCfg, account, chatId, threadId, baseSessionKey } = params;
+  const { account, threadId, baseSessionKey } = params;
 
   if (account.config?.threadSession !== true) return undefined;
-
-  const threadCapable = await isThreadCapableGroup({
-    cfg: accountScopedCfg,
-    chatId,
-    accountId: account.accountId,
-  });
-  if (!threadCapable) {
-    log.info(`thread session skipped: group ${chatId} is not topic/thread mode`);
-    return undefined;
-  }
 
   // 使用 SDK 标准函数，保证分隔符格式与 resolveThreadParentSessionKey 兼容
   const { sessionKey } = resolveThreadSessionKeys({
