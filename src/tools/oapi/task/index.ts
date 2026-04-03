@@ -7,3 +7,4 @@ export { registerFeishuTaskTaskTool } from './task';
 export { registerFeishuTaskTasklistTool } from './tasklist';
 export { registerFeishuTaskCommentTool } from './comment';
 export { registerFeishuTaskSubtaskTool } from './subtask';
+export { registerFeishuTaskSectionTool } from './section';

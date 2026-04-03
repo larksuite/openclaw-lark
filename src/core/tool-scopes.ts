@@ -125,6 +125,11 @@ export type ToolActionKey =
   | 'feishu_task_comment.create'
   | 'feishu_task_comment.get'
   | 'feishu_task_comment.list'
+  | 'feishu_task_section.create'
+  | 'feishu_task_section.get'
+  | 'feishu_task_section.list'
+  | 'feishu_task_section.patch'
+  | 'feishu_task_section.tasks'
   | 'feishu_task_subtask.create'
   | 'feishu_task_subtask.list'
   | 'feishu_task_task.create'
@@ -235,6 +240,11 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_task_comment.create': ['task:comment:write'],
   'feishu_task_comment.list': ['task:comment:read', 'task:comment:write'],
   'feishu_task_comment.get': ['task:comment:read', 'task:comment:write'],
+  'feishu_task_section.create': ['task:task'],
+  'feishu_task_section.get': ['task:task'],
+  'feishu_task_section.list': ['task:task'],
+  'feishu_task_section.patch': ['task:task'],
+  'feishu_task_section.tasks': ['task:task'],
   'feishu_task_subtask.create': ['task:task:write'],
   'feishu_task_subtask.list': ['task:task:read', 'task:task:write'],
   'feishu_chat.search': ['im:chat:read'],
