@@ -141,13 +141,13 @@ export class StreamingCardController {
       const runtime = LarkClient.runtime as {
         agent?: {
           session?: {
-            resolveStorePath?: (storePath?: string) => string;
+            resolveStorePath?: (storePath?: string, opts?: { agentId?: string }) => string;
             loadSessionStore?: (storePath: string) => Record<string, Record<string, unknown>>;
           };
         };
         channel?: {
           session?: {
-            resolveStorePath?: (storePath?: string) => string;
+            resolveStorePath?: (storePath?: string, opts?: { agentId?: string }) => string;
           };
         };
       } | null;
@@ -156,6 +156,9 @@ export class StreamingCardController {
       const cfgWithSession = this.deps.cfg as { sessions?: { store?: string }; session?: { store?: string } };
       const sessionStorePath = cfgWithSession.sessions?.store ?? cfgWithSession.session?.store;
       const key = this.deps.sessionKey.trim().toLowerCase();
+      // Extract agentId from session key (format: "agent:<agentId>:feishu:...")
+      // to route the store lookup to the correct per-agent session file.
+      const agentId = key.match(/^agent:([^:]+):/)?.[1];
 
       // WORKAROUND: SDK session key round-trip bug.
       // The SDK's toAgentRequestSessionKey() strips the agent scope from keys
@@ -173,7 +176,7 @@ export class StreamingCardController {
 
       const sessionApi = runtime.agent?.session;
       if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
-        const storePath = sessionApi.resolveStorePath(sessionStorePath);
+        const storePath = sessionApi.resolveStorePath(sessionStorePath, { agentId });
         const store = sessionApi.loadSessionStore(storePath);
 
         let entry: Record<string, unknown> | undefined;
@@ -221,7 +224,7 @@ export class StreamingCardController {
         return undefined;
       }
 
-      const storePath = channelSession.resolveStorePath(sessionStorePath);
+      const storePath = channelSession.resolveStorePath(sessionStorePath, { agentId });
       const raw = await readFile(storePath, 'utf8');
       const parsed: unknown = JSON.parse(raw);
       const store =
