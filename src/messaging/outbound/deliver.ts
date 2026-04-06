@@ -13,6 +13,7 @@ import type { FeishuSendResult } from '../types';
 import { createAccountScopedConfig } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
+import { parseFeishuCommentTarget } from '../../core/comment-target';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
@@ -434,5 +435,127 @@ export async function sendMediaLark(params: SendMediaLarkParams): Promise<Feishu
         `Media upload failed for "${mediaUrl}" (${errMsg}). ` +
         `A text link was sent instead. The user may need to open the link manually.`,
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// sendCommentReplyLark
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for sending a reply to a Drive comment thread.
+ */
+export interface SendCommentReplyLarkParams {
+  /** Plugin configuration. */
+  cfg: ClawdbotConfig;
+  /**
+   * Target in comment format: `comment:<fileType>:<fileToken>:<commentId>`.
+   * Parsed via `parseFeishuCommentTarget`.
+   */
+  to: string;
+  /** Reply text content. */
+  text: string;
+  /** Optional account identifier for multi-account setups. */
+  accountId?: string;
+}
+
+/**
+ * Send a text message to a Feishu Drive comment surface.
+ *
+ * Parses the comment target from `to`, then chooses one of two delivery
+ * strategies:
+ * - `reply`        → reply in the existing comment thread
+ * - `create_whole` → create a new whole-document comment
+ *
+ * Returns a synthetic FeishuSendResult (no IM messageId).
+ *
+ * @throws {Error} When the target is not a valid comment target or API fails.
+ */
+export async function sendCommentReplyLark(params: SendCommentReplyLarkParams): Promise<FeishuSendResult> {
+  const { cfg, to, text, accountId } = params;
+
+  const target = parseFeishuCommentTarget(to);
+  if (!target) {
+    throw new Error(`Not a valid comment target: "${to}"`);
+  }
+
+  log.info(
+    `sendCommentReplyLark: mode=${target.deliveryMode}, comment=${target.commentId}, textLength=${text.length}`,
+  );
+
+  const client = LarkClient.fromCfg(cfg, accountId);
+  const elements = [{ type: 'text_run', text_run: { text } }];
+
+  if (target.deliveryMode === 'create_whole') {
+    try {
+      await (client.sdk as any).drive.v1.fileComment.create({
+        path: { file_token: target.fileToken },
+        params: {
+          file_type: target.fileType,
+          user_id_type: 'open_id',
+        },
+        data: {
+          reply_list: {
+            replies: [
+              {
+                content: {
+                  elements,
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      log.info(`whole comment created successfully`);
+      return {
+        messageId: `comment-create:${target.commentId}`,
+        chatId: to,
+      };
+    } catch (err) {
+      const detail = formatLarkError(err);
+      log.error(`sendCommentReplyLark failed to create whole comment: ${detail}`);
+      throw new Error(`Comment create failed: ${detail}`, { cause: err });
+    }
+  }
+
+  // sdk.request defaults to tenant_access_token (bot identity).
+  // Dual payload format: try content.elements first, fallback to reply_elements.
+  const url = `/open-apis/drive/v1/files/${target.fileToken}/comments/${target.commentId}/replies`;
+  const queryParams = { file_type: target.fileType, user_id_type: 'open_id' };
+
+  try {
+    await (client.sdk as any).request({
+      method: 'POST',
+      url,
+      params: queryParams,
+      data: { content: { elements } },
+    });
+
+    log.info(`comment reply sent successfully`);
+    return {
+      messageId: `comment-reply:${target.commentId}`,
+      chatId: to,
+    };
+  } catch (firstErr) {
+    // Fallback: some API versions use reply_elements format
+    try {
+      await (client.sdk as any).request({
+        method: 'POST',
+        url,
+        params: queryParams,
+        data: { reply_elements: elements },
+      });
+
+      log.info(`comment reply sent successfully (reply_elements fallback)`);
+      return {
+        messageId: `comment-reply:${target.commentId}`,
+        chatId: to,
+      };
+    } catch (secondErr) {
+      const detail = formatLarkError(firstErr);
+      log.error(`sendCommentReplyLark failed: ${detail}`);
+      throw new Error(`Comment reply failed: ${detail}`, { cause: firstErr });
+    }
   }
 }

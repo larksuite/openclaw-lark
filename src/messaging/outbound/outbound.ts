@@ -17,7 +17,8 @@ import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { parseFeishuRouteTarget } from '../../core/targets';
-import { sendCardLark, sendMediaLark, sendTextLark } from './deliver';
+import { isCommentTarget } from '../../core/comment-target';
+import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from './deliver';
 
 const log = larkLogger('outbound/outbound');
 
@@ -166,6 +167,14 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
   sendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {
     log.info(`sendText: target=${to}, textLength=${text.length}`);
+
+    // Comment thread routing — route replies through Drive comment API
+    if (isCommentTarget(to)) {
+      log.info(`sendText: detected comment target, routing through Drive comment API`);
+      const result = await sendCommentReplyLark({ cfg, to, text, accountId: accountId ?? undefined });
+      return { channel: 'feishu', ...result };
+    }
+
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
     const result = await sendTextLark({ ...ctx, to: ctx.to, text });
     return { channel: 'feishu', ...result };
@@ -173,6 +182,18 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
   sendMedia: async ({ cfg, to, text, mediaUrl, mediaLocalRoots, accountId, replyToId, threadId }) => {
     log.info(`sendMedia: target=${to}, ` + `hasText=${Boolean(text?.trim())}, mediaUrl=${mediaUrl ?? '(none)'}`);
+
+    // Comment thread routing — send text (with media URL appended) via Drive comment API
+    if (isCommentTarget(to)) {
+      log.info(`sendMedia: detected comment target, routing through Drive comment API`);
+      const parts: string[] = [];
+      if (text?.trim()) parts.push(text.trim());
+      if (mediaUrl) parts.push(`📎 ${mediaUrl}`);
+      const combinedText = parts.join('\n') || '(media)';
+      const result = await sendCommentReplyLark({ cfg, to, text: combinedText, accountId: accountId ?? undefined });
+      return { channel: 'feishu', ...result };
+    }
+
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // Feishu media messages do not support inline captions — send text first.

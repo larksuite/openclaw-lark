@@ -61,6 +61,71 @@ export interface FeishuReactionCreatedEvent {
   action_time?: string;
 }
 
+/**
+ * Raw event shape for `drive.notice.comment_add_v1`.
+ *
+ * Fired when a user adds a comment or reply on a Drive document.
+ * The SDK flattens the v2 envelope header into the handler `data` object,
+ * so `app_id` is available directly on the event.
+ *
+ * **Real event structure** (SDK-flattened):
+ * ```json
+ * {
+ *   "app_id": "cli_xxx",
+ *   "file_token": "xxx",
+ *   "file_type": "docx",
+ *   "comment_id": "xxx",
+ *   "reply_id": "xxx",          // optional, present for replies
+ *   "notice_meta": {
+ *     "from_user_id": { "open_id": "ou_xxx", "user_id": "xxx", "union_id": "xxx" },
+ *     "timestamp": "1712000000000",
+ *     "is_mentioned": true
+ *   }
+ * }
+ * ```
+ *
+ * Some fields may also appear at top-level depending on SDK version,
+ * so the parser checks both locations.
+ */
+export interface FeishuDriveCommentEvent {
+  /** App ID from the event envelope header. */
+  app_id?: string;
+  /** File token of the document where the comment was added. */
+  file_token?: string;
+  /** File type: doc, docx, sheet, file, slides, etc. */
+  file_type?: string;
+  /** Comment ID of the root comment. */
+  comment_id?: string;
+  /** Reply ID (present when the event is a reply, not a root comment). */
+  reply_id?: string;
+  /**
+   * Metadata about the notice — primary location for user info and timestamp.
+   * Present in the real event structure; not always at top level.
+   */
+  notice_meta?: {
+    from_user_id?: {
+      open_id?: string;
+      user_id?: string;
+      union_id?: string;
+    };
+    file_token?: string;
+    file_type?: string;
+    timestamp?: string;
+    is_mentioned?: boolean;
+  };
+  // --- Fallback top-level fields (legacy / some SDK versions) ---
+  /** Whether the bot was @-mentioned in this comment. */
+  is_mention?: boolean;
+  /** Fallback: user ID at top level (some SDK flattening styles). */
+  user_id?: {
+    open_id?: string;
+    user_id?: string;
+    union_id?: string;
+  };
+  /** Fallback: event timestamp at top level. */
+  action_time?: string;
+}
+
 export interface FeishuBotAddedEvent {
   chat_id: string;
   operator_id: {

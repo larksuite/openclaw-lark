@@ -32,8 +32,10 @@ import { resolveToolUseDisplayConfig } from '../../card/tool-use-config';
 import { clearToolUseTraceRun, startToolUseTraceRun } from '../../card/tool-use-trace-store';
 import { isLikelyAbortText } from '../../channel/abort-detect';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
+import { isCommentTarget } from '../../core/comment-target';
 import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { LarkClient } from '../../core/lark-client';
+import { sendCommentReplyLark } from '../outbound/deliver';
 import { runFeishuDoctorI18n } from '../../commands/doctor';
 import { runFeishuAuthI18n } from '../../commands/auth';
 import { getFeishuHelpI18n, runFeishuStartI18n } from '../../commands/index';
@@ -64,6 +66,58 @@ const log = larkLogger('inbound/dispatch');
  * system-command path — command handlers don't consume history context,
  * so the entries should be preserved for the next normal message.
  */
+/**
+ * Dispatch a comment-target message via the buffered block dispatcher.
+ *
+ * Comment targets cannot use the streaming card flow (IM APIs don't
+ * understand comment:... targets). Instead we use the SDK's buffered
+ * block dispatcher with a deliver callback that sends via the Drive
+ * comment reply API.
+ */
+async function dispatchCommentMessage(
+  dc: DispatchContext,
+  ctxPayload: ReturnType<typeof LarkClient.runtime.channel.reply.finalizeInboundContext>,
+  skillFilter?: string[],
+): Promise<void> {
+  const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
+  dc.log(`feishu[${dc.account.accountId}]: dispatching comment reply (session=${effectiveSessionKey})`);
+  log.info(`dispatching comment reply (session=${effectiveSessionKey})`);
+
+  let delivered = false;
+
+  await dc.core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+    ctx: ctxPayload,
+    cfg: dc.accountScopedCfg,
+    dispatcherOptions: {
+      deliver: async (payload) => {
+        const text = payload.text?.trim() ?? '';
+        if (!text || text === 'NO_REPLY') return;
+        await sendCommentReplyLark({
+          cfg: dc.accountScopedCfg,
+          to: dc.ctx.chatId,
+          text,
+          accountId: dc.account.accountId,
+        });
+        delivered = true;
+      },
+      onSkip: (_payload, info) => {
+        if (info.reason !== 'silent') {
+          dc.log(`feishu[${dc.account.accountId}]: comment reply skipped (reason=${info.reason})`);
+        }
+      },
+      onError: (err, info) => {
+        dc.error(`feishu[${dc.account.accountId}]: comment ${info.kind} reply failed: ${String(err)}`);
+      },
+    },
+    replyOptions: {
+      ...(skillFilter ? { skillFilter } : {}),
+    },
+  });
+
+  dc.log(`feishu[${dc.account.accountId}]: comment dispatch complete (delivered=${delivered})`);
+  log.info(`comment dispatch complete (delivered=${delivered}, elapsed=${ticketElapsed()}ms)`);
+}
+
 async function dispatchNormalMessage(
   dc: DispatchContext,
   ctxPayload: ReturnType<typeof LarkClient.runtime.channel.reply.finalizeInboundContext>,
@@ -74,6 +128,13 @@ async function dispatchNormalMessage(
   skillFilter?: string[],
   skipTyping?: boolean,
 ): Promise<void> {
+  // Comment targets bypass the streaming card / IM flow entirely —
+  // route through the Drive comment reply API.
+  if (isCommentTarget(dc.ctx.chatId)) {
+    await dispatchCommentMessage(dc, ctxPayload, skillFilter);
+    return;
+  }
+
   // Abort messages should never create streaming cards — dispatch via the
   // plain-text system-command path so the SDK's abort handler can reply
   // without touching CardKit.
@@ -229,7 +290,10 @@ export async function dispatchToAgent(params: {
 
   // 3. Permission-error notification (optional side-effect).
   //    Isolated so a failure here does not block the main message dispatch.
-  if (params.permissionError) {
+  //    Skipped for comment targets: the streaming card dispatcher inside
+  //    dispatchPermissionNotification sends via IM APIs which don't
+  //    understand comment:... targets.
+  if (params.permissionError && !isCommentTarget(dc.ctx.chatId)) {
     try {
       await dispatchPermissionNotification(dc, params.permissionError, params.replyToMessageId);
     } catch (err) {
@@ -306,11 +370,15 @@ export async function dispatchToAgent(params: {
   //     Must run BEFORE the SDK command check — the SDK does not recognise
   //     plugin-registered commands via isControlCommandMessage, so
   //     /feishu_* falls through to the AI agent otherwise.
+  //     Skipped for comment targets: comment text won't match /feishu_*
+  //     patterns in practice, and sendCardFeishu/sendMessageFeishu can't
+  //     deliver to comment:... targets.
   const contentTrimmed = (params.ctx.content ?? '').trim();
-  const isDoctorCommand = /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
-  const isAuthCommand = /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
-  const isStartCommand = /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
-  const isHelpCommand = /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
+  const isCommentFlow = isCommentTarget(dc.ctx.chatId);
+  const isDoctorCommand = !isCommentFlow && /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
+  const isAuthCommand = !isCommentFlow && /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
+  const isStartCommand = !isCommentFlow && /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
+  const isHelpCommand = !isCommentFlow && /^\/feishu(?:[_ ]help)?\s*$/i.test(contentTrimmed);
 
   const i18nCommandName = isDoctorCommand
     ? 'doctor'
@@ -361,7 +429,10 @@ export async function dispatchToAgent(params: {
   }
 
   // 8. Dispatch: system command vs. normal message
-  const isCommand = dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
+  //    Comment targets always go to normal dispatch — system command
+  //    delivery uses sendMessageFeishu which can't reach comment threads.
+  const isCommand = !isCommentFlow &&
+    dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
 
   // Resolve per-group skill filter (per-group > default "*")
   const skillFilter = dc.isGroup ? (params.groupConfig?.skills ?? params.defaultGroupConfig?.skills) : undefined;
