@@ -56,6 +56,7 @@ const FeishuToolsFlagSchema = z
     drive: z.boolean().optional(),
     perm: z.boolean().optional(),
     scopes: z.boolean().optional(),
+    raw_api: z.boolean().optional(),
   })
   .optional();
 

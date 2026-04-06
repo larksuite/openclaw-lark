@@ -40,6 +40,9 @@ import { registerFeishuSheetsTools } from './sheets/index';
 // import { registerFeishuOkrTools } from "./okr/index";
 import { registerFeishuChatTools } from './chat/index';
 import { registerFeishuImTools as registerFeishuImUserTools } from './im/index';
+import { registerFeishuRawApiTool } from './raw-api/index';
+import { getEnabledLarkAccounts } from '../../core/accounts';
+import { resolveAnyEnabledToolsConfig } from '../../core/tools-config';
 
 export function registerOapiTools(api: OpenClawPluginApi): void {
   // Common tools
@@ -84,8 +87,16 @@ export function registerOapiTools(api: OpenClawPluginApi): void {
   // Sheets tools
   registerFeishuSheetsTools(api);
 
+  // Raw API tool (generic API escape hatch — opt-in only)
+  const rawApiAccounts = getEnabledLarkAccounts(api.config);
+  if (rawApiAccounts.length > 0 && resolveAnyEnabledToolsConfig(rawApiAccounts).raw_api) {
+    if (registerFeishuRawApiTool(api)) {
+      api.logger.debug?.('Registered feishu_raw_api');
+    }
+  }
+
   // IM tools (bot identity)
   registerFeishuImBotTools(api);
 
-  api.logger.debug?.('Registered all OAPI tools (calendar, task, bitable, search, drive, wiki, sheets, im)');
+  api.logger.debug?.('Registered all OAPI tools (calendar, task, bitable, search, drive, wiki, sheets, raw-api, im)');
 }
