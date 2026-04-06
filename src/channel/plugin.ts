@@ -25,6 +25,7 @@ import { triggerOnboarding } from '../tools/onboarding-auth';
 import { larkLogger } from '../core/lark-logger';
 import { FEISHU_CONFIG_JSON_SCHEMA } from '../core/config-schema';
 import { applyAccountConfig, collectFeishuSecurityWarnings, deleteAccount, setAccountEnabled } from './config-adapter';
+import type { FeishuAccountRuntimeSnapshot, FeishuStatusPatch } from './types';
 import {
   listFeishuDirectoryGroups,
   listFeishuDirectoryGroupsLive,
@@ -36,6 +37,27 @@ const pluginLog = larkLogger('channel/plugin');
 
 /** 状态轮询的探针结果缓存时长（5 分钟）。 */
 const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const DEFAULT_FEISHU_RUNTIME = {
+  accountId: DEFAULT_ACCOUNT_ID,
+  running: false,
+  connected: false,
+  state: 'stopped',
+  lastStartAt: null,
+  lastStopAt: null,
+  lastError: null,
+  lastErrorAt: null,
+  lastErrorReason: null,
+  lastConnectStartAt: null,
+  lastReadyAt: null,
+  lastEventAt: null,
+  lastInboundAt: null,
+  lastOutboundAt: null,
+  lastRestartReason: null,
+  consecutiveFailures: 0,
+  attemptId: null,
+  port: null,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -274,41 +296,65 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
   // -------------------------------------------------------------------------
 
   status: {
-    defaultRuntime: {
-      accountId: DEFAULT_ACCOUNT_ID,
-      running: false,
-      lastStartAt: null,
-      lastStopAt: null,
-      lastError: null,
-      port: null,
+    defaultRuntime: DEFAULT_FEISHU_RUNTIME,
+    buildChannelSummary: ({ snapshot }) => {
+      const runtime = snapshot as FeishuAccountRuntimeSnapshot;
+      return {
+        configured: snapshot.configured ?? false,
+        running: snapshot.running ?? false,
+        connected: snapshot.connected ?? false,
+        state: runtime.state ?? 'stopped',
+        lastStartAt: snapshot.lastStartAt ?? null,
+        lastStopAt: snapshot.lastStopAt ?? null,
+        lastError: snapshot.lastError ?? null,
+        lastErrorAt: runtime.lastErrorAt ?? null,
+        lastErrorReason: runtime.lastErrorReason ?? null,
+        lastConnectStartAt: runtime.lastConnectStartAt ?? null,
+        lastReadyAt: runtime.lastReadyAt ?? null,
+        lastEventAt: snapshot.lastEventAt ?? null,
+        lastInboundAt: snapshot.lastInboundAt ?? null,
+        lastOutboundAt: snapshot.lastOutboundAt ?? null,
+        lastRestartReason: runtime.lastRestartReason ?? null,
+        consecutiveFailures: runtime.consecutiveFailures ?? 0,
+        attemptId: runtime.attemptId ?? null,
+        port: snapshot.port ?? null,
+        probe: snapshot.probe,
+        lastProbeAt: snapshot.lastProbeAt ?? null,
+      };
     },
-    buildChannelSummary: ({ snapshot }) => ({
-      configured: snapshot.configured ?? false,
-      running: snapshot.running ?? false,
-      lastStartAt: snapshot.lastStartAt ?? null,
-      lastStopAt: snapshot.lastStopAt ?? null,
-      lastError: snapshot.lastError ?? null,
-      port: snapshot.port ?? null,
-      probe: snapshot.probe,
-      lastProbeAt: snapshot.lastProbeAt ?? null,
-    }),
     probeAccount: async ({ account }) => {
       return await LarkClient.fromAccount(account).probe({ maxAgeMs: PROBE_CACHE_TTL_MS });
     },
-    buildAccountSnapshot: ({ account, runtime, probe }) => ({
-      accountId: account.accountId,
-      enabled: account.enabled,
-      configured: account.configured,
-      name: account.name,
-      appId: account.appId,
-      brand: account.brand,
-      running: runtime?.running ?? false,
-      lastStartAt: runtime?.lastStartAt ?? null,
-      lastStopAt: runtime?.lastStopAt ?? null,
-      lastError: runtime?.lastError ?? null,
-      port: runtime?.port ?? null,
-      probe,
-    }),
+    buildAccountSnapshot: ({ account, runtime, probe }) => {
+      const accountRuntime = runtime as FeishuAccountRuntimeSnapshot | undefined;
+      const snapshot = {
+        accountId: account.accountId,
+        enabled: account.enabled,
+        configured: account.configured,
+        name: account.name,
+        appId: account.appId,
+        brand: account.brand,
+        running: runtime?.running ?? false,
+        connected: runtime?.connected ?? false,
+        state: accountRuntime?.state ?? 'stopped',
+        lastStartAt: runtime?.lastStartAt ?? null,
+        lastStopAt: runtime?.lastStopAt ?? null,
+        lastError: runtime?.lastError ?? null,
+        lastErrorAt: accountRuntime?.lastErrorAt ?? null,
+        lastErrorReason: accountRuntime?.lastErrorReason ?? null,
+        lastConnectStartAt: accountRuntime?.lastConnectStartAt ?? null,
+        lastReadyAt: accountRuntime?.lastReadyAt ?? null,
+        lastEventAt: runtime?.lastEventAt ?? null,
+        lastInboundAt: runtime?.lastInboundAt ?? null,
+        lastOutboundAt: runtime?.lastOutboundAt ?? null,
+        lastRestartReason: accountRuntime?.lastRestartReason ?? null,
+        consecutiveFailures: accountRuntime?.consecutiveFailures ?? 0,
+        attemptId: accountRuntime?.attemptId ?? null,
+        port: runtime?.port ?? null,
+        probe,
+      };
+      return snapshot;
+    },
   },
 
   // -------------------------------------------------------------------------
@@ -320,12 +366,25 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
       const { monitorFeishuProvider } = await import('./monitor.js');
       const account = getLarkAccount(ctx.cfg, ctx.accountId);
       const port = account.config?.webhookPort ?? null;
-      ctx.setStatus({ accountId: ctx.accountId, port });
+      const setStatus = (patch: FeishuStatusPatch) => {
+        ctx.setStatus({
+          accountId: ctx.accountId,
+          ...(patch as Record<string, unknown>),
+        } as never);
+      };
+      setStatus({
+        port,
+        connected: false,
+        state: 'starting',
+        healthState: 'starting',
+        lastConnectStartAt: Date.now(),
+      });
       ctx.log?.info(`starting feishu[${ctx.accountId}] (mode: ${account.config?.connectionMode ?? 'websocket'})`);
       return monitorFeishuProvider({
         config: ctx.cfg,
         runtime: ctx.runtime,
         abortSignal: ctx.abortSignal,
+        setStatus,
         accountId: ctx.accountId,
       });
     },

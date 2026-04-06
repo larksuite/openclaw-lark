@@ -6,6 +6,7 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { ChannelAccountSnapshot } from 'openclaw/plugin-sdk/channel-runtime';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import type { LarkClient } from '../core/lark-client';
 import type { MessageDedup } from '../messaging/inbound/dedup';
@@ -17,11 +18,27 @@ export type { FeishuProbeResult } from '../core/types';
 // Monitor types
 // ---------------------------------------------------------------------------
 
+export type FeishuRuntimeState = 'starting' | 'connecting' | 'ready' | 'degraded' | 'restarting' | 'failed' | 'stopped';
+
+export interface FeishuAccountRuntimeSnapshot extends ChannelAccountSnapshot {
+  state?: FeishuRuntimeState;
+  lastErrorAt?: number | null;
+  lastErrorReason?: string | null;
+  lastConnectStartAt?: number | null;
+  lastReadyAt?: number | null;
+  lastRestartReason?: string | null;
+  consecutiveFailures?: number;
+  attemptId?: number | null;
+}
+
+export type FeishuStatusPatch = Omit<FeishuAccountRuntimeSnapshot, 'accountId'>;
+
 export interface MonitorFeishuOpts {
   config?: ClawdbotConfig;
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
   accountId?: string;
+  setStatus?: (patch: FeishuStatusPatch) => void;
 }
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets'
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
+import { recordFeishuOutbound } from '../../channel/status-registry';
 import { uploadAndSendMediaLark } from './media';
 
 const log = larkLogger('outbound/deliver');
@@ -90,8 +91,9 @@ async function sendImMessage(params: {
   msgType: 'post' | 'interactive';
   replyToMessageId?: string;
   replyInThread?: boolean;
+  accountId?: string;
 }): Promise<FeishuSendResult> {
-  const { client, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { client, to, content, msgType, replyToMessageId, replyInThread, accountId } = params;
 
   // --- Reply path ---
   if (replyToMessageId) {
@@ -105,6 +107,9 @@ async function sendImMessage(params: {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
     };
+    if (accountId) {
+      recordFeishuOutbound(accountId);
+    }
     log.debug(`reply sent: messageId=${result.messageId}`);
     return result;
   }
@@ -130,6 +135,9 @@ async function sendImMessage(params: {
     messageId: response?.data?.message_id ?? '',
     chatId: response?.data?.chat_id ?? '',
   };
+  if (accountId) {
+    recordFeishuOutbound(accountId);
+  }
   log.debug(`message created: messageId=${result.messageId}`);
   return result;
 }
@@ -250,11 +258,20 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   }
 
   log.info(`sendTextLark: target=${to}, textLength=${text.length}`);
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  const lark = LarkClient.fromCfg(cfg, accountId);
+  const client = lark.sdk;
   const processedText = prepareTextForLark(cfg, text, accountId);
   const content = buildPostContent(processedText);
 
-  return sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
+  return sendImMessage({
+    client,
+    to,
+    content,
+    msgType: 'post',
+    replyToMessageId,
+    replyInThread,
+    accountId: lark.accountId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -328,11 +345,20 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
   const version = card.schema === '2.0' ? 'v2' : 'v1';
   log.info(`sendCardLark: target=${to}, cardVersion=${version}`);
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
+  const lark = LarkClient.fromCfg(cfg, accountId);
+  const client = lark.sdk;
   const content = JSON.stringify(card);
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    return await sendImMessage({
+      client,
+      to,
+      content,
+      msgType: 'interactive',
+      replyToMessageId,
+      replyInThread,
+      accountId: lark.accountId,
+    });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);

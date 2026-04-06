@@ -116,6 +116,14 @@ const DedupSchema = z
   })
   .optional();
 
+const HealthMonitorSchema = z
+  .object({
+    startupTimeoutMs: z.number().optional(),
+    initialRestartBackoffMs: z.number().optional(),
+    maxRestartBackoffMs: z.number().optional(),
+  })
+  .optional();
+
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
 
 export const UATConfigSchema = z
@@ -191,6 +199,7 @@ export const FeishuAccountConfigSchema = z.object({
   configWrites: z.boolean().optional(),
   capabilities: CapabilitiesSchema,
   dedup: DedupSchema,
+  healthMonitor: HealthMonitorSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
   uat: UATConfigSchema,

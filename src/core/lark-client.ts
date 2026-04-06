@@ -17,7 +17,9 @@
 import * as Lark from '@larksuiteoapi/node-sdk';
 
 import type { ClawdbotConfig, PluginRuntime } from 'openclaw/plugin-sdk';
+import { attachWsLifecycle } from '../channel/ws-lifecycle';
 import type { MessageDedup } from '../messaging/inbound/dedup';
+import type { FeishuWsLifecycle } from '../channel/ws-lifecycle';
 import { clearUserNameCache } from '../messaging/inbound/user-name-cache-store';
 import type { FeishuProbeResult, LarkAccount, LarkBrand } from './types';
 import { getLarkAccount } from './accounts';
@@ -345,8 +347,9 @@ export class LarkClient {
     handlers: Record<string, (data: unknown) => Promise<void>>;
     abortSignal?: AbortSignal;
     autoProbe?: boolean;
+    lifecycle?: FeishuWsLifecycle;
   }): Promise<void> {
-    const { handlers, abortSignal, autoProbe = true } = opts;
+    const { handlers, abortSignal, autoProbe = true, lifecycle } = opts;
 
     if (autoProbe) await this.probe();
 
@@ -375,6 +378,7 @@ export class LarkClient {
       domain: resolveBrand(this.account.brand),
       loggerLevel: Lark.LoggerLevel.info,
     });
+    attachWsLifecycle(this._wsClient, lifecycle);
 
     // SDK 的 handleEventData 只处理 type="event"，card action 回调是 type="card" 会被丢弃。
     // 打 patch 将 "card" 类型消息改成 "event" 后交给原 handler，让 EventDispatcher 正常路由。
