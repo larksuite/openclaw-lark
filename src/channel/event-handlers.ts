@@ -107,30 +107,39 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
       chatId,
       threadId,
       task: async () => {
-        try {
-          await withTicket(
-            {
-              messageId: msgId,
-              chatId,
+        // Fire-and-forget: start the dispatch without awaiting completion.
+        // The per-chat queue still serializes *task starts*, but individual
+        // dispatches run concurrently.  This allows the SDK's steer/followup
+        // queue mechanism to receive the next inbound message while the
+        // current agent run is in progress — matching the pattern used by
+        // the Discord inbound-worker (`void runQueue.enqueue(...)`).
+        //
+        // Reply delivery is handled proactively by the dispatcher's deliver
+        // callback (streaming card updates, final card close), so the caller
+        // does not need to await the result.
+        const result = withTicket(
+          {
+            messageId: msgId,
+            chatId,
+            accountId,
+            startTime: Date.now(),
+            senderOpenId: event.sender?.sender_id?.open_id || '',
+            chatType: (event.message?.chat_type as 'p2p' | 'group') || undefined,
+            threadId,
+          },
+          () =>
+            handleFeishuMessage({
+              cfg: ctx.cfg,
+              event,
+              botOpenId: ctx.lark.botOpenId,
+              runtime: ctx.runtime,
+              chatHistories: ctx.chatHistories,
               accountId,
-              startTime: Date.now(),
-              senderOpenId: event.sender?.sender_id?.open_id || '',
-              chatType: (event.message?.chat_type as 'p2p' | 'group') || undefined,
-              threadId,
-            },
-            () =>
-              handleFeishuMessage({
-                cfg: ctx.cfg,
-                event,
-                botOpenId: ctx.lark.botOpenId,
-                runtime: ctx.runtime,
-                chatHistories: ctx.chatHistories,
-                accountId,
-              }),
-          );
-        } catch (err) {
+            }),
+        );
+        void Promise.resolve(result).catch((err: unknown) => {
           error(`feishu[${accountId}]: error handling message: ${String(err)}`);
-        }
+        });
       },
     });
     log(`feishu[${accountId}]: message ${msgId} in chat ${chatId}${threadId ? ` thread ${threadId}` : ''} — ${status}`);
