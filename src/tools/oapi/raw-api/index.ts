@@ -84,6 +84,11 @@ export function registerFeishuRawApiTool(api: OpenClawPluginApi): boolean {
       async execute(_toolCallId: string, params: unknown) {
         const p = params as FeishuRawApiParams;
         try {
+          // Defensive runtime check — schema pattern '^/open-apis/' guards most callers,
+          // but validate again here so invokeByPath never receives an arbitrary path.
+          if (!p.path.startsWith('/open-apis/')) {
+            return json({ error: `Invalid path "${p.path}": must start with /open-apis/` });
+          }
           const client = toolClient();
 
           // Build query params, merging pagination if provided
