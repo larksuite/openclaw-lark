@@ -38,6 +38,7 @@ export type McpRpcResponse = McpRpcSuccess | McpRpcError;
 import type { ToolActionKey } from '../../core/scope-manager';
 
 export type McpAuthMode = 'user' | 'tenant';
+export type McpGlobalAuthMode = McpAuthMode | 'auto';
 
 export interface McpToolConfig<T = unknown> {
   name: string;
@@ -58,7 +59,7 @@ export interface McpToolConfig<T = unknown> {
 const UAT_ONLY_MCP_TOOLS = new Set<string>(['search-user', 'search-doc']);
 const DEFAULT_AUTH_MODES: ReadonlyArray<McpAuthMode> = ['user', 'tenant'];
 
-function resolveSupportedAuthModes(config: McpToolConfig<unknown>): ReadonlyArray<McpAuthMode> {
+function resolveSupportedAuthModes<T>(config: McpToolConfig<T>): ReadonlyArray<McpAuthMode> {
   const explicit = config.supportedAuthModes?.filter((m) => m === 'user' || m === 'tenant');
   if (explicit && explicit.length > 0) {
     return [...new Set(explicit)];
@@ -77,6 +78,32 @@ function shouldFallbackToTenant(err: unknown): boolean {
 
   if (!(err instanceof Error)) return false;
   return err.message === 'need_user_authorization' || err.message === 'user_scope_insufficient';
+}
+
+function resolveAuthAttemptOrder(
+  globalMode: McpGlobalAuthMode,
+  supportedAuthModes: ReadonlyArray<McpAuthMode>,
+): ReadonlyArray<McpAuthMode> {
+  const supportsUser = supportedAuthModes.includes('user');
+  const supportsTenant = supportedAuthModes.includes('tenant');
+
+  if (globalMode === 'user') {
+    if (supportsUser) return ['user'];
+    if (supportsTenant) return ['tenant'];
+    return [];
+  }
+
+  if (globalMode === 'tenant') {
+    if (supportsTenant) return ['tenant'];
+    if (supportsUser) return ['user'];
+    return [];
+  }
+
+  // auto: 按工具能力自动选择。双支持工具走 UAT -> TAT，UAT-only 保持 UAT。
+  if (supportsUser && supportsTenant) return ['user', 'tenant'];
+  if (supportsUser) return ['user'];
+  if (supportsTenant) return ['tenant'];
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +199,28 @@ function getMcpEndpoint(brand?: LarkBrand): string {
     _penv.FEISHU_MCP_ENDPOINT?.trim() ||
     `${mcpDomain(brand)}/mcp`
   );
+}
+
+function getMcpAuthMode(): McpGlobalAuthMode {
+  try {
+    const p = path.join(process.cwd(), '.openclaw', 'openclaw.json');
+    if (!fs.existsSync(p)) return 'auto';
+
+    const raw = fs.readFileSync(p, 'utf8');
+    const cfg = JSON.parse(raw) as unknown;
+    if (!isRecord(cfg)) return 'auto';
+
+    const channels = cfg.channels;
+    if (!isRecord(channels)) return 'auto';
+    const feishu = channels.feishu;
+    if (!isRecord(feishu)) return 'auto';
+
+    const mode = feishu.mcpAuthMode;
+    if (mode === 'user' || mode === 'tenant' || mode === 'auto') return mode;
+    return 'auto';
+  } catch {
+    return 'auto';
+  }
 }
 
 function buildAuthHeader(): string | undefined {
@@ -271,6 +320,7 @@ export function registerMcpTool<T extends Record<string, unknown>>(
   config: McpToolConfig<T>,
 ): boolean {
   const { toolClient, log } = createToolContext(api, config.name);
+  const globalAuthMode = getMcpAuthMode();
 
   return registerTool(
     api,
@@ -291,10 +341,11 @@ export function registerMcpTool<T extends Record<string, unknown>>(
           const client = toolClient();
           const brand = client.account.brand;
           const supportedAuthModes = resolveSupportedAuthModes(config);
-          const supportsUser = supportedAuthModes.includes('user');
-          const supportsTenant = supportedAuthModes.includes('tenant');
+          const authAttemptOrder = resolveAuthAttemptOrder(globalAuthMode, supportedAuthModes);
+          const firstMode = authAttemptOrder[0];
+          const secondMode = authAttemptOrder[1];
 
-          if (!supportsUser && !supportsTenant) {
+          if (!firstMode) {
             throw new Error(`No supported auth mode configured for MCP tool: ${config.mcpToolName}`);
           }
 
@@ -322,33 +373,33 @@ export function registerMcpTool<T extends Record<string, unknown>>(
               { as: 'tenant' },
             );
 
+          const invokeByMode = async (mode: McpAuthMode) => {
+            if (mode === 'tenant') return invokeWithTenant();
+            return invokeWithUser();
+          };
+
           let result: unknown;
           let modeUsed: McpAuthMode;
 
-          // 优先 UAT，避免 UAT-only 工具出现无效 TAT 预请求。
-          if (supportsUser) {
-            try {
-              result = await invokeWithUser();
-              modeUsed = 'user';
-            } catch (userErr) {
-              if (!supportsTenant || !shouldFallbackToTenant(userErr)) {
-                throw userErr;
-              }
+          try {
+            result = await invokeByMode(firstMode);
+            modeUsed = firstMode;
+          } catch (firstErr) {
+            if (firstMode === 'user' && secondMode === 'tenant' && shouldFallbackToTenant(firstErr)) {
               log.debug?.(
                 `UAT unavailable for ${config.mcpToolName}, fallback to TAT: ${
-                  userErr instanceof Error ? userErr.message : String(userErr)
+                  firstErr instanceof Error ? firstErr.message : String(firstErr)
                 }`,
               );
-              result = await invokeWithTenant();
-              modeUsed = 'tenant';
+              result = await invokeByMode(secondMode);
+              modeUsed = secondMode;
+            } else {
+              throw firstErr;
             }
-          } else {
-            result = await invokeWithTenant();
-            modeUsed = 'tenant';
           }
 
           const duration = Date.now() - startTime;
-          log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms (${modeUsed})`);
+          log.debug?.(`${config.mcpToolName} succeeded in ${duration}ms (${modeUsed}, global=${globalAuthMode})`);
 
           // MCP tools/call 返回值已经是 { content: [{ type, text }] } 格式
           if (isRecord(result) && Array.isArray((result as { content?: unknown }).content)) {

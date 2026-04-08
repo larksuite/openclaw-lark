@@ -30,41 +30,41 @@ Additionally, the plugin supports:
 - **🌊 Streaming Responses**: Live streaming text directly within message cards
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
-- **🔑 MCP Auth Mode** (This Fork): Support for `user`/`tenant`/`auto` authentication modes for MCP tools. See [TAT Support](#tat-support) below.
+- **🔑 MCP Auth Mode** (This Fork): Supports `user` / `tenant` / `auto`, while respecting per-tool compatibility (`UAT-only` / `UAT+TAT`). See [TAT Support](#tat-support) below.
 
 ---
 
 ## 🆕 TAT Support (This Fork)
 
-This fork adds **Tenant Access Token (TAT) support** for MCP tools, allowing them to operate with application-level permissions without requiring individual user authorization.
+This fork adds **Tenant Access Token (TAT) support** for MCP tools, while respecting tool-level compatibility defined by Feishu MCP.
 
 ### Configuration
 
-Add to your OpenClaw config (`.openclaw/openclaw.json`):
+Set in your OpenClaw config (`.openclaw/openclaw.json`):
 
 ```json
 {
   "channels": {
     "feishu": {
-      "mcpAuthMode": "tenant"  // or "auto" or "user"
+      "mcpAuthMode": "auto"
     }
   }
 }
 ```
 
-### Auth Modes
+### Runtime Auth Behavior
 
-| Mode | Description |
+| `mcpAuthMode` | Runtime behavior |
 |------|-------------|
-| `user` (default) | Use User Access Token (UAT) - requires user authorization |
-| `tenant` | Use Tenant Access Token (TAT) - app-level permissions, no user auth needed |
-| `auto` | Try TAT first, fallback to UAT if TAT fails |
+| `user` | Use UAT |
+| `tenant` | Use TAT; for UAT-only tools, still use UAT |
+| `auto` | For UAT-only tools (e.g. `search-user`, `search-doc`), always use UAT. For UAT/TAT tools, try UAT first then fallback to TAT when user auth is unavailable |
 
-### Use Cases
+### Why this design
 
-- **Background automation**: Schedule tasks that run without user interaction
-- **Service accounts**: Run tools with consistent app identity
-- **Batch operations**: Process large volumes without per-user auth overhead
+- Keeps UAT-only tools safe in every mode
+- Avoids wasted TAT pre-requests for UAT-only tools
+- Keeps user-context behavior as default in `auto`, with TAT fallback when needed
 
 See [PR #263](https://github.com/larksuite/openclaw-lark/pull/263) for implementation details.
 

@@ -30,41 +30,41 @@
 - **🌊 流式回复**：在消息卡片中提供实时的流式响应
 - **🔒 权限策略**：为私聊和群聊提供灵活的访问控制策略
 - **⚙️ 高级群组配置**：每个群聊的独立设置，包括白名单、技能绑定和自定义系统提示词
-- **🔑 MCP 认证模式** (本 Fork)：支持 MCP 工具的 `user`/`tenant`/`auto` 三种认证模式，详见下文 [TAT 支持](#tat-支持)。
+- **🔑 MCP 认证模式** (本 Fork)：支持 `user` / `tenant` / `auto`，同时遵循工具级兼容矩阵（`仅 UAT` / `UAT+TAT`），详见下文 [TAT 支持](#tat-支持)。
 
 ---
 
 ## 🆕 TAT 支持 (本 Fork)
 
-本 fork 为 MCP 工具添加了 **Tenant Access Token (TAT) 支持**，允许 MCP 工具使用应用级权限运行，无需单个用户授权。
+本 fork 为 MCP 工具添加了 **Tenant Access Token (TAT) 支持**，同时遵循飞书 MCP 的工具级鉴权兼容矩阵。
 
 ### 配置方法
 
-在 OpenClaw 配置文件 (`.openclaw/openclaw.json`) 中添加：
+在 OpenClaw 配置文件 (`.openclaw/openclaw.json`) 中设置：
 
 ```json
 {
   "channels": {
     "feishu": {
-      "mcpAuthMode": "tenant"  // 或 "auto" 或 "user"
+      "mcpAuthMode": "auto"
     }
   }
 }
 ```
 
-### 认证模式
+### 运行时鉴权策略
 
-| 模式 | 说明 |
+| `mcpAuthMode` | 运行时行为 |
 |------|------|
-| `user` (默认) | 使用 User Access Token (UAT) - 需要用户授权 |
-| `tenant` | 使用 Tenant Access Token (TAT) - 应用级权限，无需用户授权 |
-| `auto` | 先尝试 TAT，失败时回退到 UAT |
+| `user` | 使用 UAT |
+| `tenant` | 使用 TAT；对于仅支持 UAT 的工具，仍使用 UAT |
+| `auto` | 对仅支持 UAT 的工具（如 `search-user`、`search-doc`）始终走 UAT；对 UAT/TAT 双支持工具，优先 UAT，用户鉴权不可用时回退 TAT |
 
-### 适用场景
+### 设计原因
 
-- **后台自动化**: 定时任务无需用户交互即可运行
-- **服务账号**: 以统一的应用身份运行工具
-- **批量操作**: 处理大量数据时避免逐用户授权开销
+- 所有模式下都保证仅支持 UAT 的工具不会被误用 TAT
+- 避免在仅支持 UAT 的工具上发生无效 TAT 请求
+- `auto` 默认保持用户上下文语义，并在需要时保留 TAT 兜底能力
 
 详见 [PR #263](https://github.com/larksuite/openclaw-lark/pull/263) 了解实现细节。
 
