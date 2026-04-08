@@ -52,6 +52,7 @@ function assertLarkOk(res: any, context: string): void {
 
 const SUPPORTED_ACTIONS: Set<ChannelMessageActionName> = new Set([
   'send',
+  'thread-reply',
   'react',
   'reactions',
   'delete',
@@ -188,6 +189,18 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
       switch (action) {
         case 'send':
           return await deliverMessage(cfg, readFeishuSendParams(params, toolContext), aid, ctx.mediaLocalRoots);
+        case 'thread-reply': {
+          const messageId = readStringParam(params, 'messageId') ??
+            readStringParam(params, 'message_id') ??
+            readStringParam(params, 'replyTo');
+          if (!messageId) {
+            throw new Error('Feishu thread-reply requires messageId.');
+          }
+          const sendParams = readFeishuSendParams(params, toolContext);
+          sendParams.replyToMessageId = messageId;
+          sendParams.replyInThread = true;
+          return await deliverMessage(cfg, sendParams, aid, ctx.mediaLocalRoots);
+        }
         case 'react':
           return await handleReact(cfg, params, aid);
         case 'reactions':
