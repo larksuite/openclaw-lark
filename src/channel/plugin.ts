@@ -322,6 +322,8 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
     }),
   },
 
+  gatewayMethods: ['web.login.start', 'web.login.wait'],
+
   // -------------------------------------------------------------------------
   // Gateway
   // -------------------------------------------------------------------------

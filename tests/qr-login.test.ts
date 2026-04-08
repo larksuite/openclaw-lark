@@ -171,4 +171,60 @@ describe('Feishu QR login', () => {
       },
     });
   });
+
+  it('wires the current OpenClaw web login contract through the channel plugin', async () => {
+    const qrLogin = await import('../src/channel/qr-login');
+    const runCliSpy = vi.spyOn(qrLogin, 'runFeishuQrLoginCli').mockResolvedValue(undefined);
+    const startSpy = vi.spyOn(qrLogin, 'startFeishuQrLogin').mockResolvedValue({
+      qrDataUrl: 'data:image/png;base64,plugin-qr',
+      message: 'plugin start',
+    });
+    const waitSpy = vi.spyOn(qrLogin, 'waitForFeishuQrLogin').mockResolvedValue({
+      connected: true,
+      message: 'plugin wait',
+    });
+
+    const { feishuPlugin } = await import('../src/channel/plugin');
+    const runtime = { log: vi.fn() };
+
+    expect(feishuPlugin.meta.aliases).toContain('openclaw-lark');
+    expect(feishuPlugin.gatewayMethods).toEqual(['web.login.start', 'web.login.wait']);
+
+    await feishuPlugin.auth?.login?.({
+      cfg: { channels: { feishu: {} } } as unknown as ClawdbotConfig,
+      accountId: 'default',
+      runtime: runtime as never,
+      channelInput: 'feishu',
+    });
+    expect(runCliSpy).toHaveBeenCalledWith({
+      accountId: 'default',
+      runtime,
+    });
+
+    const started = await feishuPlugin.gateway?.loginWithQrStart?.({
+      accountId: 'default',
+      force: true,
+    });
+    expect(started).toEqual({
+      qrDataUrl: 'data:image/png;base64,plugin-qr',
+      message: 'plugin start',
+    });
+    expect(startSpy).toHaveBeenCalledWith({
+      accountId: 'default',
+      force: true,
+    });
+
+    const waited = await feishuPlugin.gateway?.loginWithQrWait?.({
+      accountId: 'default',
+      timeoutMs: 1234,
+    });
+    expect(waited).toEqual({
+      connected: true,
+      message: 'plugin wait',
+    });
+    expect(waitSpy).toHaveBeenCalledWith({
+      accountId: 'default',
+      timeoutMs: 1234,
+    });
+  });
 });
