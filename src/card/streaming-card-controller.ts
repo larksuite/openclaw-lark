@@ -44,7 +44,7 @@ import {
 } from './cardkit';
 import { FlushController } from './flush-controller';
 import { ImageResolver } from './image-resolver';
-import { optimizeMarkdownStyle } from './markdown-style';
+import { optimizeMarkdownStyle, stripLeakedThinkingContent, sanitizeCardKitMarkdown } from './markdown-style';
 import { type ToolUseDisplayResult, buildToolUseTitleSuffix, normalizeToolUseDisplay } from './tool-use-display';
 import { clearToolUseTraceRun, getToolUseTraceSteps } from './tool-use-trace-store';
 import type {
@@ -988,8 +988,13 @@ export class StreamingCardController {
       // 流式中间帧使用同步 resolveImages（不等待异步上传）
       const resolvedText = this.imageResolver.resolveImages(displayText);
 
+      // Safety net: strip any leaked thinking tags, then sanitize for CardKit
+      const sanitizedText = sanitizeCardKitMarkdown(
+        stripLeakedThinkingContent(resolvedText),
+      );
+
       if (this.cardKit.cardKitCardId) {
-        if (resolvedText !== this.text.lastFlushedText) {
+        if (sanitizedText !== this.text.lastFlushedText) {
           const prevSeq = this.cardKit.cardKitSequence;
           this.cardKit.cardKitSequence += 1;
           log.debug('flushCardUpdate: answer seq bump', {
@@ -1000,17 +1005,17 @@ export class StreamingCardController {
             cfg: this.deps.cfg,
             cardId: this.cardKit.cardKitCardId,
             elementId: STREAMING_ELEMENT_ID,
-            content: optimizeMarkdownStyle(resolvedText),
+            content: optimizeMarkdownStyle(sanitizedText),
             sequence: this.cardKit.cardKitSequence,
             accountId: this.deps.accountId,
           });
-          this.text.lastFlushedText = resolvedText;
+          this.text.lastFlushedText = sanitizedText;
         }
       } else {
         log.debug('flushCardUpdate: IM patch fallback');
         const flushDisplay = this.computeToolUseDisplay();
         const card = buildCardContent('streaming', {
-          text: this.reasoning.isReasoningPhase ? '' : resolvedText,
+          text: this.reasoning.isReasoningPhase ? '' : sanitizedText,
           reasoningText: this.reasoning.isReasoningPhase ? this.reasoning.accumulatedReasoningText : undefined,
           toolUseSteps: flushDisplay?.steps,
           toolUseTitleSuffix: this.computeToolUseTitleSuffix(flushDisplay),
