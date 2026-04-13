@@ -13,7 +13,11 @@ import type { ChannelPlugin, ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import { PAIRING_APPROVED_MESSAGE } from 'openclaw/plugin-sdk/channel-status';
-import type { LarkAccount } from '../core/types';
+import {
+  buildDmGroupAccountAllowlistAdapter,
+  collectAllowlistOverridesFromRecord,
+} from 'openclaw/plugin-sdk/allowlist-config-edit';
+import type { LarkAccount, FeishuConfig, FeishuGroupConfig } from '../core/types';
 import { getDefaultLarkAccountId, getLarkAccount, getLarkAccountIds } from '../core/accounts';
 import { feishuOutbound } from '../messaging/outbound/outbound';
 import { feishuMessageActions } from '../messaging/outbound/actions';
@@ -55,6 +59,33 @@ function adaptDirectoryParams(params: {
     accountId: params.accountId ?? undefined,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Allowlist adapter
+// ---------------------------------------------------------------------------
+
+function normalizeFeishuAllowFrom(params: { values: Array<string | number> }): string[] {
+  return params.values
+    .map((entry) => String(entry).trim())
+    .filter(Boolean)
+    .map((entry) => entry.toLowerCase());
+}
+
+const feishuAllowlistAdapter = buildDmGroupAccountAllowlistAdapter<LarkAccount>({
+  channelId: 'feishu',
+  resolveAccount: ({ cfg, accountId }) => getLarkAccount(cfg, accountId),
+  normalize: normalizeFeishuAllowFrom,
+  resolveDmAllowFrom: (account) => account.config?.allowFrom,
+  resolveGroupAllowFrom: (account) => account.config?.groupAllowFrom,
+  resolveDmPolicy: (account) => account.config?.dmPolicy,
+  resolveGroupPolicy: (account) => account.config?.groupPolicy,
+  resolveGroupOverrides: (account) =>
+    collectAllowlistOverridesFromRecord<FeishuGroupConfig>({
+      record: account.config?.groups as Record<string, FeishuGroupConfig | undefined> | undefined,
+      label: (key) => `group ${key}`,
+      resolveEntries: (group) => group.allowFrom,
+    }),
+});
 
 // ---------------------------------------------------------------------------
 // Meta
@@ -199,6 +230,12 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
         .filter(Boolean)
         .map((entry) => entry.toLowerCase()),
   },
+
+  // -------------------------------------------------------------------------
+  // Allowlist
+  // -------------------------------------------------------------------------
+
+  allowlist: feishuAllowlistAdapter,
 
   // -------------------------------------------------------------------------
   // Security
