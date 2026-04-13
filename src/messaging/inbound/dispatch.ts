@@ -285,6 +285,20 @@ export async function dispatchToAgent(params: {
     });
   }
 
+  // 1c. Auto-create thread for new conversations when autoCreateThread is "enabled".
+  //     Unlike threadSession, this does NOT call isThreadCapableGroup — it trusts
+  //     the config directly and creates a new thread in the main group chat.
+  //     This mirrors the built-in channel behavior where autoCreateThread bypasses
+  //     the group capability check.
+  const isNewConversation = !dc.ctx.rootId && !dc.ctx.threadId;
+  const autoCreateThreadCfg = dc.account?.config?.autoCreateThread === 'enabled';
+  const shouldAutoCreateThread = autoCreateThreadCfg && isNewConversation;
+  if (!dc.isThread && dc.isGroup && shouldAutoCreateThread) {
+    log.info(`autoCreateThread: creating new thread in group ${dc.ctx.chatId}`);
+    dc.isThread = true;
+    dc.ctx = { ...dc.ctx, threadId: dc.ctx.messageId };
+  }
+
   // 2. Build annotated message body
   const messageBody = buildMessageBody(params.ctx, params.quotedContent);
 
