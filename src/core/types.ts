@@ -66,6 +66,7 @@ export interface FeishuToolsConfig {
   mail?: boolean;
   sheets?: boolean;
   okr?: boolean;
+  raw_api?: boolean;
 }
 
 /** Per-feature toggles for card footer metadata visibility. */

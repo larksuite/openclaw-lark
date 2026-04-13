@@ -33,6 +33,7 @@ export const DEFAULT_TOOLS_CONFIG: Required<FeishuToolsConfig> = {
   mail: true,
   sheets: true,
   okr: false,
+  raw_api: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ export function resolveToolsConfig(cfg?: FeishuToolsConfig): Required<FeishuTool
     mail: cfg.mail ?? DEFAULT_TOOLS_CONFIG.mail,
     sheets: cfg.sheets ?? DEFAULT_TOOLS_CONFIG.sheets,
     okr: cfg.okr ?? DEFAULT_TOOLS_CONFIG.okr,
+    raw_api: cfg.raw_api ?? DEFAULT_TOOLS_CONFIG.raw_api,
   };
 }
 
@@ -80,6 +82,7 @@ export function resolveAnyEnabledToolsConfig(accounts: LarkAccount[]): Required<
     mail: false,
     sheets: false,
     okr: false,
+    raw_api: false,
   };
   for (const account of accounts) {
     const cfg = resolveToolsConfig((account.config as { tools?: FeishuToolsConfig }).tools);
@@ -91,6 +94,7 @@ export function resolveAnyEnabledToolsConfig(accounts: LarkAccount[]): Required<
     merged.mail = merged.mail || cfg.mail;
     merged.sheets = merged.sheets || cfg.sheets;
     merged.okr = merged.okr || cfg.okr;
+    merged.raw_api = merged.raw_api || cfg.raw_api;
   }
   return merged;
 }
