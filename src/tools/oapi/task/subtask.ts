@@ -33,7 +33,7 @@ const FeishuTaskSubtaskSchema = Type.Intersect([
   Type.Object({
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
-        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "tenant"。',
+        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
       }),
     ),
   }),
@@ -199,7 +199,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: p.auth_type || 'tenant' },
+                { as: p.auth_type || 'user' },
               );
               assertLarkOk(res);
 
@@ -233,7 +233,7 @@ export function registerFeishuTaskSubtaskTool(api: OpenClawPluginApi): void {
                     },
                     opts,
                   ),
-                { as: p.auth_type || 'tenant' },
+                { as: p.auth_type || 'user' },
               );
               assertLarkOk(res);
 

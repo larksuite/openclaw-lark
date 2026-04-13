@@ -115,7 +115,7 @@ const FeishuTaskTaskSchema = Type.Union([
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
         description:
-          '授权类型，默认 tenant。使用 user 时为用户身份（只能查看/操作自己有权限的任务），使用 tenant 时为应用身份。',
+          '授权类型，默认 user。使用 user 时为用户身份（只能查看/操作自己有权限的任务），使用 tenant 时为应用身份。',
       }),
     ),
     user_id_type: Type.Optional(
@@ -131,7 +131,7 @@ const FeishuTaskTaskSchema = Type.Union([
     }),
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
-        description: '授权类型，默认 tenant。',
+        description: '授权类型，默认 user。',
       }),
     ),
     user_id_type: Type.Optional(
@@ -159,7 +159,7 @@ const FeishuTaskTaskSchema = Type.Union([
     ),
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
-        description: '授权类型，默认 tenant。',
+        description: '授权类型，默认 user。',
       }),
     ),
     user_id_type: Type.Optional(
@@ -234,7 +234,7 @@ const FeishuTaskTaskSchema = Type.Union([
     ),
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
-        description: '授权类型，默认 tenant。',
+        description: '授权类型，默认 user。',
       }),
     ),
     user_id_type: Type.Optional(
@@ -268,7 +268,7 @@ const FeishuTaskTaskSchema = Type.Union([
     ),
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
-        description: '授权类型，默认 tenant。',
+        description: '授权类型，默认 user。',
       }),
     ),
     user_id_type: Type.Optional(
@@ -431,7 +431,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
               if (p.repeat_rule) taskData.repeat_rule = p.repeat_rule;
               if (p.tasklists) taskData.tasklists = p.tasklists;
 
-              const authType = p.auth_type || 'tenant';
+              const authType = p.auth_type || 'user';
               const res = await client.invoke(
                 'feishu_task_task.create',
                 (sdk, opts) =>
@@ -462,7 +462,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
             case 'get': {
               log.info(`get: task_guid=${p.task_guid}`);
 
-              const authType = p.auth_type || 'tenant';
+              const authType = p.auth_type || 'user';
               const res = await client.invoke(
                 'feishu_task_task.get',
                 (sdk, opts) =>
@@ -492,7 +492,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
             case 'list': {
               log.info(`list: page_size=${p.page_size ?? 50}, completed=${p.completed ?? false}`);
 
-              const authType = p.auth_type || 'tenant';
+              const authType = p.auth_type || 'user';
               const res = await client.invoke(
                 'feishu_task_task.list',
                 (sdk, opts) =>
@@ -594,7 +594,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
               // Build update_fields list (required by Task API)
               const updateFields = Object.keys(updateData);
 
-              const authType = p.auth_type || 'tenant';
+              const authType = p.auth_type || 'user';
               const res = await client.invoke(
                 'feishu_task_task.patch',
                 (sdk, opts) =>
@@ -645,7 +645,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
                 requestData.client_token = p.client_token;
               }
 
-              const authType = p.auth_type || 'tenant';
+              const authType = p.auth_type || 'user';
               const res = await client.invoke(
                 'feishu_task_task.add_members',
                 (sdk, opts) =>
