@@ -939,7 +939,9 @@ export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotC
   if (err instanceof OwnerAccessDeniedError) {
     return json({
       error: 'permission_denied',
-      message: '当前应用仅限所有者（App Owner）使用。您没有权限使用相关功能。',
+      message:
+        '当前应用仅限所有者（App Owner）或白名单用户使用。您没有权限使用相关功能。' +
+        '\n如需授权更多用户，请在配置中添加 channels.feishu.uat.allowedUsers（open_id 数组）。',
       user_open_id: err.userOpenId,
       // 注意：不序列化 err.appOwnerId，避免泄露 owner 的 open_id
     });
