@@ -197,6 +197,27 @@ describe('mergeAccountConfig – deep merge for nested objects', () => {
     expect(account.config.allowFrom).toEqual(['*']);
   });
 
+  it('nested uat.allowedUsers arrays replace rather than merge', () => {
+    const cfg = makeCfg({
+      appId: 'base',
+      appSecret: 'secret',
+      uat: { ownerOnly: false, allowedUsers: ['ou_base_a', 'ou_base_b'] },
+      accounts: {
+        a: {
+          appId: 'a',
+          appSecret: 'sa',
+          uat: { allowedUsers: ['ou_account_only'] },
+        },
+      },
+    });
+
+    const account = getLarkAccount(cfg, 'a');
+    expect(account.config.uat).toEqual({
+      ownerOnly: false,
+      allowedUsers: ['ou_account_only'],
+    });
+  });
+
   it('scalar fields override correctly', () => {
     const cfg = makeCfg({
       appId: 'base',

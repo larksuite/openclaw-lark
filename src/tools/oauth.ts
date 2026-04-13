@@ -281,10 +281,13 @@ export async function executeAuthorize(
     await assertOwnerAccessStrict(account, sdk, senderOpenId);
   } catch (err) {
     if (err instanceof OwnerAccessDeniedError) {
-      log.warn(`non-owner user ${senderOpenId} attempted to authorize`);
+      log.warn(`user ${senderOpenId} was denied authorization by owner policy`);
       return json({
         error: 'permission_denied',
-        message: '当前应用仅限所有者（App Owner）使用。您没有权限发起授权，无法使用相关功能。',
+        message:
+          err.reason === 'not_in_allowlist'
+            ? '您不在此应用的授权用户列表中，请联系管理员将您的 open_id 加入 uat.allowedUsers 配置。'
+            : '当前应用仅限所有者（App Owner）使用。您没有权限发起授权，无法使用相关功能。',
       });
     }
     throw err;

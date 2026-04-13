@@ -5,7 +5,7 @@
  * feishu_auth command — 飞书用户权限批量授权命令实现
  *
  * 直接复用 onboarding-auth.ts 的 triggerOnboarding() 函数。
- * 注意：此命令仅限应用 owner 执行（与 onboarding 逻辑一致）
+ * 注意：默认仅限应用 owner 执行；可通过 uat.ownerOnly / uat.allowedUsers 放宽
  */
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
@@ -16,7 +16,11 @@ import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes, getAppInfo } from '../core/app-scope-checker';
 import { getStoredToken, tokenStatus } from '../core/token-store';
 import { filterSensitiveScopes } from '../core/tool-scopes';
-import { OwnerAccessDeniedError, assertOwnerAccessStrict } from '../core/owner-policy';
+import {
+  OwnerAccessDeniedError,
+  type OwnerAccessDeniedReason,
+  assertOwnerAccessStrict,
+} from '../core/owner-policy';
 import { openPlatformDomain } from '../core/domains';
 
 import type { FeishuLocale } from './locale';
@@ -31,7 +35,7 @@ const T: Record<
     noIdentity: string;
     accountIncomplete: (accountId: string) => string;
     missingSelfManage: (link: string) => string;
-    ownerOnly: string;
+    ownerDenied: (reason: OwnerAccessDeniedReason) => string;
     missingOfflineAccess: (link: string) => string;
     noUserScopes: string;
     allAuthorized: (count: number) => string;
@@ -43,7 +47,10 @@ const T: Record<
     accountIncomplete: (accountId) => `❌ 账号 ${accountId} 配置不完整`,
     missingSelfManage: (link) =>
       `❌ 应用缺少核心权限 application:application:self_manage，无法查询可授权 scope 列表。\n\n请管理员在飞书开放平台开通此权限后重试：[申请权限](${link})`,
-    ownerOnly: '❌ 此命令仅限应用 owner 执行\n\n如需授权，请联系应用管理员。',
+    ownerDenied: (reason) =>
+      reason === 'not_in_allowlist'
+        ? '❌ 您不在此应用的授权用户列表中\n\n请联系应用管理员，将您的 open_id 加入 uat.allowedUsers 配置。'
+        : '❌ 此命令仅限应用 owner 执行\n\n如需授权，请联系应用管理员。',
     missingOfflineAccess: (link) =>
       `❌ 应用缺少核心权限 offline_access，无法查询可授权 scope 列表。\n\n请管理员在飞书开放平台开通此权限后重试：[申请权限](${link})`,
     noUserScopes: '当前应用未开通任何用户级权限，无需授权。',
@@ -55,7 +62,10 @@ const T: Record<
     accountIncomplete: (accountId) => `❌ Account ${accountId} configuration is incomplete`,
     missingSelfManage: (link) =>
       `❌ App is missing the core permission application:application:self_manage and cannot query available scopes.\n\nPlease ask an admin to grant this permission on the Feishu Open Platform: [Apply](${link})`,
-    ownerOnly: '❌ This command is restricted to the app owner.\n\nPlease contact the app admin for authorization.',
+    ownerDenied: (reason) =>
+      reason === 'not_in_allowlist'
+        ? '❌ You are not in this app\'s authorized user list.\n\nPlease ask the app admin to add your open_id to uat.allowedUsers.'
+        : '❌ This command is restricted to the app owner.\n\nPlease contact the app admin for authorization.',
     missingOfflineAccess: (link) =>
       `❌ App is missing the core permission offline_access and cannot query available scopes.\n\nPlease ask an admin to grant this permission on the Feishu Open Platform: [Apply](${link})`,
     noUserScopes: 'No user-level permissions are enabled for this app. Authorization is not needed.',
@@ -73,7 +83,7 @@ type AuthResult =
   | { kind: 'no_identity' }
   | { kind: 'account_incomplete'; accountId: string }
   | { kind: 'missing_self_manage'; link: string }
-  | { kind: 'owner_only' }
+  | { kind: 'owner_denied'; reason: OwnerAccessDeniedReason }
   | { kind: 'missing_offline_access'; link: string }
   | { kind: 'no_user_scopes' }
   | { kind: 'all_authorized'; count: number }
@@ -91,8 +101,8 @@ function formatAuthResult(result: AuthResult, locale: FeishuLocale): string {
       return t.accountIncomplete(result.accountId);
     case 'missing_self_manage':
       return t.missingSelfManage(result.link);
-    case 'owner_only':
-      return t.ownerOnly;
+    case 'owner_denied':
+      return t.ownerDenied(result.reason);
     case 'missing_offline_access':
       return t.missingOfflineAccess(result.link);
     case 'no_user_scopes':
@@ -120,7 +130,7 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
     return { kind: 'no_identity' };
   }
 
-  // 提前检查 owner 身份，给出明确提示
+  // 提前检查 owner / allowlist 访问权限，给出明确提示
   const acct = getLarkAccount(config, ticket.accountId);
   if (!acct.configured) {
     return { kind: 'account_incomplete', accountId: ticket.accountId };
@@ -138,12 +148,12 @@ async function executeFeishuAuth(config: OpenClawConfig): Promise<AuthResult> {
     return { kind: 'missing_self_manage', link };
   }
 
-  // Owner 检查（fail-close: 授权命令安全优先）
+  // UAT 访问检查（默认 fail-close: 授权命令安全优先）
   try {
     await assertOwnerAccessStrict(acct, sdk, senderOpenId);
   } catch (err) {
     if (err instanceof OwnerAccessDeniedError) {
-      return { kind: 'owner_only' };
+      return { kind: 'owner_denied', reason: err.reason };
     }
     throw err;
   }
