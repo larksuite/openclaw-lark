@@ -27,18 +27,17 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskTasklistSchema = Type.Intersect([
-  Type.Object({
-    auth_type: Type.Optional(
-      StringEnum(['tenant', 'user'], {
-        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
-      }),
-    ),
+const FeishuTaskTasklistAuthType = Type.Optional(
+  StringEnum(['tenant', 'user'], {
+    description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
   }),
-  Type.Union([
+);
+
+const FeishuTaskTasklistSchema = Type.Union([
     // CREATE (P0)
     Type.Object({
       action: Type.Literal('create'),
+      auth_type: FeishuTaskTasklistAuthType,
       name: Type.String({
         description: '清单名称',
       }),
@@ -61,6 +60,7 @@ const FeishuTaskTasklistSchema = Type.Intersect([
     // GET (P0)
     Type.Object({
       action: Type.Literal('get'),
+      auth_type: FeishuTaskTasklistAuthType,
       tasklist_guid: Type.String({ description: '清单 GUID' }),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
     }),
@@ -68,6 +68,7 @@ const FeishuTaskTasklistSchema = Type.Intersect([
     // LIST (P0)
     Type.Object({
       action: Type.Literal('list'),
+      auth_type: FeishuTaskTasklistAuthType,
       page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
       page_token: Type.Optional(Type.String({ description: '分页标记' })),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
@@ -76,6 +77,7 @@ const FeishuTaskTasklistSchema = Type.Intersect([
     // TASKS (P0) - 列出清单内的任务
     Type.Object({
       action: Type.Literal('tasks'),
+      auth_type: FeishuTaskTasklistAuthType,
       tasklist_guid: Type.String({ description: '清单 GUID' }),
       page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
       page_token: Type.Optional(Type.String({ description: '分页标记' })),
@@ -86,6 +88,7 @@ const FeishuTaskTasklistSchema = Type.Intersect([
     // PATCH (P1)
     Type.Object({
       action: Type.Literal('patch'),
+      auth_type: FeishuTaskTasklistAuthType,
       tasklist_guid: Type.String({ description: '清单 GUID' }),
       name: Type.Optional(Type.String({ description: '新的清单名称' })),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
@@ -94,6 +97,7 @@ const FeishuTaskTasklistSchema = Type.Intersect([
     // ADD_MEMBERS (P1)
     Type.Object({
       action: Type.Literal('add_members'),
+      auth_type: FeishuTaskTasklistAuthType,
       tasklist_guid: Type.String({ description: '清单 GUID' }),
       members: Type.Array(
         Type.Object({
@@ -105,7 +109,6 @@ const FeishuTaskTasklistSchema = Type.Intersect([
       ),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
     }),
-  ]),
 ]);
 
 // ---------------------------------------------------------------------------

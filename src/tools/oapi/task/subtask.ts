@@ -29,18 +29,17 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskSubtaskSchema = Type.Intersect([
-  Type.Object({
-    auth_type: Type.Optional(
-      StringEnum(['tenant', 'user'], {
-        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
-      }),
-    ),
+const FeishuTaskSubtaskAuthType = Type.Optional(
+  StringEnum(['tenant', 'user'], {
+    description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
   }),
-  Type.Union([
+);
+
+const FeishuTaskSubtaskSchema = Type.Union([
   // CREATE (P1)
   Type.Object({
     action: Type.Literal('create'),
+    auth_type: FeishuTaskSubtaskAuthType,
     task_guid: Type.String({ description: '父任务 GUID' }),
     summary: Type.String({ description: '子任务标题' }),
     description: Type.Optional(Type.String({ description: '子任务描述' })),
@@ -75,11 +74,11 @@ const FeishuTaskSubtaskSchema = Type.Intersect([
   // LIST (P1)
   Type.Object({
     action: Type.Literal('list'),
+    auth_type: FeishuTaskSubtaskAuthType,
     task_guid: Type.String({ description: '父任务 GUID' }),
     page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
-  ])
 ]);
 
 // ---------------------------------------------------------------------------

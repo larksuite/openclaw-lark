@@ -22,18 +22,17 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskCommentSchema = Type.Intersect([
-  Type.Object({
-    auth_type: Type.Optional(
-      StringEnum(['tenant', 'user'], {
-        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
-      }),
-    ),
+const FeishuTaskCommentAuthType = Type.Optional(
+  StringEnum(['tenant', 'user'], {
+    description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
   }),
-  Type.Union([
+);
+
+const FeishuTaskCommentSchema = Type.Union([
   // CREATE (P1)
   Type.Object({
     action: Type.Literal('create'),
+    auth_type: FeishuTaskCommentAuthType,
     task_guid: Type.String({ description: '任务 GUID' }),
     content: Type.String({ description: '评论内容（纯文本，最长 3000 字符）' }),
     reply_to_comment_id: Type.Optional(Type.String({ description: '要回复的评论 ID（用于回复评论）' })),
@@ -42,6 +41,7 @@ const FeishuTaskCommentSchema = Type.Intersect([
   // LIST (P1)
   Type.Object({
     action: Type.Literal('list'),
+    auth_type: FeishuTaskCommentAuthType,
     resource_id: Type.String({ description: '要获取评论的资源 ID（任务 GUID）' }),
     direction: Type.Optional(
       StringEnum(['asc', 'desc'], {
@@ -55,9 +55,9 @@ const FeishuTaskCommentSchema = Type.Intersect([
   // GET (P1)
   Type.Object({
     action: Type.Literal('get'),
+    auth_type: FeishuTaskCommentAuthType,
     comment_id: Type.String({ description: '评论 ID' }),
   }),
-  ])
 ]);
 
 // ---------------------------------------------------------------------------

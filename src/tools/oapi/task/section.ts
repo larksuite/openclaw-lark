@@ -24,18 +24,17 @@ import type { PaginatedData } from '../sdk-types';
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuTaskSectionSchema = Type.Intersect([
-  Type.Object({
-    auth_type: Type.Optional(
-      StringEnum(['tenant', 'user'], {
-        description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
-      }),
-    ),
+const FeishuTaskSectionAuthType = Type.Optional(
+  StringEnum(['tenant', 'user'], {
+    description: '调用 API 时使用的 Token 类型。可选值："tenant"（应用身份） 或 "user"（用户身份）。默认使用 "user"。',
   }),
-  Type.Union([
+);
+
+const FeishuTaskSectionSchema = Type.Union([
   // CREATE
   Type.Object({
     action: Type.Literal('create'),
+    auth_type: FeishuTaskSectionAuthType,
     name: Type.String({
       description: '自定义分组名。不允许为空，最大100个utf8字符。',
     }),
@@ -61,6 +60,7 @@ const FeishuTaskSectionSchema = Type.Intersect([
   // GET
   Type.Object({
     action: Type.Literal('get'),
+    auth_type: FeishuTaskSectionAuthType,
     section_guid: Type.String({
       description: '要获取的自定义分组GUID',
     }),
@@ -70,6 +70,7 @@ const FeishuTaskSectionSchema = Type.Intersect([
   // PATCH
   Type.Object({
     action: Type.Literal('patch'),
+    auth_type: FeishuTaskSectionAuthType,
     section_guid: Type.String({
       description: '要更新的自定义分组GUID',
     }),
@@ -94,6 +95,7 @@ const FeishuTaskSectionSchema = Type.Intersect([
   // LIST
   Type.Object({
     action: Type.Literal('list'),
+    auth_type: FeishuTaskSectionAuthType,
     resource_type: StringEnum(['tasklist', 'my_tasks']),
     resource_id: Type.Optional(
       Type.String({
@@ -116,6 +118,7 @@ const FeishuTaskSectionSchema = Type.Intersect([
   // TASKS
   Type.Object({
     action: Type.Literal('tasks'),
+    auth_type: FeishuTaskSectionAuthType,
     section_guid: Type.String({
       description: '要获取任务的自定义分组全局唯一ID',
     }),
@@ -146,7 +149,6 @@ const FeishuTaskSectionSchema = Type.Intersect([
     ),
     user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
   }),
-  ])
 ]);
 
 // ---------------------------------------------------------------------------
