@@ -59,6 +59,26 @@
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+### 二维码配对
+
+插件安装并启用后，可以直接通过 OpenClaw 创建并配对一个新的飞书/Lark 机器人：
+
+```bash
+openclaw channels login --channel feishu
+```
+
+也支持使用别名：
+
+```bash
+openclaw channels login --channel openclaw-lark
+```
+
+对于控制台 / Dashboard 集成，插件同时支持 gateway 的 `web.login.start` / `web.login.wait` 流程：
+
+- `web.login.start` 返回二维码 Data URL 和登录链接。
+- `web.login.wait` 轮询官方注册会话，直到新机器人创建完成。
+- 成功后，插件会将生成的 `appId` / `appSecret` 回写到 `channels.feishu`，网关可以立即启动该 channel。
+
 ## 贡献
 
 我们欢迎社区的贡献！如果你发现 Bug 或有功能建议，请随时提交 [Issue](https://github.com/larksuite/openclaw-larksuite/issues) 或 [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls)。
