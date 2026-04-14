@@ -138,6 +138,7 @@ export type ToolActionKey =
   | 'feishu_task_task.get'
   | 'feishu_task_task.list'
   | 'feishu_task_task.patch'
+  | 'feishu_task_task.add_members'
   | 'feishu_task_tasklist.add_members'
   | 'feishu_task_tasklist.create'
   | 'feishu_task_tasklist.get'
@@ -233,6 +234,7 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_task_task.get': ['task:task:read', 'task:task:write'],
   'feishu_task_task.list': ['task:task:read', 'task:task:write'],
   'feishu_task_task.patch': ['task:task:write', 'task:task:writeonly'],
+  'feishu_task_task.add_members': ['task:task:write', 'task:task:writeonly'],
   'feishu_task_tasklist.create': ['task:tasklist:write'],
   'feishu_task_tasklist.get': ['task:tasklist:read', 'task:tasklist:write'],
   'feishu_task_tasklist.list': ['task:tasklist:read', 'task:tasklist:write'],

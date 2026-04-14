@@ -28,8 +28,9 @@ function _optimizeMarkdownStyle(text: string, cardVersion = 2): string {
   // ── 1. 提取代码块，用占位符保护，处理后再还原 ─────────────────────
   const MARK = '___CB_';
   const codeBlocks: string[] = [];
-  let r = text.replace(/```[\s\S]*?```/g, (m) => {
-    return `${MARK}${codeBlocks.push(m) - 1}___`;
+  let r = text.replace(/(^|\n)(`{3,})([^\n]*)\n[\s\S]*?\n\2(?=\n|$)/g, (m, prefix = '') => {
+    const block = m.slice(String(prefix).length);
+    return `${prefix}${MARK}${codeBlocks.push(block) - 1}___`;
   });
 
   // ── 2. 标题降级 ────────────────────────────────────────────────────

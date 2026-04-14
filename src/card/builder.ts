@@ -23,6 +23,7 @@ import { EMPTY_TOOL_USE_PLACEHOLDER, type ToolUseDisplayStep } from './tool-use-
  */
 export const STREAMING_ELEMENT_ID = 'streaming_content';
 export const REASONING_ELEMENT_ID = 'reasoning_content';
+const TOOL_USE_STEP_CONTENT_INDENT = '0px 0px 0px 22px';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -756,9 +757,9 @@ function buildStreamingToolUseActivePanel(params: { steps: ToolUseDisplayStep[];
       icon_expanded_angle: -180,
     },
     border: { color: 'grey', corner_radius: '5px' },
-    vertical_spacing: '8px',
+    vertical_spacing: '4px',
     padding: '8px 8px 8px 8px',
-    elements: steps.map(buildToolUseStepElement),
+    elements: steps.flatMap((step) => buildToolUseStepElements(step)),
   };
 }
 
@@ -798,7 +799,7 @@ function buildStreamingToolUsePendingPanel(): CardElement {
       icon_expanded_angle: -180,
     },
     border: { color: 'grey', corner_radius: '5px' },
-    vertical_spacing: '8px',
+    vertical_spacing: '4px',
     padding: '8px 8px 8px 8px',
     elements: [],
   };
@@ -819,7 +820,9 @@ function buildToolUsePanel(params: {
   }
 
   const stepElements =
-    toolUseSteps.length > 0 ? toolUseSteps.map((step) => buildToolUseStepElement(step)) : [buildToolUsePlaceholder()];
+    toolUseSteps.length > 0
+      ? toolUseSteps.flatMap((step) => buildToolUseStepElements(step))
+      : [buildToolUsePlaceholder()];
 
   return {
     tag: 'collapsible_panel',
@@ -846,27 +849,23 @@ function buildToolUsePanel(params: {
       icon_expanded_angle: -180,
     },
     border: { color: 'grey', corner_radius: '5px' },
-    vertical_spacing: '8px',
+    vertical_spacing: '4px',
     padding: '8px 8px 8px 8px',
     elements: stepElements,
   };
 }
 
-function buildToolUseStepElement(step: ToolUseDisplayStep): CardElement {
-  return {
-    tag: 'div',
-    icon: {
-      tag: 'standard_icon',
-      token: step.iconToken,
-      color: 'grey',
-    },
-    text: {
-      tag: 'plain_text',
-      content: step.detail ? `${step.title}\n${step.detail}` : step.title,
-      text_color: 'grey',
-      text_size: 'notation',
-    },
-  };
+function buildToolUseStepElements(step: ToolUseDisplayStep): CardElement[] {
+  const elements: CardElement[] = [buildToolUseStepTitleElement(step)];
+  const detailElement = buildToolUseStepDetailElement(step);
+  if (detailElement) {
+    elements.push(detailElement);
+  }
+  const outputElement = buildToolUseStepOutputElement(step);
+  if (outputElement) {
+    elements.push(outputElement);
+  }
+  return elements;
 }
 
 function buildToolUsePlaceholder(labels?: { zh: string; en: string }): CardElement {
@@ -885,4 +884,99 @@ function buildToolUsePlaceholder(labels?: { zh: string; en: string }): CardEleme
       text_size: 'notation',
     },
   };
+}
+
+function buildToolUseStepTitleElement(step: ToolUseDisplayStep): CardElement {
+  return {
+    tag: 'div',
+    icon: {
+      tag: 'standard_icon',
+      token: step.iconToken,
+      color: 'grey',
+    },
+    text: {
+      tag: 'lark_md',
+      content: buildToolUseStepTitleMarkdown(step),
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildToolUseStepTitleMarkdown(step: ToolUseDisplayStep): string {
+  const status = formatToolUseStepStatus(step.status);
+  return optimizeMarkdownStyle(
+    `**${escapeToolUseMarkdownText(step.title)}** · <font color='${status.color}'>${status.label}</font>`,
+    1,
+  );
+}
+
+function buildToolUseStepDetailElement(step: ToolUseDisplayStep): CardElement | undefined {
+  const detail = step.detail?.trim();
+  if (!detail) return undefined;
+  return {
+    tag: 'div',
+    margin: TOOL_USE_STEP_CONTENT_INDENT,
+    text: {
+      tag: 'plain_text',
+      content: detail,
+      text_color: 'grey',
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildToolUseStepOutputElement(step: ToolUseDisplayStep): CardElement | undefined {
+  const content = buildToolUseStepOutputMarkdown(step);
+  if (!content) return undefined;
+  return {
+    tag: 'div',
+    margin: TOOL_USE_STEP_CONTENT_INDENT,
+    text: {
+      tag: 'lark_md',
+      content,
+      text_size: 'notation',
+    },
+  };
+}
+
+function buildToolUseStepOutputMarkdown(step: ToolUseDisplayStep): string | undefined {
+  const lines: string[] = [];
+
+  if (step.errorBlock) {
+    lines.push('**Error**');
+    lines.push(formatToolUseCodeBlock(step.errorBlock.content, step.errorBlock.language));
+  } else if (step.resultBlock) {
+    lines.push('**Result**');
+    lines.push(formatToolUseCodeBlock(step.resultBlock.content, step.resultBlock.language));
+  }
+
+  if (lines.length === 0) return undefined;
+  return optimizeMarkdownStyle(lines.join('\n'), 1);
+}
+
+function formatToolUseStepStatus(status: ToolUseDisplayStep['status']): { label: string; color: string } {
+  switch (status) {
+    case 'running':
+      return { label: 'Running', color: 'turquoise' };
+    case 'error':
+      return { label: 'Failed', color: 'red' };
+    case 'success':
+    default:
+      return { label: 'Succeeded', color: 'green' };
+  }
+}
+
+function formatToolUseCodeBlock(content: string, language: 'json' | 'text'): string {
+  const normalized = content.replace(/\r\n/g, '\n').trim();
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun(normalized) + 1));
+  return `${fence}${language}\n${normalized}\n${fence}`;
+}
+
+function longestBacktickRun(value: string): number {
+  const matches = value.match(/`+/g) ?? [];
+  return matches.reduce((max, run) => Math.max(max, run.length), 0);
+}
+
+function escapeToolUseMarkdownText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/([`*_{}[\]<>])/g, '\\$1');
 }

@@ -8,10 +8,20 @@
 import type { ToolUseTraceStep } from './tool-use-trace-store';
 import { normalizeToolName, redactInlineSecrets } from './reasoning-utils';
 
+export type ToolUseStepStatus = ToolUseTraceStep['status'];
+
+export interface ToolUseDisplayBlock {
+  language: 'json' | 'text';
+  content: string;
+}
+
 export interface ToolUseDisplayStep {
   title: string;
   detail?: string;
   iconToken: string;
+  status: ToolUseStepStatus;
+  resultBlock?: ToolUseDisplayBlock;
+  errorBlock?: ToolUseDisplayBlock;
 }
 
 export interface ToolUseDisplayResult {
@@ -43,6 +53,7 @@ interface ToolStepSource {
   result?: unknown;
   error?: string;
   durationMs?: number;
+  status?: ToolUseStepStatus;
 }
 
 interface SummarySignals {
@@ -192,6 +203,7 @@ function toTraceSource(step: ToolUseTraceStep): ToolStepSource {
     result: step.result,
     error: step.error,
     durationMs: step.durationMs,
+    status: step.status,
   };
 }
 
@@ -206,12 +218,17 @@ function formatToolStep(
     undefined;
   const detail = rawDetail ? sanitizeToolDetail(descriptor?.sanitizer ?? 'generic', rawDetail, options) : undefined;
   const title = buildToolTitle(source, descriptor, rawDetail);
-  const meta = buildStepMeta(source, descriptor, options);
+  const status = resolveStepStatus(source);
+  const errorBlock = source.error ? buildErrorBlock(source.error, descriptor) : undefined;
+  const resultBlock = !errorBlock && options.showResultDetails ? buildResultBlock(source, descriptor) : undefined;
 
   return {
     title,
-    detail: joinDetailParts(detail, meta),
+    detail,
     iconToken: descriptor?.iconToken ?? 'setting-inter_outlined',
+    status,
+    resultBlock,
+    errorBlock,
   };
 }
 
@@ -290,43 +307,26 @@ function pickSummaryDetail(signals: SummarySignals, preference: SummarySource[])
   return undefined;
 }
 
-function buildStepMeta(
+function buildResultBlock(
   source: ToolStepSource,
   descriptor: ToolDescriptor | undefined,
-  options: { showResultDetails: boolean; showFullPaths: boolean },
-): string | undefined {
-  const parts: string[] = [];
-  if (source.error) {
-    parts.push(`Failed: ${source.error}`);
-  } else if (options.showResultDetails) {
-    const resultDetail = buildResultDetail(source, descriptor, options);
-    if (resultDetail) {
-      parts.push(`Result: ${resultDetail}`);
-    }
-  }
-  return parts.length > 0 ? parts.join(' · ') : undefined;
-}
-
-function joinDetailParts(detail?: string, meta?: string): string | undefined {
-  if (detail && meta) return `${detail} · ${meta}`;
-  return detail ?? meta;
-}
-
-function buildResultDetail(
-  source: ToolStepSource,
-  descriptor: ToolDescriptor | undefined,
-  options: { showFullPaths: boolean },
-): string | undefined {
+): ToolUseDisplayBlock | undefined {
   if (source.result == null) return undefined;
   if (descriptor && ['Read', 'Edit', 'Fetch web page', 'Browser'].includes(descriptor.title)) {
     return undefined;
   }
+  return buildDisplayBlock(sanitizeDisplayBlockValue(source.result, descriptor));
+}
 
-  const raw = asDisplayText(source.result);
-  const cleaned = descriptor
-    ? sanitizeToolDetail(descriptor.sanitizer, raw, options)
-    : sanitizeToolDetail('generic', raw, options);
-  return cleaned || undefined;
+function buildErrorBlock(error: string, descriptor: ToolDescriptor | undefined): ToolUseDisplayBlock | undefined {
+  return buildDisplayBlock(sanitizeDisplayBlockValue(error, descriptor), 'text');
+}
+
+function sanitizeDisplayBlockValue(value: unknown, descriptor: ToolDescriptor | undefined): unknown {
+  if (descriptor?.sanitizer === 'command' && typeof value === 'string') {
+    return redactInlineSecrets(value);
+  }
+  return value;
 }
 
 function buildPatternDetail(params: Record<string, unknown>, options: { includeTarget: boolean }): string | undefined {
@@ -349,6 +349,12 @@ function sanitizeToolDetail(
   value: string,
   options: { showFullPaths: boolean },
 ): string | undefined {
+  if (kind === 'command') {
+    const cleaned = normalizeInlineDisplayText(value);
+    if (!cleaned) return undefined;
+    return sanitizeCommandLike(cleaned, options);
+  }
+
   const cleaned = sanitizeGenericText(value);
   if (!cleaned) return undefined;
 
@@ -366,12 +372,14 @@ function sanitizeToolDetail(
       return stripQuotes(cleaned);
     case 'url':
       return stripQuotes(cleaned).replace(/^from\s+/i, '');
-    case 'command':
-      return sanitizeCommandLike(cleaned, options);
     case 'generic':
     default:
       return cleaned;
   }
+}
+
+function normalizeInlineDisplayText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function sanitizePathLike(value: string, options: { showFullPaths: boolean }): string {
@@ -397,6 +405,62 @@ function sanitizeCommandLike(value: string, options: { showFullPaths: boolean })
   if (!cleaned) return 'command';
   const redacted = redactInlineSecrets(cleaned);
   return options.showFullPaths ? redacted : redactCommandPaths(redacted);
+}
+
+function resolveStepStatus(source: ToolStepSource): ToolUseStepStatus {
+  if (source.error) return 'error';
+  if (source.status) return source.status;
+  return 'success';
+}
+
+function buildDisplayBlock(
+  value: unknown,
+  fallbackLanguage: 'json' | 'text' = 'json',
+): ToolUseDisplayBlock | undefined {
+  if (value == null) return undefined;
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\r\n/g, '\n').trim();
+    if (!normalized) return undefined;
+    const parsed = tryParseJson(normalized);
+    if (parsed && typeof parsed === 'object') {
+      const prettyJson = stringifyJson(parsed);
+      if (prettyJson) {
+        return { language: 'json', content: prettyJson };
+      }
+    }
+    return { language: fallbackLanguage === 'json' ? 'text' : fallbackLanguage, content: normalized };
+  }
+
+  if (typeof value === 'object') {
+    const prettyJson = stringifyJson(value);
+    if (prettyJson) {
+      return { language: 'json', content: prettyJson };
+    }
+  }
+
+  const normalized = String(value).trim();
+  return normalized ? { language: 'text', content: normalized } : undefined;
+}
+
+function stringifyJson(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return undefined;
+  }
+}
+
+function tryParseJson(value: string): unknown | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || !/^(?:\{|\[)/.test(trimmed)) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
 }
 
 function redactCommandPaths(command: string): string {
@@ -506,17 +570,6 @@ function humanizeToolName(name: string): string {
 
 function formatDurationLabel(durationMs: number): string {
   return durationMs < 1000 ? `${durationMs} ms` : `${(durationMs / 1000).toFixed(1)} s`;
-}
-
-function asDisplayText(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (value == null) return '';
-  if (typeof value !== 'object') return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
 }
 
 function stripQuotes(value: string): string {
