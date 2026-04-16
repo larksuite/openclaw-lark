@@ -12,7 +12,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { resolveDefaultAgentId } from 'openclaw/plugin-sdk/agent-runtime';
+
 import type { ReplyPayload } from 'openclaw/plugin-sdk';
 import { SILENT_REPLY_TOKEN } from 'openclaw/plugin-sdk/reply-runtime';
 import { extractLarkApiCode } from '../core/api-error';
@@ -160,40 +160,16 @@ export class StreamingCardController {
       // to route the store lookup to the correct per-agent session file.
       const agentId = key.match(/^agent:([^:]+):/)?.[1];
 
-      // WORKAROUND: SDK session key round-trip bug.
-      // The SDK's toAgentRequestSessionKey() strips the agent scope from keys
-      // like "agent:hr:main" → "main", then toAgentStoreSessionKey() rebuilds
-      // using the default agent ID → "agent:main:main".  This means metrics
-      // written by the SDK always land under "agent:<defaultAgentId>:…"
-      // regardless of the account-scoped agent ID the plugin routing generated.
-      // Fallback: when the primary key misses, try replacing the agent-id
-      // segment with the resolved default agent ID.
-      // TODO: remove once the SDK preserves the original agent ID during the
-      // request→store key round-trip.
-      const defaultAgentId = resolveDefaultAgentId(this.deps.cfg as Record<string, unknown>);
-      const fallbackKey = key.replace(/^(agent):[^:]+:/, `$1:${defaultAgentId}:`);
-      const candidateKeys = fallbackKey !== key ? [key, fallbackKey] : [key];
-
       const sessionApi = runtime.agent?.session;
       if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
         const storePath = sessionApi.resolveStorePath(sessionStorePath, { agentId });
         const store = sessionApi.loadSessionStore(storePath);
 
-        let entry: Record<string, unknown> | undefined;
-        let matchedKey: string | undefined;
-        for (const candidate of candidateKeys) {
-          const val = store[candidate];
-          if (val && typeof val === 'object') {
-            entry = val as Record<string, unknown>;
-            matchedKey = candidate;
-            break;
-          }
-        }
-
-        if (!entry) {
+        const entry = store[key];
+        if (!entry || typeof entry !== 'object') {
           log.debug('footer metrics lookup: session entry missing', {
             sessionKey: this.deps.sessionKey,
-            candidateKeys,
+            key,
             storePath,
             source: 'runtime.agent.session',
           });
@@ -212,7 +188,7 @@ export class StreamingCardController {
         };
         log.debug('footer metrics lookup: session entry found', {
           sessionKey: this.deps.sessionKey,
-          matchedKey,
+          key,
           storePath,
           source: 'runtime.agent.session',
         });
@@ -232,21 +208,11 @@ export class StreamingCardController {
           ? (parsed as Record<string, Record<string, unknown>>)
           : {};
 
-      let entry: Record<string, unknown> | undefined;
-      let matchedKey: string | undefined;
-      for (const candidate of candidateKeys) {
-        const val = store[candidate];
-        if (val && typeof val === 'object') {
-          entry = val as Record<string, unknown>;
-          matchedKey = candidate;
-          break;
-        }
-      }
-
-      if (!entry) {
+      const entry = store[key];
+      if (!entry || typeof entry !== 'object') {
         log.debug('footer metrics lookup: session entry missing', {
           sessionKey: this.deps.sessionKey,
-          candidateKeys,
+          key,
           storePath,
           source: 'channel.session.file',
         });
@@ -265,7 +231,7 @@ export class StreamingCardController {
       };
       log.debug('footer metrics lookup: session entry found', {
         sessionKey: this.deps.sessionKey,
-        matchedKey,
+        key,
         storePath,
         source: 'channel.session.file',
       });
