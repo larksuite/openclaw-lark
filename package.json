@@ -73,7 +73,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./dist/index.mjs"
+      "./index.ts"
     ],
     "channel": {
       "id": "openclaw-lark",

@@ -42,7 +42,6 @@ import { AppScopeMissingError, UserAuthRequiredError, UserScopeInsufficientError
 import { getAppGrantedScopes, invalidateAppScopeCache, isAppScopeSatisfied } from '../core/app-scope-checker';
 import { LarkClient } from '../core/lark-client';
 import { createCardEntity, sendCardByCardId, updateCardKitCardForAuth } from '../card/cardkit';
-import { OwnerAccessDeniedError } from '../core/owner-policy';
 import { dispatchSyntheticTextMessage } from '../messaging/inbound/synthetic-message';
 import { executeAuthorize } from './oauth';
 import { formatToolResult, getResolvedConfig } from './helpers';
@@ -934,16 +933,6 @@ export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotC
   cfg = getResolvedConfig(cfg);
 
   const ticket = getTicket();
-
-  // --- Path 0：Owner 访问拒绝 → 直接返回友好提示 ---
-  if (err instanceof OwnerAccessDeniedError) {
-    return json({
-      error: 'permission_denied',
-      message: '当前应用仅限所有者（App Owner）使用。您没有权限使用相关功能。',
-      user_open_id: err.userOpenId,
-      // 注意：不序列化 err.appOwnerId，避免泄露 owner 的 open_id
-    });
-  }
 
   if (ticket) {
     const senderOpenId = ticket.senderOpenId;

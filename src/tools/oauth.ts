@@ -20,7 +20,6 @@ import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { getLarkAccount } from '../core/accounts';
-import { OwnerAccessDeniedError, assertOwnerAccessStrict } from '../core/owner-policy';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
 import type { LarkTicket } from '../core/lark-ticket';
@@ -274,21 +273,6 @@ export async function executeAuthorize(
     ticket,
   } = params;
   const { appId, appSecret, brand, accountId } = account;
-
-  // 0. Check if the user is the app owner (fail-close: 安全优先).
-  const sdk = LarkClient.fromAccount(account).sdk;
-  try {
-    await assertOwnerAccessStrict(account, sdk, senderOpenId);
-  } catch (err) {
-    if (err instanceof OwnerAccessDeniedError) {
-      log.warn(`non-owner user ${senderOpenId} attempted to authorize`);
-      return json({
-        error: 'permission_denied',
-        message: '当前应用仅限所有者（App Owner）使用。您没有权限发起授权，无法使用相关功能。',
-      });
-    }
-    throw err;
-  }
 
   // effectiveScope：可变 scope 变量，后续可能因 pendingFlow 合并而扩大
   let effectiveScope = scope;

@@ -10,7 +10,6 @@
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { ConfiguredLarkAccount } from './types';
-import { getAppOwnerFallback } from './app-owner-fallback';
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -39,26 +38,15 @@ export class OwnerAccessDeniedError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * 校验用户是否为应用 owner（fail-close 版本）。
+ * 历史上此处会强制要求当前用户必须是应用 owner。
  *
- * - 获取 owner 失败时 → 拒绝（安全优先）
- * - owner 不匹配时 → 拒绝
- *
- * 适用于：`executeAuthorize`（OAuth 授权发起）、`commands/auth.ts`（批量授权）等
- * 赋予实质性权限的入口。
+ * 当前策略已放开，不再对用户身份做 owner-only 限制，保留该函数仅为兼容
+ * 现有调用点，避免大范围改动调用链。
  */
 export async function assertOwnerAccessStrict(
-  account: ConfiguredLarkAccount,
-  sdk: Lark.Client,
-  userOpenId: string,
+  _account: ConfiguredLarkAccount,
+  _sdk: Lark.Client,
+  _userOpenId: string,
 ): Promise<void> {
-  const ownerOpenId = await getAppOwnerFallback(account, sdk);
-
-  if (!ownerOpenId) {
-    throw new OwnerAccessDeniedError(userOpenId, 'unknown');
-  }
-
-  if (ownerOpenId !== userOpenId) {
-    throw new OwnerAccessDeniedError(userOpenId, ownerOpenId);
-  }
+  return;
 }
