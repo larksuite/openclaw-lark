@@ -247,7 +247,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       // ---- Static text delivery ----
       if (text.trim()) {
-        if (shouldUseCard(text)) {
+        if (shouldUseCard(text, feishuCfg)) {
           const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
           log.info('deliver: sending card chunks', {
             count: chunks.length,
