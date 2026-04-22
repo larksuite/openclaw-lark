@@ -119,6 +119,54 @@ export interface ResolveUserNameResult {
 }
 
 /**
+ * Resolve a single bot's display name via `/open-apis/bot/v3/bots/basic_batch`.
+ *
+ * Bots are not returned by the contact API, so they have their own endpoint.
+ * Names share the same account-scoped cache (keyed by openId) since both
+ * bots and users have `ou_` prefixed openIds and a single display name.
+ */
+export async function resolveBotName(params: {
+  account: LarkAccount;
+  openId: string;
+  log: (...args: unknown[]) => void;
+}): Promise<ResolveUserNameResult> {
+  const { account, openId, log } = params;
+  if (!account.configured || !openId) return {};
+
+  const cache = getUserNameCache(account.accountId);
+  if (cache.has(openId)) return { name: cache.get(openId) ?? '' };
+
+  try {
+    const client = LarkClient.fromAccount(account).sdk;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await (client as any).request({
+      method: 'GET',
+      url: '/open-apis/bot/v3/bots/basic_batch',
+      params: { bot_ids: [openId] },
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bot: any = res?.data?.bots?.[openId];
+    const name: string =
+      bot?.name || bot?.i18n_names?.zh_cn || bot?.i18n_names?.en_us || '';
+
+    // Cache even empty names to avoid repeated API calls for bots
+    // whose names we cannot resolve.
+    cache.set(openId, name);
+    return { name: name || undefined };
+  } catch (err) {
+    const permErr = extractPermissionError(err);
+    if (permErr) {
+      log(`feishu: permission error resolving bot name: code=${permErr.code}`);
+      cache.set(openId, '');
+      return { permissionError: permErr };
+    }
+    log(`feishu: failed to resolve bot name for ${openId}: ${String(err)}`);
+    return {};
+  }
+}
+
+/**
  * Resolve a single user's display name.
  *
  * Checks the account-scoped cache first, then falls back to the

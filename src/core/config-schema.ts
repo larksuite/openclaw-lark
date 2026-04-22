@@ -116,6 +116,8 @@ const DedupSchema = z
   })
   .optional();
 
+const AllowBotsSchema = z.union([z.boolean(), z.literal('mentions')]).optional();
+
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
 
 export const UATConfigSchema = z
@@ -145,6 +147,7 @@ export const FeishuGroupSchema = z.object({
   enabled: z.boolean().optional(),
   allowFrom: AllowFromSchema,
   systemPrompt: z.string().optional(),
+  allowBots: AllowBotsSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -193,6 +196,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  allowBots: AllowBotsSchema,
   uat: UATConfigSchema,
 });
 

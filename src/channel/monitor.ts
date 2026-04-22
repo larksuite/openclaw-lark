@@ -13,9 +13,9 @@ import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { getEnabledLarkAccounts, getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
-import { MessageDedup } from '../messaging/inbound/dedup';
 import { larkLogger } from '../core/lark-logger';
 import { drainShutdownHooks } from '../core/shutdown-hooks';
+import { MessageDedup } from '../messaging/inbound/dedup';
 import type { MonitorContext, MonitorFeishuOpts } from './types';
 import {
   handleBotMembershipEvent,

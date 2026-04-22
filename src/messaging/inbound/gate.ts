@@ -26,7 +26,7 @@
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
-import type { FeishuConfig, LarkAccount  } from '../../core/types';
+import type { FeishuConfig, FeishuGroupConfig, LarkAccount  } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import {
   isFeishuGroupAllowed,
@@ -52,6 +52,24 @@ export function resolveRespondToMentionAll(params: {
     params.groupConfig?.respondToMentionAll ??
     params.defaultConfig?.respondToMentionAll ??
     params.accountFeishuCfg?.respondToMentionAll ??
+    false
+  );
+}
+
+/**
+ * Resolve the effective allowBots setting.
+ *
+ * Precedence: per-group > default ("*") > account > false.
+ */
+export function resolveAllowBots(params: {
+  groupConfig?: FeishuGroupConfig;
+  defaultConfig?: FeishuGroupConfig;
+  accountFeishuCfg?: FeishuConfig;
+}): boolean | 'mentions' {
+  return (
+    params.groupConfig?.allowBots ??
+    params.defaultConfig?.allowBots ??
+    params.accountFeishuCfg?.allowBots ??
     false
   );
 }
@@ -112,14 +130,190 @@ export async function checkMessageGate(params: {
   accountScopedCfg?: ClawdbotConfig;
   log: (...args: unknown[]) => void;
 }): Promise<GateResult> {
-  const { ctx, accountFeishuCfg, account, accountScopedCfg, log } = params;
-  const isGroup = ctx.chatType === 'group';
+  const { ctx } = params;
 
-  if (isGroup) {
-    return checkGroupGate({ ctx, accountFeishuCfg, account, accountScopedCfg, log });
+  if (ctx.senderIsBot) {
+    return checkBotSenderGate(params);
   }
 
-  return checkDmGate({ ctx, accountFeishuCfg, account, accountScopedCfg, log });
+  const isGroup = ctx.chatType === 'group';
+  if (isGroup) {
+    return checkGroupGate(params);
+  }
+  return checkDmGate(params);
+}
+
+// ---------------------------------------------------------------------------
+// Internal: shared group access (Layer 1)
+// ---------------------------------------------------------------------------
+
+interface FeishuGroupAccess {
+  /** Non-null = caller must reject with this gate result. */
+  rejected: GateResult | null;
+  /** True when admission was granted via the legacy chat-id-in-groupAllowFrom
+   *  compat path; downstream sender filtering is skipped in that mode. */
+  legacyGroupAdmit: boolean;
+  /** sender_ids only (oc_ chat-id entries excluded). */
+  senderGroupAllowFrom: string[];
+  groupConfig: FeishuGroupConfig | undefined;
+  defaultConfig: FeishuGroupConfig | undefined;
+}
+
+/**
+ * Layer 1 group-level admission check, shared between human and bot sender paths.
+ *
+ * Computes:
+ *  - `groupPolicy` access via SDK (`resolveGroupPolicy`)
+ *  - Legacy chat-id-in-`groupAllowFrom` compat
+ *  - Per-group `enabled === false` kill switch
+ *
+ * Returns `rejected` non-null when the caller should reject with that result;
+ * otherwise the resolved per-group config is returned for downstream use.
+ *
+ * Bot senders go through the same Layer 1 as humans — `allowBots` only governs
+ * sender-axis admission, not which groups the account responds in.
+ */
+function resolveFeishuGroupAccess(params: {
+  ctx: MessageContext;
+  accountFeishuCfg?: FeishuConfig;
+  account: LarkAccount;
+  accountScopedCfg?: ClawdbotConfig;
+  log: (...args: unknown[]) => void;
+}): FeishuGroupAccess {
+  const { ctx, accountFeishuCfg, account, accountScopedCfg, log } = params;
+  const core = LarkClient.runtime;
+
+  // Legacy compat: groupAllowFrom with chat_id entries.
+  const rawGroupAllowFrom = accountFeishuCfg?.groupAllowFrom ?? [];
+  const { legacyChatIds, senderAllowFrom: senderGroupAllowFrom } = splitLegacyGroupAllowFrom(rawGroupAllowFrom);
+
+  if (legacyChatIds.length > 0 && !legacyGroupAllowFromWarned) {
+    legacyGroupAllowFromWarned = true;
+    log(
+      `feishu[${account.accountId}]: ⚠️  groupAllowFrom contains chat_id entries ` +
+        `(${legacyChatIds.join(', ')}). groupAllowFrom is for SENDER filtering ` +
+        `(open_ids like ou_xxx). Please move chat_ids to "groups" config instead:\n` +
+        `  channels.feishu.groups: {\n` +
+        legacyChatIds.map((id) => `    "${id}": {},`).join('\n') +
+        `\n  }`,
+    );
+  }
+
+  const groupConfig = resolveFeishuGroupConfig({ cfg: accountFeishuCfg, groupId: ctx.chatId });
+  const defaultConfig = accountFeishuCfg?.groups?.['*'];
+
+  // SDK group-level policy (groupPolicy disabled / allowlist / open).
+  const groupAccess = core.channel.groups.resolveGroupPolicy({
+    cfg: accountScopedCfg ?? {},
+    channel: 'feishu',
+    groupId: ctx.chatId,
+    accountId: account.accountId,
+    groupIdCaseInsensitive: true,
+    hasGroupAllowFrom: senderGroupAllowFrom.length > 0,
+  });
+
+  let legacyGroupAdmit = false;
+  if (!groupAccess.allowed) {
+    const chatIdLower = ctx.chatId.toLowerCase();
+    const legacyMatch = legacyChatIds.some((id) => String(id).toLowerCase() === chatIdLower);
+    if (!legacyMatch) {
+      log(`feishu[${account.accountId}]: group ${ctx.chatId} blocked by group-level policy`);
+      return {
+        rejected: { allowed: false, reason: 'group_not_allowed' },
+        legacyGroupAdmit: false,
+        senderGroupAllowFrom,
+        groupConfig,
+        defaultConfig,
+      };
+    }
+    legacyGroupAdmit = true;
+  }
+
+  const enabled = groupConfig?.enabled ?? defaultConfig?.enabled;
+  if (enabled === false) {
+    log(`feishu[${account.accountId}]: group ${ctx.chatId} disabled by per-group config`);
+    return {
+      rejected: { allowed: false, reason: 'group_disabled' },
+      legacyGroupAdmit,
+      senderGroupAllowFrom,
+      groupConfig,
+      defaultConfig,
+    };
+  }
+
+  return { rejected: null, legacyGroupAdmit, senderGroupAllowFrom, groupConfig, defaultConfig };
+}
+
+// ---------------------------------------------------------------------------
+// Internal: bot sender gate
+// ---------------------------------------------------------------------------
+
+function checkBotSenderGate(params: {
+  ctx: MessageContext;
+  accountFeishuCfg?: FeishuConfig;
+  account: LarkAccount;
+  accountScopedCfg?: ClawdbotConfig;
+  log: (...args: unknown[]) => void;
+}): GateResult {
+  const { ctx, accountFeishuCfg, account, log } = params;
+  const isGroup = ctx.chatType === 'group';
+
+  // 1. Layer 1 group access — bot senders are subject to the same group-level
+  //    admission as humans. `allowBots` is a sender-axis filter, not a group-axis
+  //    filter; an account configured to ignore a group must ignore bots there too.
+  let groupConfig: FeishuGroupConfig | undefined;
+  let defaultConfig: FeishuGroupConfig | undefined;
+  if (isGroup) {
+    const access = resolveFeishuGroupAccess(params);
+    if (access.rejected) return access.rejected;
+    groupConfig = access.groupConfig;
+    defaultConfig = access.defaultConfig;
+  }
+
+  // 2. Resolve allowBots (per-group > default > account > false)
+  const allowBots = resolveAllowBots({ groupConfig, defaultConfig, accountFeishuCfg });
+
+  // 3. allowBots === false → drop
+  if (allowBots === false) {
+    log(
+      `feishu[${account.accountId}]: drop bot sender ${ctx.senderId} in ${ctx.chatId} (allowBots=false)`,
+    );
+    return { allowed: false, reason: 'bot_sender_disabled' };
+  }
+
+  // 4. allowBots === 'mentions' + bot not mentioned → drop (group only;
+  //    DMs have no @-mention concept, so mention-mode is a pass-through there).
+  if (isGroup && allowBots === 'mentions' && !mentionedBot(ctx)) {
+    log(
+      `feishu[${account.accountId}]: drop bot sender ${ctx.senderId} in ${ctx.chatId} (allowBots=mentions, not mentioned)`,
+    );
+    return { allowed: false, reason: 'bot_sender_not_mentioned' };
+  }
+
+  // 5. Group requireMention check — redundant with allowBots='mentions' but
+  //    necessary for the explicit `allowBots=true + requireMention=true` combo.
+  //
+  //    NOTE: this intentionally diverges from the human-sender path (checkGroupGate),
+  //    which delegates to SDK's resolveRequireMention that defaults to true.
+  //    For bot senders, `requireMention` must be explicitly set to true — the
+  //    rationale being: if the operator opts into `allowBots=true`, they want
+  //    bot traffic through by default. Holding bots to a true-default mention
+  //    requirement would silently negate `allowBots=true` in most configs.
+  if (isGroup) {
+    const requireMention =
+      groupConfig?.requireMention ??
+      defaultConfig?.requireMention ??
+      accountFeishuCfg?.requireMention;
+    if (requireMention === true && !mentionedBot(ctx)) {
+      log(
+        `feishu[${account.accountId}]: drop bot sender ${ctx.senderId} (no_mention)`,
+      );
+      // Intentionally NO historyEntry — bot messages never enter chat history.
+      return { allowed: false, reason: 'no_mention' };
+    }
+  }
+
+  return { allowed: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -136,68 +330,10 @@ function checkGroupGate(params: {
   const { ctx, accountFeishuCfg, account, accountScopedCfg, log } = params;
   const core = LarkClient.runtime;
 
-  // ---- Legacy compat: groupAllowFrom with chat_id entries ----
-  // Older Feishu configs used groupAllowFrom with chat_ids (oc_xxx) to
-  // control which groups are allowed.  The correct semantic (aligned with
-  // Telegram) is sender_ids.  Detect and split so both layers still work.
-  const rawGroupAllowFrom = accountFeishuCfg?.groupAllowFrom ?? [];
-  const { legacyChatIds, senderAllowFrom: senderGroupAllowFrom } = splitLegacyGroupAllowFrom(rawGroupAllowFrom);
-
-  if (legacyChatIds.length > 0 && !legacyGroupAllowFromWarned) {
-    legacyGroupAllowFromWarned = true;
-    log(
-      `feishu[${account.accountId}]: ⚠️  groupAllowFrom contains chat_id entries ` +
-        `(${legacyChatIds.join(', ')}). groupAllowFrom is for SENDER filtering ` +
-        `(open_ids like ou_xxx). Please move chat_ids to "groups" config instead:\n` +
-        `  channels.feishu.groups: {\n` +
-        legacyChatIds.map((id) => `    "${id}": {},`).join('\n') +
-        `\n  }`,
-    );
-  }
-
-  // ---- Layer 1: Group-level access (SDK) ----
-  // The SDK reads `channels.feishu.groups` as an allowlist of group IDs.
-  // - No groups configured + groupPolicy "open" → any group passes
-  // - groupPolicy "allowlist" (or groups configured) → only listed groups pass
-  // - groupPolicy "disabled" → all groups blocked
-  const groupAccess = core.channel.groups.resolveGroupPolicy({
-    cfg: accountScopedCfg ?? {},
-    channel: 'feishu',
-    groupId: ctx.chatId,
-    accountId: account.accountId,
-    groupIdCaseInsensitive: true,
-    hasGroupAllowFrom: senderGroupAllowFrom.length > 0,
-  });
-
-  // Legacy compat: if SDK rejects the group but the chat_id is in the
-  // old-style groupAllowFrom, allow it (backward compatibility).
-  // Track whether this group was admitted via legacy path so we can skip
-  // sender filtering below (old semantic: chat_id in groupAllowFrom meant
-  // "allow this group for any sender").
-  let legacyGroupAdmit = false;
-  if (!groupAccess.allowed) {
-    const chatIdLower = ctx.chatId.toLowerCase();
-    const legacyMatch = legacyChatIds.some((id) => String(id).toLowerCase() === chatIdLower);
-    if (!legacyMatch) {
-      log(`feishu[${account.accountId}]: group ${ctx.chatId} blocked by group-level policy`);
-      return { allowed: false, reason: 'group_not_allowed' };
-    }
-    legacyGroupAdmit = true;
-  }
-
-  // ---- Per-group config (Feishu-specific fields) ----
-  const groupConfig = resolveFeishuGroupConfig({
-    cfg: accountFeishuCfg,
-    groupId: ctx.chatId,
-  });
-  const defaultConfig = accountFeishuCfg?.groups?.['*'];
-
-  // Per-group enabled flag
-  const enabled = groupConfig?.enabled ?? defaultConfig?.enabled;
-  if (enabled === false) {
-    log(`feishu[${account.accountId}]: group ${ctx.chatId} disabled by per-group config`);
-    return { allowed: false, reason: 'group_disabled' };
-  }
+  // ---- Layer 1: Group-level admission (shared with bot path) ----
+  const access = resolveFeishuGroupAccess(params);
+  if (access.rejected) return access.rejected;
+  const { legacyGroupAdmit, senderGroupAllowFrom, groupConfig, defaultConfig } = access;
 
   // ---- Layer 2: Sender-level access ----
   // Per-group groupPolicy overrides the global groupPolicy for sender filtering.

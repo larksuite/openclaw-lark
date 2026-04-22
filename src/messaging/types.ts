@@ -288,6 +288,14 @@ export interface MessageContext {
   mentions: MentionInfo[];
   /** Whether an @all / @所有人 mention was detected in the message. */
   mentionAll: boolean;
+  /**
+   * True when the event sender is a bot/app (sender_type === 'app').
+   *
+   * Set by parseMessageEvent. Optional because synthetic construction sites
+   * (comment / reaction / vc-invited handlers) omit it — absence is treated
+   * as `false` since those paths only originate from human actors today.
+   */
+  senderIsBot?: boolean;
 
   // Message relationships
   rootId?: string;
