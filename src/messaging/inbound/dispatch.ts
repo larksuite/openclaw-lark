@@ -252,9 +252,16 @@ export async function dispatchToAgent(params: {
   defaultGroupConfig?: FeishuGroupConfig;
   /** When true, the reply dispatcher skips typing indicators. */
   skipTyping?: boolean;
+  /** Bot's own open_id for A2A cross-bot routing detection */
+  botOpenId?: string;
 }): Promise<void> {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
+
+  // [A2A-THREAD-DEBUG] Log dispatch context for thread analysis
+  dc.log(
+    `[A2A-THREAD-DEBUG] dispatchToAgent: ctx.messageId=${params.ctx.messageId}, ctx.chatId=${params.ctx.chatId}, ctx.threadId=${params.ctx.threadId ?? 'undefined'}, ctx.rootId=${params.ctx.rootId ?? 'undefined'}, ctx.parentId=${params.ctx.parentId ?? 'undefined'}, dc.isThread=${dc.isThread}, dc.isGroup=${dc.isGroup}, replyToMessageId=${params.replyToMessageId ?? 'undefined'}`,
+  );
 
   // 1a. Thread detection fallback for topic groups.
   //     In topic groups (chat_mode=topic), reply events may carry root_id
@@ -285,6 +292,20 @@ export async function dispatchToAgent(params: {
     });
   }
 
+  // 1c. Auto-create thread for new conversations when autoCreateThread is "enabled".
+  //     Unlike threadSession, this does NOT call isThreadCapableGroup — it trusts
+  //     the config directly and creates a new thread in the main group chat.
+  //     This mirrors the built-in channel behavior where autoCreateThread bypasses
+  //     the group capability check.
+  const isNewConversation = !dc.ctx.rootId && !dc.ctx.threadId;
+  const autoCreateThreadCfg = dc.account?.config?.autoCreateThread === 'enabled';
+  const shouldAutoCreateThread = autoCreateThreadCfg && isNewConversation;
+  if (!dc.isThread && dc.isGroup && shouldAutoCreateThread) {
+    log.info(`autoCreateThread: creating new thread in group ${dc.ctx.chatId}`);
+    dc.isThread = true;
+    dc.ctx = { ...dc.ctx, threadId: dc.ctx.messageId };
+  }
+
   // 2. Build annotated message body
   const messageBody = buildMessageBody(params.ctx, params.quotedContent);
 
@@ -312,7 +333,7 @@ export async function dispatchToAgent(params: {
   // 5. Build BodyForAgent with mention annotation (if any).
   //    SDK >= 2026.2.10 no longer falls back to Body for BodyForAgent,
   //    so we must set it explicitly to preserve the annotation.
-  const bodyForAgent = buildBodyForAgent(params.ctx);
+  let bodyForAgent = buildBodyForAgent(params.ctx);
 
   // 6. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
   //    The SDK's buildInboundUserContextPrefix renders these as structured
@@ -340,6 +361,69 @@ export async function dispatchToAgent(params: {
           threadId: dc.ctx.threadId,
         })
       : undefined;
+
+  // [A2A DEBUG] Log wasMentioned computation and dispatch target
+  const wasMentionedComputed =
+    mentionedBot(params.ctx) ||
+    (params.ctx.mentionAll &&
+      resolveRespondToMentionAll({
+        groupConfig: params.groupConfig,
+        defaultConfig: params.defaultGroupConfig,
+        accountFeishuCfg: params.account.config,
+      }));
+
+  // [A2A CENTRAL-ROUTING] Detect multiple bot mentions for inter-bot notification
+  // When a message mentions multiple bots, we need to notify other mentioned bots' agents
+  // This solves the Feishu webhook limitation: bot @ bot only delivers to sender
+  const ctxMentions = params.ctx.mentions || [];
+  const botMentions = ctxMentions.filter((m) => m.isBot);
+  const otherBotMentions = botMentions.filter((m) => m.openId !== params.botOpenId);
+  log.info(
+    `[A2A-CENTRAL-ROUTING] messageId=${params.ctx.messageId}, currentBot=${params.botOpenId}, ` +
+      `allMentions=${ctxMentions.length}, botMentions=${botMentions.length}, otherBotMentions=${otherBotMentions.length}, ` +
+      `otherBotOpenIds=[${otherBotMentions.map((m) => `${m.name}(${m.openId})`).join(', ')}], ` +
+      `wasMentioned=${wasMentionedComputed}, currentAgentId=${dc.route.agentId}, currentSessionKey=${dc.route.sessionKey}`,
+  );
+
+  // [A2A CENTRAL-ROUTING] If other bots were mentioned, prepend forwarding instruction to bodyForAgent
+  // This tells the AI agent to use sessions_send to forward the message to other mentioned bots
+  // The AI needs to have sessions_send tool access and knowledge of other agents' session keys
+  if (otherBotMentions.length > 0) {
+    const otherBotNames = otherBotMentions.map((m) => m.name).join(', ');
+    const otherBotOpenIds = otherBotMentions.map((m) => m.openId).join(', ');
+    const forwardInstruction =
+      `[SYSTEM: FORWARD REQUEST]\n` +
+      `This message mentions other AI agents: ${otherBotNames}.\n` +
+      `To enable collaboration, please use sessions_send to forward a relevant summary or response ` +
+      `to each mentioned agent. Target agent open_ids: ${otherBotOpenIds}\n`;
+    log.info(
+      `[A2A-CENTRAL-ROUTING] MULTI-BOT: prepending forward instruction for [${otherBotNames}] ` +
+        `to bodyForAgent. AI should use sessions_send with targets: ${otherBotOpenIds}`,
+    );
+    bodyForAgent = forwardInstruction + bodyForAgent;
+  }
+
+  // [A2A CENTRAL-ROUTING] Transparent forwarding mode:
+  // If this account is in centralRoutingMode and no human mention was found,
+  // skip the reply dispatch entirely — just record the message to history.
+  // The bot should remain silent so the central routing logic can handle it.
+  const feishuCfg = dc.account?.config as { centralRoutingMode?: boolean } | undefined;
+  const isCentralRouting = feishuCfg?.centralRoutingMode === true;
+  if (isCentralRouting && !wasMentionedComputed && otherBotMentions.length === 0) {
+    dc.log(
+      `feishu[${dc.account.accountId}]: [CENTRAL-ROUTING] transparent mode: no mention, recording to history only, skipping reply`,
+    );
+    log.info(
+      `[CENTRAL-ROUTING] transparent mode skip (no mention), session=${dc.route.sessionKey}, msgId=${params.ctx.messageId}`,
+    );
+    if (params.chatHistories && historyKey) {
+      const entry = { sender: params.ctx.senderId, body: combinedBody, timestamp: Date.now() };
+      const existing = params.chatHistories.get(historyKey) ?? [];
+      params.chatHistories.set(historyKey, [...existing, entry]);
+    }
+    return; // early return: do NOT dispatch to AI agent
+  }
+
   const ctxPayload = buildInboundPayload(dc, {
     body: combinedBody,
     bodyForAgent,
@@ -349,14 +433,7 @@ export async function dispatchToAgent(params: {
     senderName: params.ctx.senderName ?? params.ctx.senderId,
     senderId: params.ctx.senderId,
     messageSid: params.ctx.messageId,
-    wasMentioned:
-      mentionedBot(params.ctx) ||
-      (params.ctx.mentionAll &&
-        resolveRespondToMentionAll({
-          groupConfig: params.groupConfig,
-          defaultConfig: params.defaultGroupConfig,
-          accountFeishuCfg: params.account.config,
-        })),
+    wasMentioned: wasMentionedComputed,
     replyToBody: params.quotedContent,
     inboundHistory,
     extraFields: {

@@ -1,7 +1,7 @@
 # OpenClaw Lark/Feishu Plugin
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
+[![npm version](https://img.shields.io/npm/v/@zegoclaw/openclaw-lark.svg)](https://github.com/zegoclaw/openclaw-lark/packages)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
 
 [中文版](./README.zh.md) | English
@@ -60,6 +60,20 @@ Before you start, make sure you have the following:
 > ```bash
 > npm install -g openclaw
 > ```
+
+### Installation
+
+To install this plugin via openclaw:
+
+```bash
+npx -y @larksuite/openclaw-lark install
+```
+
+To install from this fork (GitHub Packages):
+
+```bash
+npm install @zegoclaw/openclaw-lark -g
+```
 
 ## Usage Guide
 
