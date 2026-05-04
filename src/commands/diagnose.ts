@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import { resolveCommandSecretRefsViaGateway } from 'openclaw/plugin-sdk/runtime';
 
 interface DiagLogger {
   info: (message: string) => void;
@@ -26,6 +27,7 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 import { probeFeishu } from '../channel/probe';
 import { getEnabledLarkAccounts, getLarkAccount, getLarkAccountIds } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
+import { getPluginVersion } from '../core/version';
 
 /**
  * Resolve the global config for cross-account operations.
@@ -80,9 +82,16 @@ interface DiagReport {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLUGIN_VERSION = '2026.2.10';
 const LOG_READ_BYTES = 256 * 1024; // read last 256KB of log
 const MAX_ERROR_LINES = 20;
+const FEISHU_SECRET_TARGET_IDS = new Set([
+  'channels.feishu.appSecret',
+  'channels.feishu.accounts.*.appSecret',
+  'channels.feishu.encryptKey',
+  'channels.feishu.accounts.*.encryptKey',
+  'channels.feishu.verificationToken',
+  'channels.feishu.accounts.*.verificationToken',
+]);
 /** Matches a timestamped log line: 2026-02-13T09:23:35.038Z [level]: ... */
 const TIMESTAMPED_LINE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 const ERROR_LEVEL_RE = /\[error\]|\[warn\]/i;
@@ -91,10 +100,30 @@ const ERROR_LEVEL_RE = /\[error\]|\[warn\]/i;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function maskSecret(secret?: string): string {
+function maskSecret(secret?: unknown): string {
   if (!secret) return '(未设置)';
-  if (secret.length <= 4) return '****';
-  return secret.slice(0, 4) + '****';
+  return '****';
+}
+
+async function resolveFeishuCommandConfig(
+  config: OpenClawConfig,
+  commandName: string,
+): Promise<{ config: OpenClawConfig; diagnostics: string[] }> {
+  try {
+    const result = await resolveCommandSecretRefsViaGateway({
+      config,
+      commandName,
+      targetIds: FEISHU_SECRET_TARGET_IDS,
+    });
+    return { config: result.resolvedConfig, diagnostics: result.diagnostics };
+  } catch (err) {
+    return {
+      config,
+      diagnostics: [
+        `${commandName}: failed to resolve SecretRefs: ${err instanceof Error ? err.message : String(err)}`,
+      ],
+    };
+  }
 }
 
 async function extractRecentErrors(logPath: string): Promise<string[]> {
@@ -272,8 +301,16 @@ export async function runDiagnosis(params: { config: OpenClawConfig; logger?: Di
   const { config } = params;
   // Use the global config to enumerate all accounts — the passed-in
   // config may be account-scoped (accounts map stripped).
-  const globalCfg = resolveGlobalConfig(config);
+  const resolved = await resolveFeishuCommandConfig(resolveGlobalConfig(config), 'feishu-diagnose');
+  const globalCfg = resolved.config;
   const globalChecks: DiagCheckResult[] = [];
+
+  globalChecks.push({
+    name: 'SecretRef 解析',
+    status: resolved.diagnostics.length > 0 ? 'warn' : 'pass',
+    message: resolved.diagnostics.length > 0 ? `${resolved.diagnostics.length} 条诊断` : '已解析',
+    details: resolved.diagnostics.length > 0 ? resolved.diagnostics.join('\n') : undefined,
+  });
 
   // -- Environment --
   const nodeVer = parseInt(process.version.slice(1), 10);
@@ -337,7 +374,7 @@ export async function runDiagnosis(params: { config: OpenClawConfig; logger?: Di
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
-      pluginVersion: PLUGIN_VERSION,
+      pluginVersion: getPluginVersion(),
     },
     accounts: accountResults,
     toolsRegistered: tools,

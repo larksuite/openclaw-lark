@@ -29,8 +29,8 @@ import { larkLogger } from './lark-logger';
 const log = larkLogger('core/token-store');
 
 // Dynamic require to avoid security scanner false positive (child-process).
-// CJS (tsc output) has __filename; ESM (tsdown output) has import.meta.url.
-const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
+// The base path only needs to be absolute for built-in module resolution.
+const _require = createRequire(join(process.cwd(), 'openclaw-lark-runtime.cjs'));
 const _cpMod = ['child', 'process'].join('_');
 const _cp = _require(`node:${_cpMod}`) as typeof import('node:child_process');
 const execFile = promisify(_cp.execFile);

@@ -20,6 +20,7 @@
     "bin/",
     "dist/",
     "skills/",
+    "secret-contract-api.js",
     "openclaw.plugin.json",
     "README.md",
     "LICENSE"

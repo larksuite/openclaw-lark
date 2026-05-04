@@ -9,6 +9,7 @@
  */
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import { resolveCommandSecretRefsViaGateway } from 'openclaw/plugin-sdk/runtime';
 import type * as Lark from '@larksuiteoapi/node-sdk';
 
 import { getEnabledLarkAccounts } from '../core/accounts';
@@ -120,6 +121,7 @@ const T: Record<
     appPermFail: string;
     userPermPass: string;
     userPermFail: string;
+    secretRefDiagTitle: string;
   }
 > = {
   zh_cn: {
@@ -188,6 +190,7 @@ const T: Record<
     appPermFail: '#### ❌ 应用身份权限检查未通过',
     userPermPass: '#### ✅ 用户身份权限检查通过',
     userPermFail: '#### ❌ 用户身份权限检查未通过',
+    secretRefDiagTitle: '#### ⚠️ SecretRef 解析诊断',
   },
   en_us: {
     notSet: '(not set)',
@@ -258,8 +261,18 @@ const T: Record<
     appPermFail: '#### ❌ App Permission Check Failed',
     userPermPass: '#### ✅ User Permission Check Passed',
     userPermFail: '#### ❌ User Permission Check Failed',
+    secretRefDiagTitle: '#### ⚠️ SecretRef Resolution Diagnostics',
   },
 };
+
+const FEISHU_SECRET_TARGET_IDS = new Set([
+  'channels.feishu.appSecret',
+  'channels.feishu.accounts.*.appSecret',
+  'channels.feishu.encryptKey',
+  'channels.feishu.accounts.*.encryptKey',
+  'channels.feishu.verificationToken',
+  'channels.feishu.accounts.*.verificationToken',
+]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -292,10 +305,30 @@ function getAllToolScopes(): string[] {
 /**
  * 掩码敏感信息（appSecret）
  */
-function maskSecret(secret: string | undefined, locale: DoctorLocale): string {
+function maskSecret(secret: unknown, locale: DoctorLocale): string {
   if (!secret) return T[locale].notSet;
-  if (secret.length <= 4) return '****';
-  return secret.slice(0, 4) + '****';
+  return '****';
+}
+
+async function resolveFeishuCommandConfig(
+  config: OpenClawConfig,
+  commandName: string,
+): Promise<{ config: OpenClawConfig; diagnostics: string[] }> {
+  try {
+    const result = await resolveCommandSecretRefsViaGateway({
+      config,
+      commandName,
+      targetIds: FEISHU_SECRET_TARGET_IDS,
+    });
+    return { config: result.resolvedConfig, diagnostics: result.diagnostics };
+  } catch (err) {
+    return {
+      config,
+      diagnostics: [
+        `${commandName}: failed to resolve SecretRefs: ${err instanceof Error ? err.message : String(err)}`,
+      ],
+    };
+  }
 }
 
 /**
@@ -676,7 +709,8 @@ export async function runFeishuDoctor(
   // 1. 获取目标账户
   //    Use the global config to enumerate all accounts — the passed-in
   //    config may be account-scoped (accounts map stripped).
-  const globalCfg = resolveGlobalConfig(config);
+  const resolved = await resolveFeishuCommandConfig(resolveGlobalConfig(config), 'feishu-doctor');
+  const globalCfg = resolved.config;
   const allAccounts = getEnabledLarkAccounts(globalCfg);
   if (allAccounts.length === 0) {
     return t.noAccounts;
@@ -694,11 +728,17 @@ export async function runFeishuDoctor(
   lines.push('');
   lines.push(`${t.pluginVersionLabel}: ${getPluginVersion()}  |  ${t.diagTimeLabel}: ${formatTimestamp(new Date())}`);
   lines.push('');
+  if (resolved.diagnostics.length > 0) {
+    lines.push(t.secretRefDiagTitle);
+    lines.push('');
+    lines.push(resolved.diagnostics.join('\n'));
+    lines.push('');
+  }
   lines.push('---');
   lines.push('');
 
   // 3. 工具配置（全局，不区分账户）
-  const toolsResult = checkToolsProfile(config, locale);
+  const toolsResult = checkToolsProfile(globalCfg, locale);
   const toolsTitle = toolsResult.status === 'pass' ? t.toolsCheckPass : t.toolsCheckWarn;
   lines.push(toolsTitle);
   lines.push('');
@@ -730,7 +770,7 @@ export async function runFeishuDoctor(
     }
 
     // 4a. 环境信息
-    const basicInfoResult = await checkBasicInfo(account, config, locale);
+    const basicInfoResult = await checkBasicInfo(account, globalCfg, locale);
     const basicTitle = basicInfoResult.status === 'pass' ? t.envCheckPass : t.envCheckFail;
     lines.push(basicTitle);
     lines.push('');

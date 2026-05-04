@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: { index: 'index.ts' },
+  entry: { index: 'index.ts', 'secret-contract-api': 'secret-contract-api.ts' },
   format: 'esm',
   target: 'node22',
   platform: 'node',
@@ -9,13 +9,6 @@ export default defineConfig({
   outDir: 'dist',
   dts: true,
   deps: {
-    neverBundle: [
-      /^openclaw(\/.*)?$/,
-      /^@larksuiteoapi\//,
-      /^@sinclair\//,
-      'image-size',
-      'zod',
-      /^node:/,
-    ],
+    neverBundle: [/^openclaw(\/.*)?$/, /^@larksuiteoapi\//, /^@sinclair\//, 'image-size', 'zod', /^node:/],
   },
 });
