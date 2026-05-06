@@ -82,7 +82,7 @@ const acct: LarkAccount = {
 };
 
 describe('checkMessageGate with bot sender', () => {
-  it('rejects bot sender when allowBots is undefined (defaults to false)', async () => {
+  it("defaults to 'mentions' in groups → unmentioned bot is dropped", async () => {
     const r = await checkMessageGate({
       ctx: makeCtx(),
       accountFeishuCfg: {} as FeishuConfig,
@@ -91,7 +91,31 @@ describe('checkMessageGate with bot sender', () => {
       log: () => {},
     });
     expect(r.allowed).toBe(false);
-    expect(r.reason).toBe('bot_sender_disabled');
+    expect(r.reason).toBe('bot_sender_not_mentioned');
+  });
+
+  it("defaults to 'mentions' in groups → mentioned bot passes", async () => {
+    const r = await checkMessageGate({
+      ctx: makeCtx({
+        mentions: [{ key: '@_1', openId: 'ou_me', name: 'Me', isBot: true }],
+      }),
+      accountFeishuCfg: {} as FeishuConfig,
+      account: acct,
+      accountScopedCfg: { channels: { feishu: {} } } as never,
+      log: () => {},
+    });
+    expect(r.allowed).toBe(true);
+  });
+
+  it("defaults to 'mentions' in DM → pass-through", async () => {
+    const r = await checkMessageGate({
+      ctx: makeCtx({ chatType: 'p2p' }),
+      accountFeishuCfg: {} as FeishuConfig,
+      account: acct,
+      accountScopedCfg: { channels: { feishu: {} } } as never,
+      log: () => {},
+    });
+    expect(r.allowed).toBe(true);
   });
 
   it('rejects when allowBots=false', async () => {

@@ -59,7 +59,12 @@ export function resolveRespondToMentionAll(params: {
 /**
  * Resolve the effective allowBots setting.
  *
- * Precedence: per-group > default ("*") > account > false.
+ * Precedence: per-group > default ("*") > account > 'mentions'.
+ *
+ * The `'mentions'` default lets bot-to-bot interaction work out of the box
+ * while still requiring an explicit @-mention in groups; DMs treat it as
+ * pass-through. Operators can opt into fully-open (`true`) or fully-closed
+ * (`false`) explicitly.
  */
 export function resolveAllowBots(params: {
   groupConfig?: FeishuGroupConfig;
@@ -70,7 +75,7 @@ export function resolveAllowBots(params: {
     params.groupConfig?.allowBots ??
     params.defaultConfig?.allowBots ??
     params.accountFeishuCfg?.allowBots ??
-    false
+    'mentions'
   );
 }
 
@@ -270,7 +275,7 @@ function checkBotSenderGate(params: {
     defaultConfig = access.defaultConfig;
   }
 
-  // 2. Resolve allowBots (per-group > default > account > false)
+  // 2. Resolve allowBots (per-group > default > account > 'mentions')
   const allowBots = resolveAllowBots({ groupConfig, defaultConfig, accountFeishuCfg });
 
   // 3. allowBots === false → drop

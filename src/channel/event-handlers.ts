@@ -80,8 +80,9 @@ export async function handleMessageEvent(ctx: MonitorContext, data: unknown): Pr
     //
     // NOTE: if botOpenId is not yet populated (startup race before probe
     // resolves), this filter is skipped. The downstream bot-sender gate
-    // (checkBotSenderGate) acts as fallback — bot messages default to rejection
-    // unless the operator has explicitly configured allowBots.
+    // (checkBotSenderGate) acts as fallback — bot messages default to
+    // `allowBots='mentions'`, so in groups they require an explicit @-mention
+    // of this bot to pass; DMs are pass-through under the default.
     const senderOpenId = event.sender?.sender_id?.open_id;
     const botOpenId = ctx.lark.botOpenId;
     if (botOpenId && senderOpenId && senderOpenId === botOpenId) {
