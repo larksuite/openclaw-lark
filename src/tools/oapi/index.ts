@@ -17,6 +17,8 @@ import {
   registerFeishuCalendarFreebusyTool,
 } from './calendar/index';
 import {
+  registerFeishuTaskAgentTool,
+  registerFeishuTaskAttachmentTool,
   registerFeishuTaskCommentTool,
   registerFeishuTaskSectionTool,
   registerFeishuTaskSubtaskTool,
@@ -61,9 +63,11 @@ export function registerOapiTools(api: OpenClawPluginApi): void {
   // Task tools
   registerFeishuTaskTaskTool(api);
   registerFeishuTaskTasklistTool(api);
+  registerFeishuTaskAttachmentTool(api);
   registerFeishuTaskSectionTool(api);
   registerFeishuTaskCommentTool(api);
   registerFeishuTaskSubtaskTool(api);
+  registerFeishuTaskAgentTool(api);
 
   // Bitable tools
   registerFeishuBitableAppTool(api);

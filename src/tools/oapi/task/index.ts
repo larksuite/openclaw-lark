@@ -5,6 +5,8 @@
 
 export { registerFeishuTaskTaskTool } from './task';
 export { registerFeishuTaskTasklistTool } from './tasklist';
+export { registerFeishuTaskAttachmentTool } from './attachment';
 export { registerFeishuTaskCommentTool } from './comment';
 export { registerFeishuTaskSubtaskTool } from './subtask';
 export { registerFeishuTaskSectionTool } from './section';
+export { registerFeishuTaskAgentTool } from './task_agent';

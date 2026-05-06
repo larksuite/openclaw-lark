@@ -23,6 +23,7 @@ import {
   handleCommentEvent,
   handleMessageEvent,
   handleReactionEvent,
+  handleVcMeetingInvitedEvent,
 } from './event-handlers';
 
 const mlog = larkLogger('channel/monitor');
@@ -105,6 +106,7 @@ async function monitorSingleAccount(params: {
       'im.chat.access_event.bot_p2p_chat_entered_v1': async () => {},
       'im.chat.member.bot.added_v1': (data) => handleBotMembershipEvent(ctx, data, 'added'),
       'im.chat.member.bot.deleted_v1': (data) => handleBotMembershipEvent(ctx, data, 'removed'),
+      'vc.bot.meeting_invited_v1': (data) => handleVcMeetingInvitedEvent(ctx, data),
       // Drive comment event — fires when a user adds a comment or reply on a document.
       'drive.notice.comment_add_v1': (data) => handleCommentEvent(ctx, data),
       // 飞书 SDK EventDispatcher.register 不支持带返回值的处理器，此处 as any 是 SDK 类型限制的变通

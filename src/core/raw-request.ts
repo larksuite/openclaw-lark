@@ -8,6 +8,8 @@
  * 用于 SDK 未覆盖的 API 或需要精细控制请求的场景。
  */
 
+import {URLSearchParams} from "node:url";
+import type {BodyInit} from "undici-types";
 import type { LarkBrand } from './types';
 import { feishuFetch } from './feishu-fetch';
 
@@ -38,6 +40,31 @@ export interface RawLarkRequestOptions {
   accessToken?: string;
 }
 
+function isFormDataBody(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    typeof (body as { append?: unknown }).append === 'function' &&
+    typeof (body as { entries?: unknown }).entries === 'function'
+  );
+}
+
+function isBinaryBody(body: unknown): boolean {
+  return body instanceof ArrayBuffer || ArrayBuffer.isView(body);
+}
+
+
+function buildRequestBody(body: unknown): { headers?: Record<string, string>; body: BodyInit | string } {
+  if (typeof body === 'string' || body instanceof URLSearchParams || isFormDataBody(body) || isBinaryBody(body)) {
+    return { body: body as BodyInit | string };
+  }
+
+  return {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
 /**
  * 发起 raw HTTP 请求到飞书 API，自动处理域名解析、header 注入和错误检测。
  *
@@ -53,11 +80,16 @@ export async function rawLarkRequest<T>(options: RawLarkRequestOptions): Promise
   }
 
   const headers: Record<string, string> = {};
+  let requestBody: BodyInit | string | undefined;
   if (options.accessToken) {
     headers['Authorization'] = `Bearer ${options.accessToken}`;
   }
   if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json';
+    const prepared = buildRequestBody(options.body);
+    requestBody = prepared.body;
+    if (prepared.headers) {
+      Object.assign(headers, prepared.headers);
+    }
   }
   if (options.headers) {
     Object.assign(headers, options.headers);
@@ -66,7 +98,7 @@ export async function rawLarkRequest<T>(options: RawLarkRequestOptions): Promise
   const resp = await feishuFetch(url.toString(), {
     method: options.method ?? 'GET',
     headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    ...(requestBody !== undefined ? { body: requestBody } : {}),
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

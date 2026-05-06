@@ -160,6 +160,8 @@ function createDispatchContext() {
     route: {
       sessionKey: 'session-1',
       agentId: 'default',
+      channel: 'feishu',
+      accountId: 'default',
     },
     threadSessionKey: undefined,
     commandAuthorized: true,
@@ -228,4 +230,31 @@ describe('dispatchToAgent tool_use trace initialization', () => {
     expect(clearToolUseTraceRunMock).toHaveBeenCalledTimes(1);
     expect(clearToolUseTraceRunMock).toHaveBeenCalledWith('session-1');
   });
+
+  it('forwards extra inbound fields into the finalized payload', async () => {
+    const dc = createDispatchContext();
+
+    await dispatchToAgent({
+      ctx: dc.ctx as never,
+      mediaPayload: {},
+      extraInboundFields: {
+        SyntheticEventType: 'vc.bot.meeting_invited_v1',
+        VcMeetingNo: '123456789',
+      },
+      account: dc.account as never,
+      accountScopedCfg: {} as never,
+      historyLimit: 0,
+    });
+
+    expect(buildInboundPayloadMock).toHaveBeenCalledTimes(1);
+    const buildInboundPayloadArgs =
+      buildInboundPayloadMock.mock.calls[0] as unknown as [unknown, { extraFields?: unknown }];
+    expect(buildInboundPayloadArgs[1]).toMatchObject({
+      extraFields: {
+        SyntheticEventType: 'vc.bot.meeting_invited_v1',
+        VcMeetingNo: '123456789',
+      },
+    });
+  });
+
 });

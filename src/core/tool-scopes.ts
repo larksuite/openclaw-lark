@@ -124,6 +124,7 @@ export type ToolActionKey =
   | 'feishu_im_user_search_messages.default'
   | 'feishu_search_doc_wiki.search'
   | 'feishu_search_user.default'
+  | 'feishu_task_attachment.upload'
   | 'feishu_task_comment.create'
   | 'feishu_task_comment.get'
   | 'feishu_task_comment.list'
@@ -139,12 +140,15 @@ export type ToolActionKey =
   | 'feishu_task_task.list'
   | 'feishu_task_task.patch'
   | 'feishu_task_task.add_members'
+  | 'feishu_task_task.append_steps'
   | 'feishu_task_tasklist.add_members'
   | 'feishu_task_tasklist.create'
   | 'feishu_task_tasklist.get'
   | 'feishu_task_tasklist.list'
   | 'feishu_task_tasklist.patch'
   | 'feishu_task_tasklist.tasks'
+  | 'feishu_task_agent.register'
+  | 'feishu_task_agent.update_profile'
   | 'feishu_update_doc.default'
   | 'feishu_wiki_space.create'
   | 'feishu_wiki_space.get'
@@ -230,11 +234,13 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_calendar_event_attendee.create': ['calendar:calendar.event:update'],
   'feishu_calendar_event_attendee.list': ['calendar:calendar.event:read'],
   'feishu_calendar_freebusy.list': ['calendar:calendar.free_busy:read'],
+  'feishu_task_attachment.upload': ['task:attachment:write'],
   'feishu_task_task.create': ['task:task:write', 'task:task:writeonly'],
   'feishu_task_task.get': ['task:task:read', 'task:task:write'],
   'feishu_task_task.list': ['task:task:read', 'task:task:write'],
   'feishu_task_task.patch': ['task:task:write', 'task:task:writeonly'],
   'feishu_task_task.add_members': ['task:task:write', 'task:task:writeonly'],
+  'feishu_task_task.append_steps': ['task:task:write', 'task:task:writeonly'],
   'feishu_task_tasklist.create': ['task:tasklist:write'],
   'feishu_task_tasklist.get': ['task:tasklist:read', 'task:tasklist:write'],
   'feishu_task_tasklist.list': ['task:tasklist:read', 'task:tasklist:write'],
@@ -251,6 +257,8 @@ export const TOOL_SCOPES: ToolScopeMapping = {
   'feishu_task_section.tasks': ['task:task'],
   'feishu_task_subtask.create': ['task:task:write'],
   'feishu_task_subtask.list': ['task:task:read', 'task:task:write'],
+  'feishu_task_agent.register': ['task:task:write'],
+  'feishu_task_agent.update_profile': ['task:task:write', 'task:task:writeonly'],
   'feishu_chat.search': ['im:chat:read'],
   'feishu_chat.get': ['im:chat:read'],
   'feishu_chat_members.default': ['im:chat.members:read'],

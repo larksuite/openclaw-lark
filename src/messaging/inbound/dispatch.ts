@@ -33,6 +33,7 @@ import { clearToolUseTraceRun, startToolUseTraceRun } from '../../card/tool-use-
 import { isLikelyAbortText } from '../../channel/abort-detect';
 import { isThreadCapableGroup } from '../../core/chat-info-cache';
 import { isCommentTarget } from '../../core/comment-target';
+import { SYNTHETIC_VC_CHAT_ID, isSyntheticTarget } from '../../core/synthetic-target';
 import { encodeFeishuRouteTarget } from '../../core/targets';
 import type { LarkClient } from '../../core/lark-client';
 import { sendCommentReplyLark } from '../outbound/deliver';
@@ -118,6 +119,88 @@ async function dispatchCommentMessage(
   log.info(`comment dispatch complete (delivered=${delivered}, elapsed=${ticketElapsed()}ms)`);
 }
 
+/**
+ * Dispatch a synthetic-target message via the buffered block dispatcher
+ * while discarding every delivered payload.
+ *
+ * Synthetic contexts (e.g. VC meeting-invited) trigger the agent for its
+ * side-effects (tool calls) — they do not correspond to a real IM chat,
+ * so any text / card the agent emits must be dropped instead of being
+ * sent as a DM to whatever open_id happens to be in ctx.chatId.
+ */
+async function dispatchSyntheticMessage(
+  dc: DispatchContext,
+  ctxPayload: ReturnType<typeof LarkClient.runtime.channel.reply.finalizeInboundContext>,
+  skillFilter?: string[],
+): Promise<void> {
+  const effectiveSessionKey = dc.threadSessionKey ?? dc.route.sessionKey;
+  const isVcSynthetic = dc.ctx.chatId === SYNTHETIC_VC_CHAT_ID;
+  let deliveredFinalToSender = false;
+  dc.log(
+    `feishu[${dc.account.accountId}]: dispatching synthetic reply (session=${effectiveSessionKey}, target=${dc.ctx.chatId})`,
+  );
+  log.info(`dispatching synthetic reply (session=${effectiveSessionKey})`);
+
+  await dc.core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
+    ctx: ctxPayload,
+    cfg: dc.accountScopedCfg,
+    dispatcherOptions: {
+      deliver: async (payload, info) => {
+        const text = payload.text?.trim() ?? '';
+        const preview = text.slice(0, 120);
+
+        // VC invited flows intentionally keep the synthetic target to avoid
+        // leaking intermediate tool output to IM, but the final business
+        // result should be explicitly notified to the inviter.
+        //
+        // Important: this DM is only a transport bridge for the final text.
+        // It does not rebind the inviter's DM conversation to the synthetic
+        // meeting-scoped session; later DM replies will still be routed by the
+        // normal OpenClaw DM session rules.
+        if (isVcSynthetic && info.kind === 'final' && text && text !== 'NO_REPLY' && !deliveredFinalToSender) {
+          deliveredFinalToSender = true;
+          try {
+            await sendMessageFeishu({
+              cfg: dc.accountScopedCfg,
+              to: dc.ctx.senderId,
+              text,
+              accountId: dc.account.accountId,
+            });
+            dc.log(
+              `feishu[${dc.account.accountId}]: synthetic VC final delivered explicitly to sender=${dc.ctx.senderId}, preview="${preview}"`,
+            );
+            return;
+          } catch (err) {
+            deliveredFinalToSender = false;
+            dc.error(
+              `feishu[${dc.account.accountId}]: synthetic VC final delivery failed to sender=${dc.ctx.senderId}: ${String(err)}`,
+            );
+          }
+        }
+
+        if (info.kind === 'final') {
+          dc.log(
+            `feishu[${dc.account.accountId}]: synthetic final payload dropped (target=${dc.ctx.chatId})`,
+          );
+        }
+      },
+      onSkip: (_payload, info) => {
+        if (info.reason !== 'silent') {
+          dc.log(`feishu[${dc.account.accountId}]: synthetic reply skipped (reason=${info.reason})`);
+        }
+      },
+      onError: (err, info) => {
+        dc.error(`feishu[${dc.account.accountId}]: synthetic ${info.kind} reply failed: ${String(err)}`);
+      },
+    },
+    replyOptions: {
+      ...(skillFilter ? { skillFilter } : {}),
+    },
+  });
+
+  dc.log(`feishu[${dc.account.accountId}]: synthetic dispatch complete (elapsed=${ticketElapsed()}ms)`);
+}
+
 async function dispatchNormalMessage(
   dc: DispatchContext,
   ctxPayload: ReturnType<typeof LarkClient.runtime.channel.reply.finalizeInboundContext>,
@@ -128,6 +211,15 @@ async function dispatchNormalMessage(
   skillFilter?: string[],
   skipTyping?: boolean,
 ): Promise<void> {
+  // Synthetic targets (e.g. VC meeting-invited) have no real IM peer to
+  // deliver replies to. Route them through the buffered block dispatcher
+  // with a deliver() that drops every payload — the agent still runs
+  // (tool calls, side-effects) but produces no outbound IM traffic.
+  if (isSyntheticTarget(dc.ctx.chatId)) {
+    await dispatchSyntheticMessage(dc, ctxPayload, skillFilter);
+    return;
+  }
+
   // Comment targets bypass the streaming card / IM flow entirely —
   // route through the Drive comment reply API.
   if (isCommentTarget(dc.ctx.chatId)) {
@@ -231,6 +323,8 @@ export async function dispatchToAgent(params: {
   ctx: MessageContext;
   permissionError?: PermissionError;
   mediaPayload: Record<string, unknown>;
+  /** Additional structured metadata for synthetic or event-driven inbound flows. */
+  extraInboundFields?: Record<string, unknown>;
   quotedContent?: string;
   account: LarkAccount;
   /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
@@ -361,6 +455,7 @@ export async function dispatchToAgent(params: {
     inboundHistory,
     extraFields: {
       ...params.mediaPayload,
+      ...(params.extraInboundFields ?? {}),
       ...(groupSystemPrompt ? { GroupSystemPrompt: groupSystemPrompt } : {}),
       ...(dc.ctx.threadId ? { MessageThreadId: dc.ctx.threadId } : {}),
     },

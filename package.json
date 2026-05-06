@@ -44,6 +44,7 @@
     "@sinclair/typebox": "0.34.48",
     "image-size": "^2.0.2",
     "qrcode": "^1.5.4",
+    "undici-types": "^8.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

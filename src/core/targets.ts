@@ -153,7 +153,6 @@ export function formatFeishuTarget(id: string, type?: FeishuIdType): string {
 export function resolveReceiveIdType(id: string): 'chat_id' | 'open_id' | 'user_id' {
   if (id.startsWith(CHAT_PREFIX)) return 'chat_id';
   if (id.startsWith(OPEN_ID_PREFIX)) return 'open_id';
-  // Default to open_id for any other pattern (safer for outbound API calls).
   return 'open_id';
 }
 

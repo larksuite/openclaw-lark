@@ -5,7 +5,7 @@
  * feishu_task_task tool -- Manage Feishu tasks.
  *
  * P0 Actions: create, get, list, patch
- * P1 Actions: add_members
+ * P1 Actions: add_members, append_steps
  *
  * Uses the Feishu Task v2 API:
  *   - create: POST /open-apis/task/v2/tasks
@@ -13,6 +13,7 @@
  *   - list:   GET  /open-apis/task/v2/tasks
  *   - patch:  PATCH /open-apis/task/v2/tasks/:task_guid
  *   - add_members: POST /open-apis/task/v2/tasks/:task_guid/add_members
+ *   - append_steps: POST /open-apis/task/v2/agent_task_step_info/append_task_steps
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -28,6 +29,7 @@ import {
   registerTool,
 } from '../helpers';
 import type { PaginatedData, TaskCreateData } from '../sdk-types';
+import { rawLarkRequest } from '../../../core/raw-request';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -157,6 +159,11 @@ const FeishuTaskTaskSchema = Type.Union([
         description: '是否筛选已完成任务',
       }),
     ),
+    agent_task_status: Type.Optional(
+      Type.Integer({
+        description: 'Agent 任务状态',
+      }),
+    ),
     auth_type: Type.Optional(
       StringEnum(['tenant', 'user'], {
         description: '授权类型，默认 user。',
@@ -211,6 +218,21 @@ const FeishuTaskTaskSchema = Type.Union([
       Type.String({
         description:
           "完成时间。支持三种格式：1) ISO 8601 / RFC 3339 格式（包含时区），例如 '2024-01-01T00:00:00+08:00'（设为已完成）；2) '0'（反完成，任务变为未完成）；3) 毫秒时间戳字符串。",
+      }),
+    ),
+    agent_task_progress: Type.Optional(
+      Type.String({
+        description: 'Agent 任务进度',
+      }),
+    ),
+    agent_task_status: Type.Optional(
+      Type.Integer({
+        description: 'Agent 任务状态',
+      }),
+    ),
+    text_deliveries: Type.Optional(
+      Type.Array(Type.String(), {
+        description: '文本交付列表',
       }),
     ),
     members: Type.Optional(
@@ -275,6 +297,34 @@ const FeishuTaskTaskSchema = Type.Union([
       StringEnum(['open_id', 'union_id', 'user_id']),
     ),
   }),
+
+  // APPEND_STEPS
+  Type.Object({
+    action: Type.Literal('append_steps'),
+    task_guid: Type.String({
+      description: '任务 GUID',
+    }),
+    idempotent_key: Type.String({
+      description: '幂等键',
+    }),
+    task_steps: Type.Array(
+      Type.Object({
+        quote: Type.String({
+          description: '步骤引用信息',
+        }),
+        content: Type.String({
+          description: '步骤内容',
+        }),
+        timestamp: Type.Integer({
+          description: '步骤时间戳',
+        }),
+      }),
+      {
+        description: '要追加的任务步骤列表',
+        minItems: 1,
+      },
+    ),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -283,80 +333,94 @@ const FeishuTaskTaskSchema = Type.Union([
 
 type FeishuTaskTaskParams =
   | {
-      action: 'create';
-      summary: string;
-      current_user_id?: string;
-      description?: string;
-      due?: {
-        timestamp: string;
-        is_all_day?: boolean;
-      };
-      start?: {
-        timestamp: string;
-        is_all_day?: boolean;
-      };
-      members?: Array<{
-        id: string;
-        type?: 'user' | 'app';
-        role?: 'assignee' | 'follower';
-      }>;
-      repeat_rule?: string;
-      tasklists?: Array<{
-        tasklist_guid: string;
-        section_guid?: string;
-      }>;
-      auth_type?: 'tenant' | 'user';
-      user_id_type?: 'open_id' | 'union_id' | 'user_id';
-    }
-  | {
-      action: 'get';
-      task_guid: string;
-      auth_type?: 'tenant' | 'user';
-      user_id_type?: 'open_id' | 'union_id' | 'user_id';
-    }
-  | {
-      action: 'list';
-      page_size?: number;
-      page_token?: string;
-      completed?: boolean;
-      auth_type?: 'tenant' | 'user';
-      user_id_type?: 'open_id' | 'union_id' | 'user_id';
-    }
-  | {
-      action: 'patch';
-      task_guid: string;
-      summary?: string;
-      description?: string;
-      due?: {
-        timestamp: string;
-        is_all_day?: boolean;
-      };
-      start?: {
-        timestamp: string;
-        is_all_day?: boolean;
-      };
-      completed_at?: string;
-      members?: Array<{
-        id: string;
-        type?: 'user' | 'app';
-        role?: 'assignee' | 'follower';
-      }>;
-      repeat_rule?: string;
-      auth_type?: 'tenant' | 'user';
-      user_id_type?: 'open_id' | 'union_id' | 'user_id';
-    }
-  | {
-      action: 'add_members';
-      task_guid: string;
-      members: Array<{
-        id: string;
-        type?: 'user' | 'app';
-        role?: 'assignee' | 'follower';
-      }>;
-      client_token?: string;
-      auth_type?: 'tenant' | 'user';
-      user_id_type?: 'open_id' | 'union_id' | 'user_id';
+    action: 'create';
+    summary: string;
+    current_user_id?: string;
+    description?: string;
+    due?: {
+      timestamp: string;
+      is_all_day?: boolean;
     };
+    start?: {
+      timestamp: string;
+      is_all_day?: boolean;
+    };
+    members?: Array<{
+      id: string;
+      type?: 'user' | 'app';
+      role?: 'assignee' | 'follower';
+    }>;
+    repeat_rule?: string;
+    tasklists?: Array<{
+      tasklist_guid: string;
+      section_guid?: string;
+    }>;
+    auth_type?: 'tenant' | 'user';
+    user_id_type?: 'open_id' | 'union_id' | 'user_id';
+  }
+  | {
+    action: 'get';
+    task_guid: string;
+    auth_type?: 'tenant' | 'user';
+    user_id_type?: 'open_id' | 'union_id' | 'user_id';
+  }
+  | {
+    action: 'list';
+    page_size?: number;
+    page_token?: string;
+    completed?: boolean;
+    agent_task_status?: number;
+    auth_type?: 'tenant' | 'user';
+    user_id_type?: 'open_id' | 'union_id' | 'user_id';
+  }
+  | {
+    action: 'patch';
+    task_guid: string;
+    summary?: string;
+    description?: string;
+    due?: {
+      timestamp: string;
+      is_all_day?: boolean;
+    };
+    start?: {
+      timestamp: string;
+      is_all_day?: boolean;
+    };
+    completed_at?: string;
+    agent_task_progress?: string;
+    agent_task_status?: number;
+    text_deliveries?: string[];
+    members?: Array<{
+      id: string;
+      type?: 'user' | 'app';
+      role?: 'assignee' | 'follower';
+    }>;
+    repeat_rule?: string;
+    auth_type?: 'tenant' | 'user';
+    user_id_type?: 'open_id' | 'union_id' | 'user_id';
+  }
+  | {
+    action: 'add_members';
+    task_guid: string;
+    members: Array<{
+      id: string;
+      type?: 'user' | 'app';
+      role?: 'assignee' | 'follower';
+    }>;
+    client_token?: string;
+    auth_type?: 'tenant' | 'user';
+    user_id_type?: 'open_id' | 'union_id' | 'user_id';
+  }
+  | {
+    action: 'append_steps';
+    task_guid: string;
+    idempotent_key: string;
+    task_steps: Array<{
+      quote: string;
+      content: string;
+      timestamp: number;
+    }>;
+  };
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -374,7 +438,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
       name: 'feishu_task_task',
       label: 'Feishu Task Management',
       description:
-        "【以用户或应用身份】飞书任务管理工具。用于创建、查询、更新任务。Actions: create（创建任务）, get（获取任务详情）, list（查询任务列表，仅返回我负责的任务）, patch（更新任务）, add_members（添加任务成员）。时间参数使用ISO 8601 / RFC 3339 格式（包含时区），例如 '2024-01-01T00:00:00+08:00'。支持通过 auth_type 参数切换用户(user)或应用(tenant)身份。",
+        "【以用户或应用身份】飞书任务管理工具。用于创建、查询、更新任务。Actions: create（创建任务）, get（获取任务详情）, list（查询任务列表，仅返回我负责的任务）, patch（更新任务）, add_members（添加任务成员）, append_steps（追加任务步骤记录）。时间参数使用ISO 8601 / RFC 3339 格式（包含时区），例如 '2024-01-01T00:00:00+08:00'。支持通过 auth_type 参数切换用户(user)或应用(tenant)身份；append_steps 固定使用应用身份。",
       parameters: FeishuTaskTaskSchema,
       async execute(_toolCallId: string, params: unknown) {
         const p = params as FeishuTaskTaskParams;
@@ -502,6 +566,7 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
                         page_size: p.page_size,
                         page_token: p.page_token,
                         completed: p.completed,
+                        agent_task_status: p.agent_task_status,
                         user_id_type: (p.user_id_type || 'open_id') as any,
                       },
                     },
@@ -588,11 +653,27 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
                 }
               }
 
+              if (p.agent_task_progress !== undefined) {
+                updateData.agent_task_progress = p.agent_task_progress;
+              }
+              if (p.agent_task_status !== undefined) {
+                updateData.agent_task_status = p.agent_task_status;
+              }
+              if (p.text_deliveries !== undefined) {
+                updateData.text_deliveries = p.text_deliveries;
+              }
+
               if (p.members) updateData.members = p.members;
               if (p.repeat_rule) updateData.repeat_rule = p.repeat_rule;
 
               // Build update_fields list (required by Task API)
               const updateFields = Object.keys(updateData);
+              if (updateFields.length === 0) {
+                return json({
+                  error:
+                    'patch 至少需要提供一个可更新字段：summary、description、due、start、completed_at、agent_task_progress、agent_task_status、text_deliveries、members、repeat_rule',
+                });
+              }
 
               const authType = p.auth_type || 'user';
               const res = await client.invoke(
@@ -670,6 +751,48 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
               return json({
                 task: res.data?.task,
               });
+            }
+
+            // -----------------------------------------------------------------
+            // APPEND TASK STEPS
+            // -----------------------------------------------------------------
+            case 'append_steps': {
+              if (!p.task_steps.length) {
+                return json({
+                  error: 'task_steps is required and cannot be empty',
+                });
+              }
+
+              const tatRes = await rawLarkRequest(
+                {
+                  brand: client.account.brand,
+                  path: '/open-apis/auth/v3/tenant_access_token/internal/',
+                  method: 'POST',
+                  body: {
+                    app_id: client.sdk.appId,
+                    app_secret: client.sdk.appSecret,
+                  },
+                },
+              );;
+              const token = (tatRes as any)?.tenant_access_token ?? "";
+
+              const res = await client.invokeByPath(
+                'feishu_task_task.append_steps',
+                '/open-apis/task/v2/agent_task_step_info/append_task_steps',
+                {
+                  method: 'POST',
+                  as: 'tenant',
+                  body: {
+                    task_guid: p.task_guid,
+                    idempotent_key: p.idempotent_key,
+                    task_steps: p.task_steps,
+                  },
+                  headers: {
+                    'authorization': `Bearer ${token}`,
+                  },
+                },
+              );
+              return json(res);
             }
           }
         } catch (err) {

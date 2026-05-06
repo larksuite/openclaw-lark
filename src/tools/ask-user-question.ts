@@ -14,6 +14,10 @@
  *
  * 所有卡片统一使用 form 容器，交互组件在本地缓存值，
  * 提交时通过 form_value 一次性回调，避免独立回调导致的 loading 闪烁。
+ *
+ * 注意：提交按钮必须设置 value 字段。飞书客户端会校验交互组件是否携带 value，
+ * 缺失时直接报 200340 错误，回调不会发送到服务端。虽然 form_submit 场景下
+ * form_value 是主要数据载体，但 value 作为按钮的合法性标记仍需存在。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -638,12 +642,19 @@ function buildAskUserCard(questions: QuestionItem[], questionId: string): Record
     formElements.push(...buildQuestionFormElements(questions[i], i));
   }
 
-  // Submit button
+  // Submit button.
+  // questionId is encoded in both button name and value for resilience:
+  // - `value` is the primary carrier and is included in card.action.trigger
+  //   callbacks per Feishu's documented event structure.
+  // - `name` acts as a fallback in case the SDK version strips value
+  //   from form_submit events.
+  // Both are needed because a button without a `value` field fails
+  // Feishu's client-side interactive-component validation with code 200340.
   formElements.push({ tag: 'hr' });
   formElements.push({
     tag: 'button',
-    // Encode questionId in button name — value does NOT propagate for form submit buttons
     name: `${SUBMIT_BUTTON_PREFIX}${questionId}`,
+    value: { action: 'ask_user_submit', operation_id: questionId },
     text: {
       tag: 'plain_text',
       content: '📮 提交',

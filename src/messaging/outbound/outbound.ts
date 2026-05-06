@@ -18,6 +18,7 @@ import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { parseFeishuRouteTarget } from '../../core/targets';
 import { isCommentTarget } from '../../core/comment-target';
+import { isSyntheticTarget } from '../../core/synthetic-target';
 import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from './deliver';
 
 const log = larkLogger('outbound/outbound');
@@ -168,6 +169,14 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   sendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {
     log.info(`sendText: target=${to}, textLength=${text.length}`);
 
+    // Synthetic targets (e.g. VC meeting-invited) have no real IM peer —
+    // drop the send silently so the agent pipeline stays uniform without
+    // producing unsolicited DMs. See core/synthetic-target.ts.
+    if (isSyntheticTarget(to)) {
+      log.debug(`sendText: synthetic target ${to}, dropping outbound IM send`);
+      return { channel: 'feishu', messageId: '', chatId: to };
+    }
+
     // Comment thread routing — route replies through Drive comment API
     if (isCommentTarget(to)) {
       log.info(`sendText: detected comment target, routing through Drive comment API`);
@@ -182,6 +191,12 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
   sendMedia: async ({ cfg, to, text, mediaUrl, mediaLocalRoots, accountId, replyToId, threadId }) => {
     log.info(`sendMedia: target=${to}, ` + `hasText=${Boolean(text?.trim())}, mediaUrl=${mediaUrl ?? '(none)'}`);
+
+    // Synthetic targets — drop silently (see sendText for rationale).
+    if (isSyntheticTarget(to)) {
+      log.debug(`sendMedia: synthetic target ${to}, dropping outbound IM send`);
+      return { channel: 'feishu', messageId: '', chatId: to };
+    }
 
     // Comment thread routing — send text (with media URL appended) via Drive comment API
     if (isCommentTarget(to)) {
@@ -218,6 +233,12 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   },
 
   sendPayload: async ({ cfg, to, payload, mediaLocalRoots, accountId, replyToId, threadId }) => {
+    // Synthetic targets — drop silently (see sendText for rationale).
+    if (isSyntheticTarget(to)) {
+      log.debug(`sendPayload: synthetic target ${to}, dropping outbound IM send`);
+      return { channel: 'feishu', messageId: '', chatId: to };
+    }
+
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // --- channelData.feishu: card message support ---

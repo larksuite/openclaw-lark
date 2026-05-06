@@ -9,6 +9,9 @@ description: |
   (3) 需要查看任务列表或清单内的任务
   (4) 用户提到"任务"、"待办"、"to-do"、"清单"、"task"
   (5) 需要设置任务负责人、关注人、截止时间、添加成员
+  (6) 需要追加任务步骤记录（Task 的 steps）
+  (7) 需要上传任务附件（支持 task / task_delivery）
+  (8) 需要注册 Agent / 更新 Agent 信息（register / update_profile）
 ---
 
 # 飞书任务管理
@@ -17,11 +20,13 @@ description: |
 
 - ✅ **时间格式**：ISO 8601 / RFC 3339（带时区），例如 `2026-02-28T17:00:00+08:00`
 - ✅ **身份授权**：工具支持 `auth_type` 为 `user`（默认，用户身份）或 `tenant`（应用身份）。
+- ✅ **任务 Agent（feishu_task_agent）**：仅支持应用身份（tenant），不支持 user 身份
 - ✅ **current_user_id 强烈建议**：从消息上下文的 SenderId 获取（ou_...），工具会自动添加为 follower（如不在 members 中），确保创建者可以编辑任务
 - ✅ **patch/get 必须**：task_guid
 - ✅ **tasklist.tasks 必须**：tasklist_guid
 - ✅ **完成任务**：completed_at = "2026-02-26 15:00:00"
 - ✅ **反完成（恢复未完成）**：completed_at = "0"
+- ✅ **append_steps 的 task_steps[].timestamp**：秒级 Unix 时间戳（10 位），不要用毫秒（13 位）
 
 ---
 
@@ -30,15 +35,19 @@ description: |
 | 用户意图 | 工具 | action | 必填参数 | 强烈建议 | 常用可选 |
 |---------|------|--------|---------|---------|---------|
 | 新建待办 | feishu_task_task | create | summary | current_user_id（SenderId） | members, due, description, auth_type |
-| 查未完成任务 | feishu_task_task | list | - | completed=false | page_size, auth_type |
+| 查未完成任务 | feishu_task_task | list | - | completed=false | page_size, auth_type, agent_task_status |
 | 获取任务详情 | feishu_task_task | get | task_guid | - | auth_type |
 | 完成任务 | feishu_task_task | patch | task_guid, completed_at | - | auth_type |
 | 反完成任务 | feishu_task_task | patch | task_guid, completed_at="0" | - | auth_type |
 | 改截止时间 | feishu_task_task | patch | task_guid, due | - | auth_type |
 | 添加任务成员 | feishu_task_task | add_members | task_guid, members[] | - | auth_type |
+| 追加任务步骤记录 | feishu_task_task | append_steps | task_guid, idempotent_key, task_steps[] | task_steps[].timestamp 用秒级（10 位） | - |
 | 创建清单 | feishu_task_tasklist | create | name | - | members |
 | 查看清单任务 | feishu_task_tasklist | tasks | tasklist_guid | - | completed |
 | 添加清单成员 | feishu_task_tasklist | add_members | tasklist_guid, members[] | - | - |
+| 上传任务附件 | feishu_task_attachment | upload | resource_id, file(base64) | name | resource_type |
+| 注册任务 Agent | feishu_task_agent | register | - | 仅支持 tenant（应用身份） | - |
+| 更新任务 Agent Profile | feishu_task_agent | update_profile | profile_content | 仅支持 tenant（应用身份） | - |
 
 ---
 
@@ -230,6 +239,25 @@ description: |
     "timestamp": "2026-03-01 00:00:00",
     "is_all_day": true
   }
+}
+```
+
+### 场景 9: 注册任务 Agent（仅应用身份）
+
+```json
+{
+  "action": "register",
+  "auth_type": "tenant"
+}
+```
+
+### 场景 10: 更新任务 Agent Profile（仅应用身份）
+
+```json
+{
+  "action": "update_profile",
+  "auth_type": "tenant",
+  "profile_content": "some profile content"
 }
 ```
 

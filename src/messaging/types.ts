@@ -143,6 +143,59 @@ export interface FeishuBotAddedEvent {
   };
 }
 
+/**
+ * Raw event shape for `vc.bot.meeting_invited_v1`.
+ *
+ * Fired when a user invites the bot to join a meeting.
+ *
+ * Identity fields (for bot / inviter / host_user) are nested under an
+ * `id` object; individual id variants (open_id / user_id / union_id)
+ * may be null depending on the tenant configuration.
+ */
+export interface FeishuVcMeetingInvitedEvent {
+  app_id?: string;
+  event_id?: string;
+  meeting?: {
+    id?: string;
+    meeting_no?: string;
+    topic?: string;
+    host_user?: {
+      id?: { open_id?: string | null; user_id?: string | null; union_id?: string | null };
+      user_name?: string;
+    };
+  };
+  bot?: {
+    id?: { open_id?: string | null; user_id?: string | null; union_id?: string | null };
+    user_name?: string;
+  };
+  inviter?: {
+    id?: { open_id?: string | null; user_id?: string | null; union_id?: string | null };
+    user_name?: string;
+  };
+  invite_time?: string;
+}
+
+/**
+ * Internal synthetic event model for VC meeting-invited flows.
+ *
+ * This preserves the business semantics before the event is converted into a
+ * synthetic MessageContext for dispatchToAgent().
+ */
+export interface VcMeetingInvitedSyntheticEvent {
+  eventType: 'vc.bot.meeting_invited_v1';
+  source: 'feishu-vc-event';
+  eventId?: string;
+  meetingId?: string;
+  meetingNo: string;
+  topic?: string;
+  senderId: string;
+  senderOpenId?: string;
+  senderUserId?: string;
+  senderUnionId?: string;
+  senderName?: string;
+  inviteTime?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Resource descriptor
 // ---------------------------------------------------------------------------

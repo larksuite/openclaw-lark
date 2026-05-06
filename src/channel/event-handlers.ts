@@ -9,10 +9,17 @@
  * dependencies needed to process the event.
  */
 
-import type { FeishuBotAddedEvent, FeishuMessageEvent, FeishuReactionCreatedEvent } from '../messaging/types';
+import type {
+  FeishuBotAddedEvent,
+  FeishuMessageEvent,
+  FeishuReactionCreatedEvent,
+  FeishuVcMeetingInvitedEvent,
+} from '../messaging/types';
 import { handleFeishuMessage } from '../messaging/inbound/handler';
 import { handleFeishuReaction, resolveReactionContext } from '../messaging/inbound/reaction-handler';
 import { handleFeishuCommentEvent } from '../messaging/inbound/comment-handler';
+import { handleFeishuVcMeetingInvited } from '../messaging/inbound/vc-meeting-invited-handler';
+import { resolveVcSender } from '../messaging/inbound/vc-sender';
 import { parseFeishuDriveCommentNoticeEventPayload } from '../messaging/inbound/comment-context';
 import { isMessageExpired } from '../messaging/inbound/dedup';
 import { withTicket } from '../core/lark-ticket';
@@ -237,6 +244,87 @@ export async function handleBotMembershipEvent(
     log(`feishu[${accountId}]: bot ${action} ${action === 'removed' ? 'from' : 'to'} chat ${event.chat_id}`);
   } catch (err) {
     error(`feishu[${accountId}]: error handling bot ${action} event: ${String(err)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VC meeting invited handler
+// ---------------------------------------------------------------------------
+
+export async function handleVcMeetingInvitedEvent(ctx: MonitorContext, data: unknown): Promise<void> {
+  if (!isEventOwnershipValid(ctx, data)) return;
+  const { accountId, log, error } = ctx;
+  try {
+    const event = data as FeishuVcMeetingInvitedEvent;
+    const meetingNo = event.meeting?.meeting_no?.trim() ?? '';
+    const eventId = event.event_id?.trim() ?? '';
+    // Resolve the inviter identity through the shared helper so the
+    // diagnostics log and the dispatch handler always agree on the
+    // same sender semantics.
+    const sender = resolveVcSender(event);
+    const senderId = sender.senderId;
+    const invitedBotOpenId = event.bot?.id?.open_id?.trim() ?? '';
+
+    // VC invited origin/ownership diagnostics:
+    // - This handler is only reachable from the WebSocket monitor path.
+    // - We still log app_id/bot_open_id so operators can confirm the event
+    //   is delivered to the expected bot/account, and see which required
+    //   fields are missing when we skip.
+    const expectedAppId = ctx.lark.account.appId ?? '';
+    const eventAppId = event.app_id?.trim() ?? '';
+    log(
+      `feishu[${accountId}]: vc invited event received (ingress=websocket)` +
+        `${eventId ? ` event_id=${eventId}` : ''}` +
+        `${eventAppId ? ` app_id=${eventAppId}` : ' app_id=<missing>'}` +
+        `${expectedAppId ? ` expected_app_id=${expectedAppId}` : ''}` +
+        `${invitedBotOpenId ? ` bot_open_id=${invitedBotOpenId}` : ' bot_open_id=<missing>'}` +
+        `${ctx.lark.botOpenId ? ` expected_bot_open_id=${ctx.lark.botOpenId}` : ''}` +
+        `${event.invite_time ? ` invite_time=${event.invite_time}` : ''}` +
+        ` meeting_no_present=${meetingNo ? 'true' : 'false'}` +
+        ` sender_present=${senderId ? 'true' : 'false'}` +
+        ` sender_from=${sender.fromFallback}`,
+    );
+
+    if (!meetingNo) {
+      log(`feishu[${accountId}]: vc invited event missing meeting_no, skipping`);
+      return;
+    }
+
+    if (!senderId) {
+      log(`feishu[${accountId}]: vc invited event missing inviter identity, skipping`);
+      return;
+    }
+
+    if (ctx.lark.botOpenId && invitedBotOpenId && invitedBotOpenId !== ctx.lark.botOpenId) {
+      log(
+        `feishu[${accountId}]: vc invited event for another bot, expected=${ctx.lark.botOpenId}, got=${invitedBotOpenId}, skipping`,
+      );
+      return;
+    }
+
+    // Prefer event_id when the SDK exposes it: historical raw payload logs
+    // show WebSocket reconnect replays reuse the same event_id, while a real
+    // second invitation yields a new event_id even for the same meeting/bot.
+    // Fallback to (meeting_no, bot) only when event_id is absent so older
+    // payload shapes still remain deduplicated.
+    const dedupBotKey = ctx.lark.botOpenId ?? invitedBotOpenId ?? 'no-bot';
+    const dedupKey = eventId ? `vc-invited:by-event:${eventId}` : `vc-invited:by-meeting:${meetingNo}:${dedupBotKey}`;
+    if (!ctx.messageDedup.tryRecord(dedupKey, accountId)) {
+      log(`feishu[${accountId}]: duplicate vc invited event detected, skipping`);
+      return;
+    }
+
+    log(`feishu[${accountId}]: vc invited event accepted for synthetic dispatch`);
+
+    await handleFeishuVcMeetingInvited({
+      cfg: ctx.cfg,
+      event,
+      runtime: ctx.runtime,
+      chatHistories: ctx.chatHistories,
+      accountId,
+    });
+  } catch (err) {
+    error(`feishu[${accountId}]: error handling vc invited event: ${String(err)}`);
   }
 }
 
