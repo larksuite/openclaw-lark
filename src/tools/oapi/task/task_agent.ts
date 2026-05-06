@@ -17,6 +17,7 @@ import { Type } from '@sinclair/typebox';
 
 import { createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
 import { rawLarkRequest } from '../../../core/raw-request';
+import { tryMarkTaskAgentRegistered } from '../../../core/task-agent-registry';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -113,8 +114,11 @@ export function registerFeishuTaskAgentTool(api: OpenClawPluginApi): void {
                         return json(res);
                     }
 
-                    // register
+                    // register — skip if already registered recently
                     if (normalizedAction === 'register') {
+                        if (!tryMarkTaskAgentRegistered(client.account.brand)) {
+                            return json({ message: 'Task agent already registered recently', skipped: true });
+                        }
                         const res = await client.invokeByPath('feishu_task_agent.register', resolved.path, {
                             method: 'POST',
                             as,
