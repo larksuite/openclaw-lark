@@ -49,7 +49,9 @@
       "feishu_task_tasklist",
       "feishu_update_doc",
       "feishu_wiki_space",
-      "feishu_wiki_space_node"
+      "feishu_wiki_space_node",
+      "feishu_task_section",
+      "feishu_ask_user_question"
     ]
   },
   "channelConfigs": {
