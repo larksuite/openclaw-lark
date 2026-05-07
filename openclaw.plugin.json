@@ -13,6 +13,7 @@
   },
   "contracts": {
     "tools": [
+      "feishu_ask_user_question",
       "feishu_bitable_app",
       "feishu_bitable_app_table",
       "feishu_bitable_app_table_field",
@@ -46,6 +47,7 @@
       "feishu_task_task",
       "feishu_task_agent",
       "feishu_task_attachment",
+      "feishu_task_section",
       "feishu_task_tasklist",
       "feishu_update_doc",
       "feishu_wiki_space",
