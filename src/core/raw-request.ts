@@ -8,8 +8,8 @@
  * 用于 SDK 未覆盖的 API 或需要精细控制请求的场景。
  */
 
-import {URLSearchParams} from "node:url";
-import type {BodyInit} from "undici-types";
+import { URLSearchParams } from 'node:url';
+import type { BodyInit } from 'undici-types';
 import type { LarkBrand } from './types';
 import { feishuFetch } from './feishu-fetch';
 
@@ -52,7 +52,6 @@ function isFormDataBody(body: unknown): boolean {
 function isBinaryBody(body: unknown): boolean {
   return body instanceof ArrayBuffer || ArrayBuffer.isView(body);
 }
-
 
 function buildRequestBody(body: unknown): { headers?: Record<string, string>; body: BodyInit | string } {
   if (typeof body === 'string' || body instanceof URLSearchParams || isFormDataBody(body) || isBinaryBody(body)) {
