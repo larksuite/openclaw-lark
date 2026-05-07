@@ -155,13 +155,16 @@ export async function resolveBotName(params: {
     cache.set(openId, name);
     return { name: name || undefined };
   } catch (err) {
+    // Bot name resolution is best-effort: missing `bot:basic_info` scope
+    // should not surface as a permission notification to the agent. Log
+    // and cache an empty name so we don't retry, then fall back to openId.
     const permErr = extractPermissionError(err);
     if (permErr) {
-      log(`feishu: permission error resolving bot name: code=${permErr.code}`);
-      cache.set(openId, '');
-      return { permissionError: permErr };
+      log(`feishu: permission error resolving bot name (best-effort, ignored): code=${permErr.code}`);
+    } else {
+      log(`feishu: failed to resolve bot name for ${openId}: ${String(err)}`);
     }
-    log(`feishu: failed to resolve bot name for ${openId}: ${String(err)}`);
+    cache.set(openId, '');
     return {};
   }
 }
