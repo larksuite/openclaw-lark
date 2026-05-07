@@ -11,10 +11,15 @@
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { ConfiguredLarkAccount } from './types';
 import { getAppOwnerFallback } from './app-owner-fallback';
+import { larkLogger } from './lark-logger';
+
+const log = larkLogger('core/owner-policy');
 
 // ---------------------------------------------------------------------------
 // Error class
 // ---------------------------------------------------------------------------
+
+export type OwnerAccessDeniedReason = 'strict' | 'not_in_allowlist';
 
 /**
  * 非应用 owner 尝试执行 owner-only 操作时抛出。
@@ -25,12 +30,14 @@ import { getAppOwnerFallback } from './app-owner-fallback';
 export class OwnerAccessDeniedError extends Error {
   readonly userOpenId: string;
   readonly appOwnerId: string;
+  readonly reason: OwnerAccessDeniedReason;
 
-  constructor(userOpenId: string, appOwnerId: string) {
+  constructor(userOpenId: string, appOwnerId: string, reason: OwnerAccessDeniedReason = 'strict') {
     super('Permission denied: Only the app owner is authorized to use this feature.');
     this.name = 'OwnerAccessDeniedError';
     this.userOpenId = userOpenId;
     this.appOwnerId = appOwnerId;
+    this.reason = reason;
   }
 }
 
@@ -52,13 +59,32 @@ export async function assertOwnerAccessStrict(
   sdk: Lark.Client,
   userOpenId: string,
 ): Promise<void> {
+  const ownerOnly = account.config.uat?.ownerOnly ?? true;
+  const allowedUsers = new Set((account.config.uat?.allowedUsers ?? []).map((entry) => entry.trim()).filter(Boolean));
+
+  if (!ownerOnly && allowedUsers.size === 0) {
+    return;
+  }
+
   const ownerOpenId = await getAppOwnerFallback(account, sdk);
 
   if (!ownerOpenId) {
-    throw new OwnerAccessDeniedError(userOpenId, 'unknown');
+    if (!ownerOnly && allowedUsers.has(userOpenId)) {
+      log.warn(`allowing non-owner user ${userOpenId} for account ${account.accountId} via uat.allowedUsers without owner lookup`);
+      return;
+    }
+
+    throw new OwnerAccessDeniedError(userOpenId, 'unknown', ownerOnly ? 'strict' : 'not_in_allowlist');
   }
 
-  if (ownerOpenId !== userOpenId) {
-    throw new OwnerAccessDeniedError(userOpenId, ownerOpenId);
+  if (ownerOpenId === userOpenId) {
+    return;
   }
+
+  if (!ownerOnly && allowedUsers.has(userOpenId)) {
+    log.warn(`allowing non-owner user ${userOpenId} for account ${account.accountId} via uat.allowedUsers`);
+    return;
+  }
+
+  throw new OwnerAccessDeniedError(userOpenId, ownerOpenId, ownerOnly ? 'strict' : 'not_in_allowlist');
 }

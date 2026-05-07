@@ -939,7 +939,10 @@ export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotC
   if (err instanceof OwnerAccessDeniedError) {
     return json({
       error: 'permission_denied',
-      message: '当前应用仅限所有者（App Owner）使用。您没有权限使用相关功能。',
+      message:
+        err.reason === 'not_in_allowlist'
+          ? '您不在此应用的授权用户列表中，请联系管理员将您的 open_id 加入 uat.allowedUsers 配置。'
+          : '当前应用仅限所有者（App Owner）使用。您没有权限使用相关功能。',
       user_open_id: err.userOpenId,
       // 注意：不序列化 err.appOwnerId，避免泄露 owner 的 open_id
     });
