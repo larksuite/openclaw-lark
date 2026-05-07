@@ -1,7 +1,7 @@
 # OpenClaw  Lark/飞书 插件
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
+[![npm version](https://img.shields.io/npm/v/@zegoclaw/openclaw-lark.svg)](https://github.com/zegoclaw/openclaw-lark/packages)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
 
 [English](./README.md) | 中文版
@@ -55,6 +55,20 @@
 > ```bash
 > npm install -g openclaw
 > ```
+
+### 安装
+
+通过 openclaw 安装此插件：
+
+```bash
+npx -y @larksuite/openclaw-lark install
+```
+
+从本 fork 安装（GitHub Packages）：
+
+```bash
+npm install @zegoclaw/openclaw-lark -g
+```
 
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)

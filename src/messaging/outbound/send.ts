@@ -5,14 +5,21 @@
  * Message sending for the Lark/Feishu channel plugin.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
-import type { FeishuSendResult, MentionInfo  } from '../types';
-import { createAccountScopedConfig } from '../../core/accounts';
+import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
+import type { FeishuSendResult, MentionInfo, MessageContext } from '../types';
+import type { FeishuGroupConfig, LarkAccount } from '../../core/types';
+import { createAccountScopedConfig, getLarkAccount, getDefaultLarkAccountId } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
+import { resolveFeishuGroupConfig } from '../inbound/policy';
+import { dispatchToAgent } from '../inbound/dispatch';
+import { larkLogger } from '../../core/lark-logger';
+
+const log = larkLogger('outbound/send');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +65,172 @@ export interface SendFeishuCardParams {
   accountId?: string;
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// A2A Cross-Bot Helper Functions
+// ---------------------------------------------------------------------------
+
+interface BotMentionInfo {
+  openId: string;
+  name: string;
+  key: string;
+  isBot: boolean;
+  accountId: string;
+}
+
+function extractBotMentionsFromText(
+  text: string | undefined,
+  botOpenIdToAccountId: Record<string, string> | undefined,
+): BotMentionInfo[] {
+  if (!text || !botOpenIdToAccountId) return [];
+
+  const atPattern = /<at user_id="([^"]+)">([^<]*)<\/at>/g;
+  const mentions: BotMentionInfo[] = [];
+  let match;
+
+  while ((match = atPattern.exec(text)) !== null) {
+    const openId = match[1]!;
+    const name = match[2] || openId;
+    const accountId = botOpenIdToAccountId[openId];
+
+    if (accountId) {
+      mentions.push({
+        openId,
+        name,
+        key: `<at user_id="${openId}">${name}</at>`,
+        isBot: true,
+        accountId,
+      });
+    }
+  }
+
+  return mentions;
+}
+
+async function notifyOtherBotsOfMention(params: {
+  mentions: BotMentionInfo[];
+  text: string | undefined;
+  accountId: string | undefined;
+  chatId: string | undefined;
+  cfg: ClawdbotConfig;
+  createdMessageId: string | undefined;
+}): Promise<void> {
+  const { mentions, text, accountId, chatId, cfg, createdMessageId } = params;
+
+  log.info(
+    `[A2A-CROSS-BOT] notifyOtherBotsOfMention: accountId=${accountId}, chatId=${chatId}, mentionsCount=${mentions?.length}, createdMessageId=${createdMessageId}`,
+  );
+
+  if (!mentions || mentions.length === 0) {
+    log.info('[A2A-CROSS-BOT] no mentions, returning');
+    return;
+  }
+
+  const botOpenIdToAccountId = cfg?.channels?.feishu?.botOpenIdToAccountId;
+  log.info(`[A2A-CROSS-BOT] botOpenIdToAccountId=${JSON.stringify(botOpenIdToAccountId)}`);
+
+  if (!botOpenIdToAccountId) {
+    log.info('[A2A-CROSS-BOT] no botOpenIdToAccountId mapping');
+    return;
+  }
+
+  const senderAccount = getLarkAccount(cfg, accountId);
+  const senderClient = LarkClient.fromCfg(cfg, accountId);
+  const senderBotOpenId = senderClient.botOpenId;
+  const senderBotName = senderClient.botName;
+  log.info(`[A2A-CROSS-BOT] senderBotOpenId=${senderBotOpenId}, senderBotName=${senderBotName}, senderAccount=${senderAccount?.accountId}`);
+
+  const senderAccountFeishuCfg = senderAccount?.config;
+  const groupConfig = resolveFeishuGroupConfig({ cfg: senderAccountFeishuCfg!, groupId: chatId! });
+  const defaultGroupConfig = senderAccountFeishuCfg?.groups?.['*'];
+
+  for (const mention of mentions) {
+    const mentionOpenId = mention.openId;
+    const targetAccountId = botOpenIdToAccountId[mentionOpenId];
+    log.info(`[A2A-CROSS-BOT] mentionOpenId=${mentionOpenId}, targetAccountId=${targetAccountId}`);
+
+    if (!targetAccountId || targetAccountId === accountId) {
+      log.info('[A2A-CROSS-BOT] skip: no mapping or self');
+      continue;
+    }
+
+    try {
+      const targetAccount = getLarkAccount(cfg, targetAccountId);
+      const targetClient = LarkClient.fromCfg(cfg, targetAccountId);
+      const targetBotName = targetClient.botName;
+      log.info(`[A2A-CROSS-BOT] targetAccount: ${targetAccount?.accountId} ${targetBotName}`);
+
+      const targetAccountFeishuCfg = targetAccount?.config;
+      const targetAccountScopedCfg: ClawdbotConfig = {
+        ...cfg,
+        channels: { ...cfg.channels, feishu: targetAccountFeishuCfg! },
+      };
+
+      const syntheticMentions: MentionInfo[] = mentions.map((m) => ({
+        openId: m.openId,
+        name: m.name,
+        key: m.key,
+        isBot: true,
+      }));
+
+      const fakeCtx: MessageContext = {
+        messageId: `crossbot-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        chatId: chatId || '',
+        content: text || '',
+        senderId: senderBotOpenId || 'crossbot-sender',
+        senderName: senderBotName || 'Cross-Bot',
+        chatType: 'group',
+        mentions: syntheticMentions,
+        mentionAll: false,
+        threadId: createdMessageId || undefined,
+        rootId: createdMessageId || undefined,
+        parentId: createdMessageId || undefined,
+        contentType: 'text',
+        resources: [],
+        rawMessage: {
+          message_id: `crossbot-${Date.now()}`,
+          chat_id: chatId || '',
+          chat_type: 'group',
+          message_type: 'text',
+          content: text || '',
+        },
+        rawSender: {
+          sender_id: { open_id: senderBotOpenId },
+          sender_type: 'bot',
+        },
+      };
+
+      const safeRuntime: RuntimeEnv = {
+        log: (...args: unknown[]) => log.info(args.join(' ')),
+        error: (...args: unknown[]) => log.error(args.join(' ')),
+        exit: (code?: number) => process.exit(code ?? 0),
+      };
+
+      await dispatchToAgent({
+        ctx: fakeCtx,
+        account: targetAccount!,
+        accountScopedCfg: targetAccountScopedCfg,
+        runtime: safeRuntime,
+        chatHistories: new Map<string, HistoryEntry[]>(),
+        quotedContent: undefined,
+        mediaPayload: {},
+        permissionError: undefined,
+        replyToMessageId: createdMessageId || undefined,
+        botOpenId: senderBotOpenId,
+        historyLimit: 10,
+        skipTyping: false,
+        commandAuthorized: true,
+        groupConfig,
+        defaultGroupConfig,
+      });
+
+      log.info(`[A2A-CROSS-BOT] notified ${targetAccountId} (openId=${mentionOpenId})`);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      log.error(`[A2A-CROSS-BOT] failed to notify ${targetAccountId}: ${err.message}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -204,10 +377,58 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     },
   });
 
-  return {
+  const result: FeishuSendResult = {
     messageId: response?.data?.message_id ?? '',
     chatId: response?.data?.chat_id ?? '',
   };
+
+  const botOpenIdToAccountId = cfg?.channels?.feishu?.botOpenIdToAccountId;
+  log.info(
+    `[A2A-CROSS-BOT] sendMessageFeishu: botOpenIdToAccountId exists=${!!botOpenIdToAccountId}, text=${String(text)?.substring?.(0, 50)}`,
+  );
+
+  if (botOpenIdToAccountId) {
+    const textParsedMentions = extractBotMentionsFromText(text, botOpenIdToAccountId);
+    log.info(
+      `[A2A-CROSS-BOT] textParsedMentions count=${textParsedMentions.length}, accountIds=${textParsedMentions.map((m) => m.accountId).join(',')}`,
+    );
+
+    if (textParsedMentions.length > 0) {
+      log.info(
+        `[A2A-CROSS-BOT] sendMessageFeishu: found ${textParsedMentions.length} bot mentions, triggering notify for each`,
+      );
+
+      const allMentionsMap = new Map<string, BotMentionInfo>();
+      if (mentions && mentions.length > 0) {
+        for (const m of mentions) {
+          const oid = m.openId;
+          if (oid) allMentionsMap.set(oid, { openId: m.openId, name: m.name, key: m.key, isBot: true, accountId: '' });
+        }
+      }
+      for (const m of textParsedMentions) {
+        const oid = m.openId;
+        if (oid) allMentionsMap.set(oid, m);
+      }
+      const allMentions = Array.from(allMentionsMap.values());
+
+      log.info(
+        `[A2A-CROSS-BOT] sendMessageFeishu: explicit mentions=${mentions?.length}, text-parsed=${textParsedMentions.length}, total=${allMentions.length}`,
+      );
+
+      setImmediate(() => {
+        notifyOtherBotsOfMention({
+          mentions: allMentions,
+          text,
+          accountId,
+          chatId: target,
+          cfg,
+          createdMessageId: result.messageId,
+        }).catch((e) => log.error(`[A2A-CROSS-BOT] notify error: ${String(e)}`));
+      });
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
