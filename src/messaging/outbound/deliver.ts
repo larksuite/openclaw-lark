@@ -30,11 +30,33 @@ const log = larkLogger('outbound/deliver');
 
 /**
  * Build a Feishu post-format content envelope from processed text.
+ *
+ * Extracts `<at user_id="...">Name</at>` tags from the text and emits them
+ * as standalone `{tag: "at"}` post elements so that Feishu recognises them
+ * as real mentions (populates the `mentions` array and triggers
+ * `im.message.receive_v1` for the mentioned user/bot).  Without this,
+ * `<at>` tags embedded inside an `{tag: "md"}` element are rendered
+ * visually but do NOT produce mention metadata or trigger events.
  */
 function buildPostContent(text: string): string {
+  const cleaned = text.replace(/\\"/g, '"');
+  const atRegex = /(<at\s+user_id="[^"]+">.*?<\/at>)/gi;
+  const parts = cleaned.split(atRegex);
+  const elements: Array<Record<string, string>> = [];
+  for (const part of parts) {
+    const m = part.match(/<at\s+user_id="([^"]+)">(.*?)<\/at>/i);
+    if (m) {
+      elements.push({ tag: 'at', user_id: m[1] });
+    } else if (part) {
+      elements.push({ tag: 'md', text: part });
+    }
+  }
+  if (elements.length === 0) {
+    elements.push({ tag: 'md', text });
+  }
   return JSON.stringify({
     zh_cn: {
-      content: [[{ tag: 'md', text }]],
+      content: [elements],
     },
   });
 }
