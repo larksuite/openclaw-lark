@@ -13,12 +13,12 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
-import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { parseFeishuRouteTarget } from '../../core/targets';
 import { isCommentTarget } from '../../core/comment-target';
 import { isSyntheticTarget } from '../../core/synthetic-target';
+import type { FeishuSendResult } from '../types';
 import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from './deliver';
 
 const log = larkLogger('outbound/outbound');
@@ -117,6 +117,7 @@ interface FeishuSendContext {
   to: string;
   replyToMessageId?: string;
   replyInThread: boolean;
+  threadId?: string;
   accountId?: string;
 }
 
@@ -149,6 +150,7 @@ function resolveFeishuSendContext(params: {
     to: routeTarget.target,
     replyToMessageId,
     replyInThread,
+    threadId: explicitThreadId,
     accountId: params.accountId ?? undefined,
   };
 }
@@ -212,13 +214,20 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // Feishu media messages do not support inline captions — send text first.
+    // Capture the result so the no-mediaUrl path can return it without re-sending.
+    let captionResult: { messageId: string; chatId: string; warning?: string } | undefined;
     if (text?.trim()) {
-      await sendTextLark({ ...ctx, to: ctx.to, text });
+      captionResult = await sendTextLark({ ...ctx, to: ctx.to, text });
     }
 
-    // No mediaUrl — text-only fallback.
+    // No mediaUrl — text-only flow.
     if (!mediaUrl) {
       log.info('sendMedia: no mediaUrl provided, falling back to text-only');
+      if (captionResult) {
+        // Caption was already sent above; return that result.
+        return { channel: 'feishu', ...captionResult };
+      }
+      // No caption text — send empty/raw text to satisfy the contract.
       const result = await sendTextLark({ ...ctx, to: ctx.to, text: text ?? '' });
       return { channel: 'feishu', ...result };
     }

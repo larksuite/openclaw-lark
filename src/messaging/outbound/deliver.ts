@@ -10,14 +10,17 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuSendResult } from '../types';
-import { createAccountScopedConfig } from '../../core/accounts';
+import { createAccountScopedConfig, getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
+import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { parseFeishuCommentTarget } from '../../core/comment-target';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { formatLarkError } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
+import { getSentinelStore } from '../inbound/sentinel-store';
 import { uploadAndSendMediaLark } from './media';
+import { type NormalizeContext, type SentinelEntry, normalizeOutboundMentions } from './normalize-mentions';
 
 const log = larkLogger('outbound/deliver');
 
@@ -36,29 +39,47 @@ function buildPostContent(text: string): string {
   });
 }
 
-/**
- * Normalise `<at>` mention tags that the AI frequently writes incorrectly.
- *
- * Correct Feishu syntax:
- *   `<at user_id="ou_xxx">name</at>`   — mention a user
- *   `<at user_id="all"></at>`           — mention everyone
- *
- * Common AI mistakes this function fixes:
- *   `<at id=all></at>`           → `<at user_id="all"></at>`
- *   `<at id="ou_xxx"></at>`      → `<at user_id="ou_xxx"></at>`
- *   `<at open_id="ou_xxx"></at>` → `<at user_id="ou_xxx"></at>`
- *   `<at user_id=ou_xxx></at>`   → `<at user_id="ou_xxx"></at>`
- */
-function normalizeAtMentions(text: string): string {
-  return text.replace(/<at\s+(?:id|open_id|user_id)\s*=\s*"?([^">\s]+)"?\s*>/gi, '<at user_id="$1">');
+interface PreparedText {
+  text: string;
+  sentinels: SentinelEntry[];
+  resolvedAccountId: string | undefined;
 }
 
 /**
- * Pre-process text for Lark rendering:
- * mention normalisation + table conversion + style optimization.
+ * Pre-processes text before Feishu delivery. Runs the full mention
+ * normalizer (tag rewrite + plain `@Name` resolution + `@all` aliases),
+ * markdown-table conversion, and Markdown style optimization.
+ *
+ * Falls back to the raw text on any normalizer failure so a parser bug
+ * never blocks send. Sentinels collected during normalization are
+ * returned for the caller to record after the send succeeds.
  */
-function prepareTextForLark(cfg: ClawdbotConfig, text: string, accountId?: string): string {
-  let processed = normalizeAtMentions(text);
+async function prepareTextForLark(
+  cfg: ClawdbotConfig,
+  text: string,
+  to: string,
+  accountId?: string,
+): Promise<PreparedText> {
+  let processed = text;
+  let sentinels: SentinelEntry[] = [];
+  let resolvedAccountId: string | undefined = accountId;
+
+  if (text?.trim()) {
+    try {
+      const account = getLarkAccount(cfg, accountId ?? undefined);
+      const ctx: NormalizeContext = {
+        chatId: to,
+        account,
+        log: (...args) => log.warn(args.map(String).join(' ')),
+      };
+      const r = await normalizeOutboundMentions(text, ctx);
+      processed = r.normalizedText;
+      sentinels = r.sentinels;
+      resolvedAccountId = account.accountId;
+    } catch (err) {
+      log.warn(`normalizeOutboundMentions failed in prepareTextForLark, using raw text: ${String(err)}`);
+    }
+  }
 
   // Convert markdown tables to Feishu-compatible format using per-account
   // tableMode setting.
@@ -76,7 +97,21 @@ function prepareTextForLark(cfg: ClawdbotConfig, text: string, accountId?: strin
     // Runtime not available -- use the text as-is.
   }
 
-  return optimizeMarkdownStyle(processed, 1);
+  return {
+    text: optimizeMarkdownStyle(processed, 1),
+    sentinels,
+    resolvedAccountId,
+  };
+}
+
+function recordSentinelsForChat(
+  resolvedAccountId: string | undefined,
+  to: string,
+  threadId: string | undefined,
+  sentinels: SentinelEntry[],
+): void {
+  if (!resolvedAccountId || sentinels.length === 0) return;
+  getSentinelStore(resolvedAccountId).recordSentinels(threadScopedKey(to, threadId), sentinels);
 }
 
 /**
@@ -211,6 +246,8 @@ export interface SendTextLarkParams {
   replyToMessageId?: string;
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
+  /** Thread root id when the reply lives inside a thread; used for sentinel keying. */
+  threadId?: string;
   /** Optional account identifier for multi-account setups. */
   accountId?: string;
 }
@@ -240,7 +277,7 @@ export interface SendTextLarkParams {
  * ```
  */
 export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSendResult> {
-  const { cfg, to, text, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, text, replyToMessageId, replyInThread, accountId, threadId } = params;
 
   // Detect card JSON in text — route to card sending before text preprocessing.
   const card = detectCardJson(text);
@@ -252,10 +289,12 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
 
   log.info(`sendTextLark: target=${to}, textLength=${text.length}`);
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
-  const processedText = prepareTextForLark(cfg, text, accountId);
-  const content = buildPostContent(processedText);
+  const prepared = await prepareTextForLark(cfg, text, to, accountId);
+  const content = buildPostContent(prepared.text);
 
-  return sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
+  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
+  recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
+  return result;
 }
 
 // ---------------------------------------------------------------------------

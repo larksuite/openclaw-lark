@@ -7,12 +7,57 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuSendResult, MentionInfo  } from '../types';
-import { createAccountScopedConfig } from '../../core/accounts';
+import { createAccountScopedConfig, getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
+import { larkLogger } from '../../core/lark-logger';
+import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
 import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
+import { getSentinelStore } from '../inbound/sentinel-store';
+import { type NormalizeContext, type SentinelEntry, normalizeOutboundMentions } from './normalize-mentions';
+
+const sendLog = larkLogger('outbound/send');
+
+/**
+ * Runs the outbound text through mention normalization. Returns the
+ * input unchanged on any failure so a parser bug never blocks send.
+ * Sentinels collected during normalization are returned for the caller
+ * to record after a successful send.
+ */
+async function normalizeFeishuOutboundText(
+  cfg: ClawdbotConfig,
+  to: string,
+  text: string,
+  accountId?: string,
+): Promise<{ text: string; sentinels: SentinelEntry[]; resolvedAccountId: string | undefined }> {
+  if (!text?.trim()) return { text, sentinels: [], resolvedAccountId: accountId };
+  try {
+    const account = getLarkAccount(cfg, accountId ?? undefined);
+    const ctx: NormalizeContext = {
+      chatId: to,
+      account,
+      log: (...args) => sendLog.warn(args.map(String).join(' ')),
+    };
+    const r = await normalizeOutboundMentions(text, ctx);
+    return { text: r.normalizedText, sentinels: r.sentinels, resolvedAccountId: account.accountId };
+  } catch (err) {
+    sendLog.warn(`normalizeOutboundMentions failed, using raw text: ${String(err)}`);
+    return { text, sentinels: [], resolvedAccountId: accountId };
+  }
+}
+
+function recordFeishuSendSentinels(
+  resolvedAccountId: string | undefined,
+  to: string,
+  threadId: string | undefined,
+  sentinels: SentinelEntry[],
+): void {
+  if (!resolvedAccountId || sentinels.length === 0) return;
+  const threadKey = threadScopedKey(to, threadId);
+  getSentinelStore(resolvedAccountId).recordSentinels(threadKey, sentinels);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,6 +80,8 @@ export interface SendFeishuMessageParams {
   accountId?: string;
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
+  /** Thread root id when the reply lives inside a thread; used for sentinel keying. */
+  threadId?: string;
   /**
    * Optional multi-locale texts for i18n post messages.
    * When provided, builds a multi-locale post structure (e.g. { zh_cn: ..., en_us: ... })
@@ -107,7 +154,20 @@ function convertMarkdownTablesForFeishu(cfg: ClawdbotConfig, text: string, accou
  * @returns The send result containing the new message ID.
  */
 export async function sendMessageFeishu(params: SendFeishuMessageParams): Promise<FeishuSendResult> {
-  const { cfg, to, text, replyToMessageId, mentions, accountId, replyInThread, i18nTexts } = params;
+  const { cfg, to, replyToMessageId, mentions, accountId, replyInThread, i18nTexts, threadId } = params;
+  let { text } = params;
+
+  // Mention normalization. Single-locale path rewrites `text`; the
+  // i18nTexts path rewrites each locale below. Sentinels are recorded
+  // after the send succeeds.
+  let normalizationSentinels: SentinelEntry[] = [];
+  let normalizationAccountId: string | undefined = accountId ?? undefined;
+  if (!i18nTexts && text?.trim()) {
+    const r = await normalizeFeishuOutboundText(cfg, to, text, accountId ?? undefined);
+    text = r.text;
+    normalizationSentinels = r.sentinels;
+    normalizationAccountId = r.resolvedAccountId;
+  }
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
@@ -178,6 +238,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
         }),
     });
 
+    recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
     return {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
@@ -204,6 +265,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     },
   });
 
+  recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
   return {
     messageId: response?.data?.message_id ?? '',
     chatId: response?.data?.chat_id ?? '',

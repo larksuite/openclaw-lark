@@ -15,6 +15,7 @@
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
 import { getUserNameCache } from './user-name-cache-store';
+import type { ChatMember, PrincipalKind, UserNameCache } from './user-name-cache-store';
 import { type PermissionError, extractPermissionError } from './permission';
 
 export { UserNameCache, clearUserNameCache, getUserNameCache } from './user-name-cache-store';
@@ -75,14 +76,14 @@ export async function batchResolveUserNames(params: {
         const openId: string | undefined = item.open_id;
         if (!openId) continue;
         const name: string = item.name || item.display_name || item.nickname || item.en_name || '';
-        cache.set(openId, name);
+        cache.setWithKind(openId, name, 'user');
         result.set(openId, name);
         resolved.add(openId);
       }
       // Cache empty names for IDs the API didn't return (no permission, etc.)
       for (const id of chunk) {
         if (!resolved.has(id)) {
-          cache.set(id, '');
+          cache.setWithKind(id, '', 'user');
           result.set(id, '');
         }
       }
@@ -152,7 +153,7 @@ export async function resolveBotName(params: {
 
     // Cache even empty names to avoid repeated API calls for bots
     // whose names we cannot resolve.
-    cache.set(openId, name);
+    cache.setWithKind(openId, name, 'bot');
     return { name: name || undefined };
   } catch (err) {
     // Bot name resolution is best-effort: missing `bot:basic_info` scope
@@ -164,9 +165,171 @@ export async function resolveBotName(params: {
     } else {
       log(`feishu: failed to resolve bot name for ${openId}: ${String(err)}`);
     }
-    cache.set(openId, '');
+    cache.setWithKind(openId, '', 'bot');
     return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// Lazy chat-member prefetch
+// ---------------------------------------------------------------------------
+
+/** Returns the numeric Feishu API error code from a thrown error, or null. */
+function extractApiCode(err: unknown): number | null {
+  const permErr = extractPermissionError(err);
+  if (typeof permErr?.code === 'number') return permErr.code;
+  if (err && typeof err === 'object') {
+    const code = (err as { response?: { data?: { code?: unknown } } }).response?.data?.code;
+    if (typeof code === 'number') return code;
+  }
+  return null;
+}
+
+/** Configuration for one chat-prefetch endpoint. */
+interface ChatPrefetchSpec<M> {
+  /** Tag used in in-flight key and log lines, e.g. 'bots' or 'members'. */
+  tag: string;
+  /** API endpoint, given the chatId. */
+  url: (chatId: string) => string;
+  /** Query string. */
+  params: Record<string, unknown>;
+  parseItem: (raw: unknown) => M | null;
+  /** True iff a fresh snapshot is already in the cache for this chat. */
+  isFresh: (cache: UserNameCache, chatId: string) => boolean;
+  /** Write a member list (used both on success and on the empty-on-error path). */
+  record: (cache: UserNameCache, chatId: string, members: M[]) => void;
+}
+
+/**
+ * Runs a chat-member prefetch with shared lifecycle:
+ *
+ * 1. Skip on unconfigured account or empty chatId.
+ * 2. Dedup concurrent calls per (tag, chatId) via `cache.inFlight`.
+ * 3. Skip when an in-TTL snapshot already exists.
+ * 4. On API error, cache an empty list to short-circuit retries; on
+ *    transient errors, leave the cache untouched so the next call retries.
+ */
+async function runChatPrefetch<M>(
+  spec: ChatPrefetchSpec<M>,
+  account: LarkAccount,
+  chatId: string,
+  log: (...args: unknown[]) => void,
+): Promise<void> {
+  if (!account.configured || !chatId) return;
+
+  const cache = getUserNameCache(account.accountId);
+  const key = `${spec.tag}:${chatId}`;
+  const existing = cache.getInflight(key);
+  if (existing) return existing;
+  if (spec.isFresh(cache, chatId)) return;
+
+  const promise = (async () => {
+    try {
+      const client = LarkClient.fromAccount(account).sdk;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res: any = await (client as any).request({
+        method: 'GET',
+        url: spec.url(chatId),
+        params: spec.params,
+      });
+      const items: unknown[] = (res as { data?: { items?: unknown[] } })?.data?.items ?? [];
+      const members = items.map(spec.parseItem).filter((m): m is M => m !== null);
+      spec.record(cache, chatId, members);
+    } catch (err) {
+      const apiCode = extractApiCode(err);
+      if (apiCode != null) {
+        // Application-level refusal: cache an empty list to short-circuit
+        // further retries. Persistent errors (e.g. missing scope) will not
+        // resolve within the cache TTL anyway.
+        log(`prefetchChat${spec.tag}[${chatId}]: API error code=${apiCode}, caching empty`);
+        spec.record(cache, chatId, []);
+      } else {
+        log(`prefetchChat${spec.tag}[${chatId}]: failed: ${String(err)}`);
+      }
+    } finally {
+      cache.clearInflight(key);
+    }
+  })();
+
+  cache.setInflight(key, promise);
+  return promise;
+}
+
+interface RawBotMember {
+  // /members/bots returns { bot_id, bot_name }; some related endpoints
+  // use { open_id, name }. Accept both shapes.
+  bot_id?: string;
+  bot_name?: string;
+  open_id?: string;
+  name?: string;
+}
+
+const CHAT_BOTS_SPEC: ChatPrefetchSpec<{ openId: string; name: string }> = {
+  tag: 'Bots',
+  url: (chatId) => `/open-apis/im/v1/chats/${chatId}/members/bots`,
+  params: {},
+  parseItem: (raw) => {
+    const it = raw as RawBotMember;
+    const openId = String(it.bot_id ?? it.open_id ?? '');
+    if (!openId) return null;
+    return { openId, name: String(it.bot_name ?? it.name ?? '') };
+  },
+  isFresh: (cache, chatId) => cache.getChatBots(chatId) !== null,
+  record: (cache, chatId, members) => cache.recordChatBots(chatId, members),
+};
+
+interface RawChatMember {
+  // /members returns `member_id`; some related endpoints use `open_id`.
+  // With `member_id_type=open_id` the value is an ou_-prefixed open_id.
+  member_id?: string;
+  open_id?: string;
+  name?: string;
+  // 'user' | 'app'; absent on /members, where every entry is a user.
+  member_type?: string;
+}
+
+function memberTypeToKind(type: string | undefined): PrincipalKind {
+  return type === 'app' ? 'bot' : 'user';
+}
+
+const CHAT_MEMBERS_SPEC: ChatPrefetchSpec<ChatMember> = {
+  tag: 'Members',
+  url: (chatId) => `/open-apis/im/v1/chats/${chatId}/members`,
+  params: { member_id_type: 'open_id', page_size: 100 },
+  parseItem: (raw) => {
+    const it = raw as RawChatMember;
+    const openId = String(it.member_id ?? it.open_id ?? '');
+    if (!openId) return null;
+    return { openId, name: String(it.name ?? ''), kind: memberTypeToKind(it.member_type) };
+  },
+  isFresh: (cache, chatId) => cache.getChatMembers(chatId) !== null,
+  record: (cache, chatId, members) => cache.recordChatMembers(chatId, members),
+};
+
+/**
+ * Fetches the bot members of a chat via
+ * `GET /open-apis/im/v1/chats/{chat_id}/members/bots` and writes them
+ * to the per-account cache.
+ */
+export async function prefetchChatBots(
+  account: LarkAccount,
+  chatId: string,
+  log: (...args: unknown[]) => void,
+): Promise<void> {
+  return runChatPrefetch(CHAT_BOTS_SPEC, account, chatId, log);
+}
+
+/**
+ * Fetches the human members of a chat via
+ * `GET /open-apis/im/v1/chats/{chat_id}/members` and writes them to
+ * the per-account cache.
+ */
+export async function prefetchChatMembers(
+  account: LarkAccount,
+  chatId: string,
+  log: (...args: unknown[]) => void,
+): Promise<void> {
+  return runChatPrefetch(CHAT_MEMBERS_SPEC, account, chatId, log);
 }
 
 /**
@@ -203,14 +366,14 @@ export async function resolveUserName(params: {
 
     // Cache even empty names to avoid repeated API calls for users
     // whose names we cannot resolve (e.g. due to permissions).
-    cache.set(openId, name);
+    cache.setWithKind(openId, name, 'user');
     return { name: name || undefined };
   } catch (err) {
     const permErr = extractPermissionError(err);
     if (permErr) {
       log(`feishu: permission error resolving user name: code=${permErr.code}`);
       // Cache empty name so we don't retry a known-failing openId
-      cache.set(openId, '');
+      cache.setWithKind(openId, '', 'user');
       return { permissionError: permErr };
     }
     log(`feishu: failed to resolve user name for ${openId}: ${String(err)}`);

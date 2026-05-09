@@ -48,6 +48,7 @@ import {
   buildInboundPayload,
   buildMessageBody,
 } from './dispatch-builders';
+import { getSentinelStore } from './sentinel-store';
 import { type DispatchContext, buildDispatchContext, resolveThreadSessionKey } from './dispatch-context';
 import type { PermissionError } from './permission';
 import { mentionedBot } from './mention';
@@ -261,6 +262,7 @@ async function dispatchNormalMessage(
     chatType: dc.ctx.chatType,
     skipTyping,
     replyInThread: dc.isThread,
+    threadId: dc.isThread ? dc.ctx.threadId : undefined,
     toolUseDisplay,
   });
 
@@ -379,10 +381,16 @@ export async function dispatchToAgent(params: {
     });
   }
 
-  // 2. Build annotated message body
-  const messageBody = buildMessageBody(params.ctx, params.quotedContent);
+  // Consume any pending mention sentinels for this thread. Take and
+  // delete is one shot per inbound — capture once, hand to both body
+  // builders below.
+  const sentinelKey = threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined);
+  const sentinels = getSentinelStore(dc.account.accountId).consumeSentinels(sentinelKey);
 
-  // 3. Permission-error notification (optional side-effect).
+  // 3. Build annotated message body
+  const messageBody = buildMessageBody(params.ctx, params.quotedContent, sentinels);
+
+  // 4. Permission-error notification (optional side-effect).
   //    Isolated so a failure here does not block the main message dispatch.
   //    Skipped for comment targets: the streaming card dispatcher inside
   //    dispatchPermissionNotification sends via IM APIs which don't
@@ -395,7 +403,7 @@ export async function dispatchToAgent(params: {
     }
   }
 
-  // 4. Build main envelope (with group chat history)
+  // 5. Build main envelope (with group chat history)
   const { combinedBody, historyKey } = buildEnvelopeWithHistory(
     dc,
     messageBody,
@@ -403,12 +411,12 @@ export async function dispatchToAgent(params: {
     params.historyLimit,
   );
 
-  // 5. Build BodyForAgent with mention annotation (if any).
+  // 6. Build BodyForAgent with mention annotation (if any).
   //    SDK >= 2026.2.10 no longer falls back to Body for BodyForAgent,
   //    so we must set it explicitly to preserve the annotation.
-  const bodyForAgent = buildBodyForAgent(params.ctx);
+  const bodyForAgent = buildBodyForAgent(params.ctx, sentinels);
 
-  // 6. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
+  // 7. Build InboundHistory for SDK metadata injection (>= 2026.2.10).
   //    The SDK's buildInboundUserContextPrefix renders these as structured
   //    JSON blocks; earlier SDK versions simply ignore unknown fields.
   const threadHistoryKey = threadScopedKey(dc.ctx.chatId, dc.isThread ? dc.ctx.threadId : undefined);
@@ -421,7 +429,7 @@ export async function dispatchToAgent(params: {
         }))
       : undefined;
 
-  // 7. Build inbound context payload
+  // 8. Build inbound context payload
   const isBareNewOrReset = /^\/(?:new|reset)\s*$/i.test((params.ctx.content ?? '').trim());
   const groupSystemPrompt = dc.isGroup
     ? params.groupConfig?.systemPrompt?.trim() || params.defaultGroupConfig?.systemPrompt?.trim() || undefined
@@ -461,7 +469,7 @@ export async function dispatchToAgent(params: {
     },
   });
 
-  // 8a. Intercept /feishu commands for i18n multi-locale card dispatch
+  // 9a. Intercept /feishu commands for i18n multi-locale card dispatch
   //     Must run BEFORE the SDK command check — the SDK does not recognise
   //     plugin-registered commands via isControlCommandMessage, so
   //     /feishu_* falls through to the AI agent otherwise.

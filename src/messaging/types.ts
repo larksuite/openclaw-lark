@@ -225,7 +225,7 @@ export interface MentionInfo {
   openId: string;
   /** Display name. */
   name: string;
-  /** Whether this mention targets the bot itself. */
+  /** True iff this mention targets the receiving bot itself (openId === botOpenId). */
   isBot: boolean;
 }
 

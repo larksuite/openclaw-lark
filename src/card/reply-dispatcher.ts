@@ -39,7 +39,7 @@ export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types
 
 export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherParams): FeishuReplyDispatcherResult {
   const core = LarkClient.runtime;
-  const { cfg, agentId, chatId, sessionKey, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, agentId, chatId, sessionKey, replyToMessageId, accountId, replyInThread, threadId } = params;
 
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
@@ -266,6 +266,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                   replyToMessageId,
                   replyInThread,
                   accountId,
+                  threadId,
                 });
               } catch (fallbackErr) {
                 if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
@@ -296,6 +297,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                     replyToMessageId,
                     replyInThread,
                     accountId,
+                    threadId,
                   });
                 } catch (fallbackErr) {
                   if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
@@ -322,6 +324,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 replyToMessageId,
                 replyInThread,
                 accountId,
+                threadId,
               });
             } catch (err) {
               if (staticGuard?.terminate('deliver.textChunk', err)) return;

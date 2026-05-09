@@ -29,12 +29,12 @@ export function isMentionAll(mention: { key: string }): boolean {
   return mention.key === '@_all';
 }
 
-/** Whether the bot was @-mentioned. */
+/** Whether the receiving bot itself was @-mentioned. */
 export function mentionedBot(ctx: MessageContext): boolean {
   return ctx.mentions.some((m) => m.isBot);
 }
 
-/** All non-bot mentions. */
+/** All mentions excluding the receiving bot itself. */
 export function nonBotMentions(ctx: MessageContext): MentionInfo[] {
   return ctx.mentions.filter((m) => !m.isBot);
 }
@@ -105,3 +105,4 @@ export function buildMentionedCardContent(targets: MentionInfo[], message: strin
   const mentionTags = targets.map(formatMentionForCard).join(' ');
   return `${mentionTags}\n${message}`;
 }
+
