@@ -141,13 +141,13 @@ export class StreamingCardController {
       const runtime = LarkClient.runtime as {
         agent?: {
           session?: {
-            resolveStorePath?: (storePath?: string) => string;
+            resolveStorePath?: (storePath?: string, opts?: { agentId?: string }) => string;
             loadSessionStore?: (storePath: string) => Record<string, Record<string, unknown>>;
           };
         };
         channel?: {
           session?: {
-            resolveStorePath?: (storePath?: string) => string;
+            resolveStorePath?: (storePath?: string, opts?: { agentId?: string }) => string;
           };
         };
       } | null;
@@ -171,9 +171,14 @@ export class StreamingCardController {
       const fallbackKey = key.replace(/^(agent):[^:]+:/, `$1:${defaultAgentId}:`);
       const candidateKeys = fallbackKey !== key ? [key, fallbackKey] : [key];
 
+      // Extract the agent ID from the session key so resolveStorePath
+      // resolves to the correct per-agent store instead of defaulting to "main".
+      const agentIdFromKey = key.startsWith('agent:') ? key.split(':')[1] : undefined;
+      const storeAgentId = agentIdFromKey ?? defaultAgentId;
+
       const sessionApi = runtime.agent?.session;
       if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
-        const storePath = sessionApi.resolveStorePath(sessionStorePath);
+        const storePath = sessionApi.resolveStorePath(sessionStorePath, { agentId: storeAgentId });
         const store = sessionApi.loadSessionStore(storePath);
 
         let entry: Record<string, unknown> | undefined;
@@ -221,7 +226,7 @@ export class StreamingCardController {
         return undefined;
       }
 
-      const storePath = channelSession.resolveStorePath(sessionStorePath);
+      const storePath = channelSession.resolveStorePath(sessionStorePath, { agentId: storeAgentId });
       const raw = await readFile(storePath, 'utf8');
       const parsed: unknown = JSON.parse(raw);
       const store =
