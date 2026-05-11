@@ -23,6 +23,7 @@ import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';
 import { jsonResult, readReactionParams } from '../../core/sdk-compat';
 
+import { deliverTextToActiveStreamingCard } from '../../card/active-streaming-card-store';
 import { LarkClient } from '../../core/lark-client';
 import { getEnabledLarkAccounts } from '../../core/accounts';
 import { larkLogger } from '../../core/lark-logger';
@@ -187,7 +188,10 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
     try {
       switch (action) {
         case 'send':
-          return await deliverMessage(cfg, readFeishuSendParams(params, toolContext), aid, ctx.mediaLocalRoots);
+          return await deliverMessage(cfg, readFeishuSendParams(params, toolContext), aid, ctx.mediaLocalRoots, {
+            sessionKey: ctx.sessionKey,
+            toolContext,
+          });
         case 'react':
           return await handleReact(cfg, params, aid);
         case 'reactions':
@@ -225,6 +229,7 @@ async function deliverMessage(
   sp: FeishuSendParams,
   accountId?: string,
   mediaLocalRoots?: readonly string[],
+  runtimeContext?: { sessionKey?: string | null; toolContext?: ChannelThreadingToolContext },
 ) {
   const { to, text, mediaUrl, fileName, replyToMessageId, replyInThread, card } = sp;
 
@@ -241,6 +246,20 @@ async function deliverMessage(
   if (!text.trim() && !card && !mediaUrl) {
     log.warn('deliverMessage: no payload, rejecting');
     throw new Error('send requires at least one of: message, card, or media.');
+  }
+
+  const activeCardResult = await deliverTextToActiveStreamingCard({
+    sessionKey: runtimeContext?.sessionKey,
+    accountId,
+    to,
+    text,
+    card,
+    mediaUrl,
+    toolContext: runtimeContext?.toolContext,
+  });
+  if (activeCardResult) {
+    log.info(`deliverMessage: routed text into active streaming card, messageId=${activeCardResult.messageId}`);
+    return jsonResult(activeCardResult);
   }
 
   const sendCtx = { cfg, to, replyToMessageId, replyInThread, accountId };

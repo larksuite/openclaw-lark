@@ -21,6 +21,7 @@ import { larkLogger } from '../core/lark-logger';
 import { sendMediaLark } from '../messaging/outbound/deliver';
 import { sendMarkdownCardFeishu, sendMessageFeishu } from '../messaging/outbound/send';
 import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } from '../messaging/outbound/typing';
+import { registerActiveStreamingCard } from './active-streaming-card-store';
 import { splitReasoningText, stripReasoningTags } from './builder';
 import { isCardTableLimitError } from './card-error';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
@@ -101,6 +102,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         resolvedFooter,
       })
     : null;
+  const unregisterActiveCard = controller
+    ? registerActiveStreamingCard({
+        sessionKey,
+        accountId,
+        chatId,
+        controller,
+      })
+    : () => {};
 
   // ---- Static mode unavailable guard ----
   // In streaming mode the controller owns its own guard; in static mode
@@ -359,10 +368,12 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       if (controller) {
         if (controller.terminateIfUnavailable('onError', err)) {
           typingCallbacks.onIdle?.();
+          unregisterActiveCard();
           return;
         }
         await controller.onError(err, info);
         typingCallbacks.onIdle?.();
+        unregisterActiveCard();
         return;
       }
 
@@ -388,6 +399,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       if (controller) {
         await controller.onIdle();
+        unregisterActiveCard();
       }
 
       typingCallbacks.onIdle?.();
@@ -395,11 +407,20 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
     onCleanup: async () => {
       typingCallbacks.onCleanup?.();
+      unregisterActiveCard();
     },
   });
 
   // ---- Abort card (delegates to controller or no-op for static) ----
-  const abortCard = controller ? () => controller.abortCard() : async () => {};
+  const abortCard = controller
+    ? async () => {
+        try {
+          await controller.abortCard();
+        } finally {
+          unregisterActiveCard();
+        }
+      }
+    : async () => {};
 
   return {
     dispatcher,
