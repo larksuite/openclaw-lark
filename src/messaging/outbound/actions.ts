@@ -169,6 +169,17 @@ function readFeishuSendParams(
   };
 }
 
+export function readReactionMessageId(
+  params: Record<string, unknown>,
+  toolContext?: ChannelThreadingToolContext,
+): string | undefined {
+  return (
+    readStringParam(params, 'messageId') ??
+    readStringParam(params, 'message_id') ??
+    (toolContext?.currentMessageId != null ? String(toolContext.currentMessageId) : undefined)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
@@ -201,9 +212,9 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
         case 'send':
           return await deliverMessage(cfg, readFeishuSendParams(params, toolContext), aid, ctx.mediaLocalRoots);
         case 'react':
-          return await handleReact(cfg, params, aid);
+          return await handleReact(cfg, params, aid, toolContext);
         case 'reactions':
-          return await handleReactions(cfg, params, aid);
+          return await handleReactions(cfg, params, aid, toolContext);
         case 'delete':
         case 'unsend':
           return await handleDelete(cfg, params, aid);
@@ -335,8 +346,16 @@ async function deliverMedia(
 // Reaction handlers
 // ---------------------------------------------------------------------------
 
-async function handleReact(cfg: OpenClawConfig, params: Record<string, unknown>, accountId?: string) {
-  const messageId = readStringParam(params, 'messageId', { required: true });
+async function handleReact(
+  cfg: OpenClawConfig,
+  params: Record<string, unknown>,
+  accountId?: string,
+  toolContext?: ChannelThreadingToolContext,
+) {
+  const messageId = readReactionMessageId(params, toolContext);
+  if (!messageId) {
+    throw new Error('messageId required');
+  }
   const { emoji, remove, isEmpty } = readReactionParams(params, {
     removeErrorMessage: 'Emoji is required to remove a Feishu reaction.',
   });
@@ -373,8 +392,16 @@ async function handleReact(cfg: OpenClawConfig, params: Record<string, unknown>,
   return jsonResult({ ok: true, reactionId });
 }
 
-async function handleReactions(cfg: OpenClawConfig, params: Record<string, unknown>, accountId?: string) {
-  const messageId = readStringParam(params, 'messageId', { required: true });
+async function handleReactions(
+  cfg: OpenClawConfig,
+  params: Record<string, unknown>,
+  accountId?: string,
+  toolContext?: ChannelThreadingToolContext,
+) {
+  const messageId = readReactionMessageId(params, toolContext);
+  if (!messageId) {
+    throw new Error('messageId required');
+  }
   const emojiType = readStringParam(params, 'emoji');
 
   const reactions = await listReactionsFeishu({
