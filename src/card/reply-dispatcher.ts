@@ -92,6 +92,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const controller = useStreamingCards
     ? new StreamingCardController({
         cfg,
+        agentId,
         sessionKey,
         accountId,
         chatId,
