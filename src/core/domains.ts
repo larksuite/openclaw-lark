@@ -19,6 +19,24 @@ export function openPlatformDomain(brand?: LarkBrand): string {
   return brand === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn';
 }
 
+/** 账号/注册域名 */
+export function accountsDomain(brand?: LarkBrand): string {
+  if (!brand || brand === 'feishu') return 'https://accounts.feishu.cn';
+  if (brand === 'lark') return 'https://accounts.larksuite.com';
+
+  const base = brand.replace(/\/+$/, '');
+  try {
+    const parsed = new URL(base);
+    if (parsed.hostname.startsWith('open.')) {
+      return `${parsed.protocol}//${parsed.hostname.replace(/^open\./, 'accounts.')}`;
+    }
+  } catch {
+    // Fall through to the raw custom brand string.
+  }
+
+  return base;
+}
+
 /** Applink 域名 */
 export function applinkDomain(brand?: LarkBrand): string {
   return brand === 'lark' ? 'https://applink.larksuite.com' : 'https://applink.feishu.cn';

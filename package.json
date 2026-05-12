@@ -43,11 +43,12 @@
     "@larksuiteoapi/node-sdk": "^1.60.0",
     "@sinclair/typebox": "0.34.48",
     "image-size": "^2.0.2",
+    "qrcode": "^1.5.4",
     "undici-types": "^8.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.22"
+    "openclaw": ">=2026.4.27"
   },
   "peerDependenciesMeta": {
     "openclaw": {
