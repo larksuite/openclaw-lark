@@ -56,6 +56,13 @@ import { resolveRespondToMentionAll } from './gate';
 
 const log = larkLogger('inbound/dispatch');
 
+export function quotedMentionOpenIdsMentionCurrentBot(
+  quotedMentionOpenIds: string[] | undefined,
+  dc: DispatchContext,
+): boolean {
+  return Boolean(dc.botOpenId && quotedMentionOpenIds?.includes(dc.botOpenId));
+}
+
 // ---------------------------------------------------------------------------
 // Internal: normal message dispatch
 // ---------------------------------------------------------------------------
@@ -328,6 +335,8 @@ export async function dispatchToAgent(params: {
   /** Additional structured metadata for synthetic or event-driven inbound flows. */
   extraInboundFields?: Record<string, unknown>;
   quotedContent?: string;
+  quotedMentionOpenIds?: string[];
+  botOpenId?: string;
   account: LarkAccount;
   /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
   accountScopedCfg: ClawdbotConfig;
@@ -453,6 +462,7 @@ export async function dispatchToAgent(params: {
     messageSid: params.ctx.messageId,
     wasMentioned:
       mentionedBot(params.ctx) ||
+      quotedMentionOpenIdsMentionCurrentBot(params.quotedMentionOpenIds, dc) ||
       (params.ctx.mentionAll &&
         resolveRespondToMentionAll({
           groupConfig: params.groupConfig,

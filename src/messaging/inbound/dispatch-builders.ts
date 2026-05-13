@@ -108,12 +108,12 @@ export function buildMessageBody(
 }
 
 /**
- * Build the BodyForAgent value: the clean message content plus an
- * optional mention annotation.
+ * Build the BodyForAgent value: the clean message content plus optional
+ * mention annotations.
  *
  * SDK >= 2026.2.10 changed the BodyForAgent fallback chain from
  * `BodyForAgent ?? Body` to `BodyForAgent ?? CommandBody ?? RawBody ?? Body`,
- * so annotations embedded only in Body never reach the AI.  Setting
+ * so annotations embedded only in Body never reach the AI. Setting
  * BodyForAgent explicitly ensures the mention annotation survives.
  *
  * Sender identity, reply context, and chat history are NOT duplicated
