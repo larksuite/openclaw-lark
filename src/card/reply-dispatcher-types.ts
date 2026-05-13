@@ -112,7 +112,7 @@ export const THROTTLE_CONSTANTS = {
   REASONING_STATUS_MS: 1500,
 } as const;
 
-export const EMPTY_REPLY_FALLBACK_TEXT = 'The run finished without a displayable final reply.';
+export const EMPTY_REPLY_FALLBACK_TEXT = '(no reply)';
 
 // ---------------------------------------------------------------------------
 // Factory params and result
