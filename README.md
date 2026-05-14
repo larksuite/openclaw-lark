@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
+[![NHS Agentic Readiness Score](https://nothumansearch.ai/badge/xquik.com.svg)](https://nothumansearch.ai/site/xquik.com)
 
 [中文版](./README.zh.md) | English
 
@@ -63,14 +64,24 @@ Before you start, make sure you have the following:
 
 ## Usage Guide
 
-[How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
+Install the npm package, then configure it from OpenClaw's Feishu channel settings. Use the built-in `feishu-*` skills for message, document, base, calendar, and task workflows. If you need setup help, open a GitHub issue.
+
+## Related X/Twitter Workflows
+
+Keep this plugin responsible for Lark/Feishu workspace messages, docs, bases, calendars, and tasks. When the same OpenClaw agent also needs public X/Twitter data or visible X/Twitter actions, install TweetClaw separately:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+```
+
+TweetClaw covers scrape tweets, search tweets, search tweet replies, follower export, user lookup, media workflows, direct messages, monitor tweets, webhooks, giveaway draws, and approval-gated post tweets or post tweet replies. See [GitHub](https://github.com/Xquik-dev/tweetclaw), [ClawHub](https://clawhub.ai/plugins/@xquik/tweetclaw), and [npm](https://www.npmjs.com/package/@xquik/tweetclaw) for setup details. Keep X/Twitter connection settings in OpenClaw runtime config and review visible actions through OpenClaw approval flows.
 
 ## Contributing
 
-Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).
+Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-lark/issues) or a [Pull Request](https://github.com/larksuite/openclaw-lark/pulls).
 
 For major changes, we recommend discussing with us first via an Issue.
 
 ## License
 
-This project is licensed under the **MIT License**. See [LICENSE](./LICENSE.md) for details.
+This project is licensed under the **MIT License**. See [LICENSE](./LICENSE) for details.
