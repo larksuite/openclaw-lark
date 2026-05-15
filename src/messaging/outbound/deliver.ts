@@ -115,6 +115,11 @@ function recordSentinelsForChat(
   getSentinelStore(resolvedAccountId).recordSentinels(threadScopedKey(to, threadId), sentinels);
 }
 
+/** Read the replyFallbackOnWithdrawn setting from channel config. */
+function getReplyFallbackMode(cfg: ClawdbotConfig): 'top-level' | 'silent' {
+  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'top-level';
+}
+
 /**
  * Unified IM message sender — handles both reply and create paths for any
  * `msg_type`.  Replaces the former `replyPostMessage`, `createPostMessage`,
@@ -127,8 +132,9 @@ async function sendImMessage(params: {
   msgType: 'post' | 'interactive';
   replyToMessageId?: string;
   replyInThread?: boolean;
+  replyFallbackOnWithdrawn?: 'top-level' | 'silent';
 }): Promise<FeishuSendResult> {
-  const { client, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { client, to, content, msgType, replyToMessageId, replyInThread, replyFallbackOnWithdrawn } = params;
 
   // --- Reply path ---
   if (replyToMessageId) {
@@ -147,9 +153,15 @@ async function sendImMessage(params: {
       return result;
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
-      // fall back to sending as a top-level message instead of silently
-      // losing the reply.  Other errors are propagated as-is.
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'top-level' — fall back to sending as a new message (default)
+      //   'silent'    — silently discard the reply
+      // Other errors are propagated as-is.
       if (isTerminalMessageApiCode(extractLarkApiCode(err))) {
+        if (replyFallbackOnWithdrawn === 'silent') {
+          log.warn(`reply target ${replyToMessageId} unavailable, silently discarding (config: replyFallbackOnWithdrawn=silent)`);
+          return { messageId: '', chatId: '' };
+        }
         log.warn(`reply target ${replyToMessageId} unavailable, falling back to top-level send`);
       } else {
         throw err;
@@ -304,7 +316,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   const prepared = await prepareTextForLark(cfg, text, to, accountId);
   const content = buildPostContent(prepared.text);
 
-  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
+  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg) });
   recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
   return result;
 }
@@ -384,7 +396,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
   const content = JSON.stringify(card);
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg) });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);

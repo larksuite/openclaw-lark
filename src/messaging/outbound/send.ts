@@ -13,6 +13,13 @@ import { larkLogger } from '../../core/lark-logger';
 import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
 import { isMessageUnavailableError, runWithMessageUnavailableGuard } from '../../core/message-unavailable';
+
+type ReplyFallbackMode = 'top-level' | 'silent';
+
+/** Read the replyFallbackOnWithdrawn setting from channel config. */
+function getReplyFallbackMode(cfg: ClawdbotConfig): ReplyFallbackMode {
+  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'top-level';
+}
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 import { getSentinelStore } from '../inbound/sentinel-store';
@@ -245,9 +252,18 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
       };
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
-      // fall back to sending as a top-level message instead of silently
-      // losing the reply.  Other errors are propagated as-is.
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'top-level' — fall back to sending as a new message (default)
+      //   'silent'    — silently discard the reply
+      // Other errors are propagated as-is.
       if (isMessageUnavailableError(err)) {
+        const mode = getReplyFallbackMode(cfg);
+        if (mode === 'silent') {
+          sendLog.warn(
+            `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
+          );
+          return { messageId: '', chatId: '' };
+        }
         sendLog.warn(
           `reply target ${replyToMessageId} unavailable (${err.apiCode}), falling back to top-level send`,
         );
@@ -326,9 +342,18 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
       };
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
-      // fall back to sending as a top-level card instead of silently
-      // losing the reply.  Other errors are propagated as-is.
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'top-level' — fall back to sending as a new card (default)
+      //   'silent'    — silently discard the reply
+      // Other errors are propagated as-is.
       if (isMessageUnavailableError(err)) {
+        const mode = getReplyFallbackMode(cfg);
+        if (mode === 'silent') {
+          sendLog.warn(
+            `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
+          );
+          return { messageId: '', chatId: '' };
+        }
         sendLog.warn(
           `reply target ${replyToMessageId} unavailable (${err.apiCode}), falling back to top-level card send`,
         );
