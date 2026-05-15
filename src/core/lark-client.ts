@@ -40,6 +40,9 @@ function installGlobalUserAgent(): void {
 }
 
 installGlobalUserAgent();
+// 禁用 axios 自动代理读取，避免 HTTP_PROXY 环境变量导致 URL 拼接错误。
+// 代理路由由 OpenClaw 核心的 global-agent 统一管理。
+(Lark.defaultHttpInstance.defaults as Record<string, unknown>).proxy = false;
 Lark.defaultHttpInstance.interceptors.request.handlers = [];
 // 使用 interceptors 在所有 HTTP 请求中注入 User-Agent header
 Lark.defaultHttpInstance.interceptors.request.use(
