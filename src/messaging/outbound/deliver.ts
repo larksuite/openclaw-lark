@@ -115,9 +115,10 @@ function recordSentinelsForChat(
   getSentinelStore(resolvedAccountId).recordSentinels(threadScopedKey(to, threadId), sentinels);
 }
 
-/** Read the replyFallbackOnWithdrawn setting from channel config. */
-function getReplyFallbackMode(cfg: ClawdbotConfig): 'top-level' | 'silent' {
-  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'silent';
+/** Read the replyFallbackOnWithdrawn setting from account-scoped channel config. */
+function getReplyFallbackMode(cfg: ClawdbotConfig, accountId?: string): 'top-level' | 'silent' {
+  const scopedCfg = createAccountScopedConfig(cfg, accountId);
+  return (scopedCfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'silent';
 }
 
 /**
@@ -154,8 +155,8 @@ async function sendImMessage(params: {
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
       // behaviour depends on the replyFallbackOnWithdrawn config:
-      //   'top-level' — fall back to sending as a new message (default)
-      //   'silent'    — silently discard the reply
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new message
       // Other errors are propagated as-is.
       if (isTerminalMessageApiCode(extractLarkApiCode(err))) {
         if (replyFallbackOnWithdrawn === 'silent') {
@@ -316,7 +317,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   const prepared = await prepareTextForLark(cfg, text, to, accountId);
   const content = buildPostContent(prepared.text);
 
-  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg) });
+  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg, accountId) });
   recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
   return result;
 }
@@ -396,7 +397,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
   const content = JSON.stringify(card);
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg) });
+    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg, accountId) });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);

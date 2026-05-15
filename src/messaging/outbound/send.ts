@@ -13,19 +13,20 @@ import { larkLogger } from '../../core/lark-logger';
 import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
 import { isMessageUnavailableError, runWithMessageUnavailableGuard } from '../../core/message-unavailable';
-
-type ReplyFallbackMode = 'top-level' | 'silent';
-
-/** Read the replyFallbackOnWithdrawn setting from channel config. */
-function getReplyFallbackMode(cfg: ClawdbotConfig): ReplyFallbackMode {
-  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'silent';
-}
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { type NormalizeContext, type SentinelEntry, normalizeOutboundMentions } from './normalize-mentions';
 
 const sendLog = larkLogger('outbound/send');
+
+type ReplyFallbackMode = 'top-level' | 'silent';
+
+/** Read the replyFallbackOnWithdrawn setting from account-scoped channel config. */
+export function getReplyFallbackMode(cfg: ClawdbotConfig, accountId?: string): ReplyFallbackMode {
+  const scopedCfg = createAccountScopedConfig(cfg, accountId);
+  return (scopedCfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'silent';
+}
 
 /**
  * Runs the outbound text through mention normalization. Returns the
@@ -253,11 +254,11 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
       // behaviour depends on the replyFallbackOnWithdrawn config:
-      //   'top-level' — fall back to sending as a new message (default)
-      //   'silent'    — silently discard the reply
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new message
       // Other errors are propagated as-is.
       if (isMessageUnavailableError(err)) {
-        const mode = getReplyFallbackMode(cfg);
+        const mode = getReplyFallbackMode(cfg, accountId);
         if (mode === 'silent') {
           sendLog.warn(
             `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
@@ -343,11 +344,11 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
     } catch (err) {
       // When the reply target has been recalled (230011) or deleted (231003),
       // behaviour depends on the replyFallbackOnWithdrawn config:
-      //   'top-level' — fall back to sending as a new card (default)
-      //   'silent'    — silently discard the reply
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new card
       // Other errors are propagated as-is.
       if (isMessageUnavailableError(err)) {
-        const mode = getReplyFallbackMode(cfg);
+        const mode = getReplyFallbackMode(cfg, accountId);
         if (mode === 'silent') {
           sendLog.warn(
             `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
