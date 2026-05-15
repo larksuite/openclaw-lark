@@ -18,7 +18,7 @@ type ReplyFallbackMode = 'top-level' | 'silent';
 
 /** Read the replyFallbackOnWithdrawn setting from channel config. */
 function getReplyFallbackMode(cfg: ClawdbotConfig): ReplyFallbackMode {
-  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'top-level';
+  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'silent';
 }
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';

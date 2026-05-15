@@ -117,7 +117,7 @@ function recordSentinelsForChat(
 
 /** Read the replyFallbackOnWithdrawn setting from channel config. */
 function getReplyFallbackMode(cfg: ClawdbotConfig): 'top-level' | 'silent' {
-  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'top-level';
+  return (cfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'silent';
 }
 
 /**
