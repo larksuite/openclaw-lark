@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { updateCardKitCard } from '../src/card/cardkit';
-import { EMPTY_REPLY_FALLBACK_TEXT } from '../src/card/reply-dispatcher-types';
 import { StreamingCardController } from '../src/card/streaming-card-controller';
 
 vi.mock('openclaw/plugin-sdk/reply-runtime', () => ({ SILENT_REPLY_TOKEN: '__silent__' }));
@@ -68,7 +67,6 @@ describe('StreamingCardController empty reply fallback', () => {
     controller.markFullyComplete();
     await controller.onIdle();
 
-    expect(EMPTY_REPLY_FALLBACK_TEXT).toBe('(no reply)');
     expect(updateCardKitCard).toHaveBeenCalledOnce();
     const renderedCard = vi.mocked(updateCardKitCard).mock.calls[0]?.[0].card;
     expect(JSON.stringify(renderedCard)).toContain('(no reply)');
