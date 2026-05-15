@@ -16,7 +16,8 @@ import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { parseFeishuCommentTarget } from '../../core/comment-target';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
-import { formatLarkError } from '../../core/api-error';
+import { extractLarkApiCode, formatLarkError } from '../../core/api-error';
+import { isTerminalMessageApiCode } from '../../core/message-unavailable';
 import { larkLogger } from '../../core/lark-logger';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { uploadAndSendMediaLark } from './media';
@@ -131,18 +132,29 @@ async function sendImMessage(params: {
 
   // --- Reply path ---
   if (replyToMessageId) {
-    log.info(`replying to message ${replyToMessageId} ` + `(msg_type=${msgType}, thread=${replyInThread ?? false})`);
-    const response = await client.im.message.reply({
-      path: { message_id: replyToMessageId },
-      data: { content, msg_type: msgType, reply_in_thread: replyInThread },
-    });
+    log.info(`replying to message ${replyToMessageId} (msg_type=${msgType}, thread=${replyInThread ?? false})`);
+    try {
+      const response = await client.im.message.reply({
+        path: { message_id: replyToMessageId },
+        data: { content, msg_type: msgType, reply_in_thread: replyInThread },
+      });
 
-    const result: FeishuSendResult = {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
-    log.debug(`reply sent: messageId=${result.messageId}`);
-    return result;
+      const result: FeishuSendResult = {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+      log.debug(`reply sent: messageId=${result.messageId}`);
+      return result;
+    } catch (err) {
+      // When the reply target has been recalled (230011) or deleted (231003),
+      // fall back to sending as a top-level message instead of silently
+      // losing the reply.  Other errors are propagated as-is.
+      if (isTerminalMessageApiCode(extractLarkApiCode(err))) {
+        log.warn(`reply target ${replyToMessageId} unavailable, falling back to top-level send`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   // --- Create path ---
