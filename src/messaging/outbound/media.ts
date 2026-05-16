@@ -164,15 +164,25 @@ export interface SendMediaResult {
  *
  * This helper normalises all of those into a single Buffer.
  */
-async function extractBufferFromResponse(response: unknown): Promise<{ buffer: Buffer; contentType?: string }> {
+async function extractBufferFromResponse(
+  response: unknown,
+  maxBytes?: number,
+): Promise<{ buffer: Buffer; contentType?: string }> {
   // Direct Buffer
   if (Buffer.isBuffer(response)) {
+    if (maxBytes != null && response.length > maxBytes) {
+      throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+    }
     return { buffer: response };
   }
 
   // ArrayBuffer
   if (response instanceof ArrayBuffer) {
-    return { buffer: Buffer.from(response) };
+    const buf = Buffer.from(response);
+    if (maxBytes != null && buf.length > maxBytes) {
+      throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+    }
+    return { buffer: buf };
   }
 
   // Null / undefined guard
@@ -186,14 +196,21 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
   // Response with .data as Buffer or ArrayBuffer
   if (resp.data != null) {
     if (Buffer.isBuffer(resp.data)) {
+      if (maxBytes != null && resp.data.length > maxBytes) {
+        throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+      }
       return { buffer: resp.data, contentType };
     }
     if (resp.data instanceof ArrayBuffer) {
-      return { buffer: Buffer.from(resp.data), contentType };
+      const buf = Buffer.from(resp.data);
+      if (maxBytes != null && buf.length > maxBytes) {
+        throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+      }
+      return { buffer: buf, contentType };
     }
     // .data might itself be a readable stream
     if (typeof resp.data.pipe === 'function') {
-      const buf = await streamToBuffer(resp.data as Readable);
+      const buf = await streamToBuffer(resp.data as Readable, maxBytes);
       return { buffer: buf, contentType };
     }
   }
@@ -201,7 +218,7 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
   // Response with .getReadableStream()
   if (typeof resp.getReadableStream === 'function') {
     const stream = await resp.getReadableStream();
-    const buf = await streamToBuffer(stream);
+    const buf = await streamToBuffer(stream, maxBytes);
     return { buffer: buf, contentType };
   }
 
@@ -212,6 +229,9 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
     try {
       await resp.writeFile(tmpFile);
       const buf = fs.readFileSync(tmpFile);
+      if (maxBytes != null && buf.length > maxBytes) {
+        throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+      }
       return { buffer: buf, contentType };
     } finally {
       // Clean up the temp file.
@@ -226,20 +246,28 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
   // Async iterable / iterator (e.g. response body chunks)
   if (typeof (resp as any)[Symbol.asyncIterator] === 'function' || typeof (resp as any).next === 'function') {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
     const iterable =
       typeof (resp as any)[Symbol.asyncIterator] === 'function'
         ? (resp as AsyncIterable<Uint8Array>)
         : asyncIteratorToIterable(resp as AsyncIterator<Uint8Array>);
 
     for await (const chunk of iterable) {
-      chunks.push(Buffer.from(chunk));
+      const buf = Buffer.from(chunk);
+      if (maxBytes != null) {
+        totalBytes += buf.length;
+        if (totalBytes > maxBytes) {
+          throw new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
+        }
+      }
+      chunks.push(buf);
     }
     return { buffer: Buffer.concat(chunks), contentType };
   }
 
   // Node.js Readable stream
   if (typeof resp.pipe === 'function') {
-    const buf = await streamToBuffer(resp as Readable);
+    const buf = await streamToBuffer(resp as Readable, maxBytes);
     return { buffer: buf, contentType };
   }
 
@@ -248,15 +276,38 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
 
 /**
  * Consume a Readable stream into a Buffer.
+ *
+ * When `maxBytes` is provided the stream is destroyed and the promise
+ * rejects as soon as cumulative bytes exceed the limit, avoiding full
+ * buffering of oversized responses.
+ *
+ * @internal Exported for testing.
  */
-function streamToBuffer(stream: Readable): Promise<Buffer> {
+export function streamToBuffer(stream: Readable, maxBytes?: number): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    let rejected = false;
     stream.on('data', (chunk: Buffer | Uint8Array) => {
-      chunks.push(Buffer.from(chunk));
+      if (rejected) return;
+      const buf = Buffer.from(chunk);
+      if (maxBytes != null) {
+        totalBytes += buf.length;
+        if (totalBytes > maxBytes) {
+          rejected = true;
+          stream.destroy();
+          reject(new Error(`[feishu-media] Download exceeded ${Math.round(maxBytes / (1024 * 1024))} MB limit`));
+          return;
+        }
+      }
+      chunks.push(buf);
     });
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
+    stream.on('end', () => {
+      if (!rejected) resolve(Buffer.concat(chunks));
+    });
+    stream.on('error', (err) => {
+      if (!rejected) reject(err);
+    });
   });
 }
 
@@ -291,8 +342,9 @@ export async function downloadMessageResourceFeishu(params: {
   fileKey: string;
   type: 'image' | 'file';
   accountId?: string;
+  maxBytes?: number;
 }): Promise<DownloadMessageResourceResult> {
-  const { cfg, messageId, fileKey, type, accountId } = params;
+  const { cfg, messageId, fileKey, type, accountId, maxBytes } = params;
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
@@ -310,7 +362,7 @@ export async function downloadMessageResourceFeishu(params: {
     `downloadMessageResource(${fileKey})`,
   );
 
-  const { buffer, contentType } = await extractBufferFromResponse(response);
+  const { buffer, contentType } = await extractBufferFromResponse(response, maxBytes);
 
   // Attempt to extract file name from response headers.
   let fileName: string | undefined;
