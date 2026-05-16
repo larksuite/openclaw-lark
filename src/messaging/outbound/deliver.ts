@@ -17,7 +17,7 @@ import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets'
 import { parseFeishuCommentTarget } from '../../core/comment-target';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { extractLarkApiCode, formatLarkError } from '../../core/api-error';
-import { isTerminalMessageApiCode } from '../../core/message-unavailable';
+import { isTerminalMessageApiCode, markMessageUnavailable } from '../../core/message-unavailable';
 import { larkLogger } from '../../core/lark-logger';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { uploadAndSendMediaLark } from './media';
@@ -158,7 +158,12 @@ async function sendImMessage(params: {
       //   'silent'    — silently discard the reply (default)
       //   'top-level' — fall back to sending as a new message
       // Other errors are propagated as-is.
-      if (isTerminalMessageApiCode(extractLarkApiCode(err))) {
+      const apiCode = extractLarkApiCode(err);
+      if (isTerminalMessageApiCode(apiCode)) {
+        // Mark in the unavailable cache so subsequent operations on the same
+        // messageId skip the API call (symmetric with send.ts which uses
+        // runWithMessageUnavailableGuard).
+        markMessageUnavailable({ messageId: replyToMessageId, apiCode, operation: `im.message.reply(${msgType})` });
         if (replyFallbackOnWithdrawn === 'silent') {
           log.warn(`reply target ${replyToMessageId} unavailable, silently discarding (config: replyFallbackOnWithdrawn=silent)`);
           return { messageId: '', chatId: '' };
@@ -318,7 +323,10 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   const content = buildPostContent(prepared.text);
 
   const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg, accountId) });
-  recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
+  // Skip sentinel recording when the reply was silently discarded (empty messageId).
+  if (result.messageId) {
+    recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
+  }
   return result;
 }
 
