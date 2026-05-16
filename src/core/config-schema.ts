@@ -196,6 +196,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  replyFallbackOnWithdrawn: z.enum(['top-level', 'silent']).optional(),
   allowBots: AllowBotsSchema,
   uat: UATConfigSchema,
 });
