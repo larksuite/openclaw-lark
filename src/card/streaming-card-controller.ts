@@ -120,6 +120,7 @@ export class StreamingCardController {
   private createEpoch = 0;
   private _terminalReason: TerminalReason | null = null;
   private dispatchFullyComplete = false;
+  private visibleMediaDelivered = false;
   private cardCreationPromise: Promise<void> | null = null;
   private disposeShutdownHook: (() => void) | null = null;
   private readonly dispatchStartTime = Date.now();
@@ -690,8 +691,10 @@ export class StreamingCardController {
         const isNoReplyLeak =
           !this.text.completedText && SILENT_REPLY_TOKEN.startsWith(this.text.accumulatedText.trim());
         const displayText =
-          this.text.completedText || (isNoReplyLeak ? '' : this.text.accumulatedText) || EMPTY_REPLY_FALLBACK_TEXT;
-        if (!this.text.completedText && !this.text.accumulatedText) {
+          this.text.completedText ||
+          (isNoReplyLeak ? '' : this.text.accumulatedText) ||
+          EMPTY_REPLY_FALLBACK_TEXT;
+        if (!this.text.completedText && !this.text.accumulatedText && !this.visibleMediaDelivered) {
           log.warn('reply completed without visible text, using empty-reply fallback');
         }
 
@@ -763,8 +766,14 @@ export class StreamingCardController {
     log.debug('markFullyComplete', {
       completedTextLen: this.text.completedText.length,
       accumulatedTextLen: this.text.accumulatedText.length,
+      visibleMediaDelivered: this.visibleMediaDelivered,
     });
     this.dispatchFullyComplete = true;
+  }
+
+  markMediaDelivered(): void {
+    this.captureToolUseElapsed();
+    this.visibleMediaDelivered = true;
   }
 
   async abortCard(): Promise<void> {
