@@ -198,6 +198,7 @@ export const FeishuAccountConfigSchema = z.object({
   threadSession: z.boolean().optional(),
   allowBots: AllowBotsSchema,
   uat: UATConfigSchema,
+  mcpAuthMode: z.enum(['user', 'tenant', 'auto']).optional(),
 });
 
 // ---------------------------------------------------------------------------
