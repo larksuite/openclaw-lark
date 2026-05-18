@@ -29,8 +29,31 @@ export const CARD_CONTENT_SUB_ERROR = {
   ELEMENT_LIMIT: 11310,
 } as const;
 
-// 经验性的飞书卡片表格上限 -- 4+ 张触发 230099/11310（2026-03 实测）。
+/** 飞书卡片表格上限缺省值（可通过 channels.feishu.cardTableLimit 覆盖）。 */
 export const FEISHU_CARD_TABLE_LIMIT = 3;
+
+/**
+ * 解析实际生效的卡片表格数量上限。
+ *
+ * 配置优先级：channels.feishu.cardTableLimit > FEISHU_CARD_TABLE_LIMIT（缺省 3）。
+ * - 不设置 / 缺省 → 3
+ * - 0 或 false → 关闭限制（不 sanitize，不 fallback 到纯文本）
+ * - 正整数（如 50）→ 自定义上限
+ */
+export function resolveTableLimit(feishuCfgOrRootCfg: Record<string, unknown> | undefined): number {
+  // 支持直接传入 feishuCfg 或传入根 config（自动提取 channels.feishu）
+  const feishuCfg = feishuCfgOrRootCfg?.cardTableLimit !== undefined
+    ? feishuCfgOrRootCfg
+    : (feishuCfgOrRootCfg as Record<string, unknown>)?.channels as Record<string, unknown>?.feishu as Record<string, unknown> | undefined;
+  if (feishuCfg?.cardTableLimit === 0 || feishuCfg?.cardTableLimit === false) {
+    return Infinity; // 关闭限制
+  }
+  const configured = Number(feishuCfg?.cardTableLimit);
+  if (Number.isFinite(configured) && configured > 0 && Number.isInteger(configured)) {
+    return configured;
+  }
+  return FEISHU_CARD_TABLE_LIMIT; // 缺省 3
+}
 
 export interface MarkdownTableMatch {
   index: number;
