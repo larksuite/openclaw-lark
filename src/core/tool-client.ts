@@ -49,6 +49,7 @@ import {
   NeedAuthorizationError,
   UserAuthRequiredError,
   UserScopeInsufficientError,
+  UATDisabledError,
 } from './auth-errors';
 import type { AuthHint, ScopeErrorInfo, TryInvokeResult } from './auth-errors';
 
@@ -60,6 +61,7 @@ export {
   AppScopeMissingError,
   UserAuthRequiredError,
   UserScopeInsufficientError,
+  UATDisabledError,
 };
 export type { ScopeErrorInfo, AuthHint, TryInvokeResult };
 
@@ -197,6 +199,10 @@ export class ToolClient {
     const requiredScopes = getRequiredScopes(toolAction);
 
     // 3. 决定 token 类型（默认 user，用户可通过 options.as 覆盖）
+    // ---- UAT 开关检查：uat.enabled === false 时禁止用户授权链路 ----
+    if (this.account.config.uat?.enabled === false && (options?.as === 'user' || options?.as === undefined)) {
+      throw new UATDisabledError(this.account.appId, toolAction);
+    }
     const tokenType = options?.as ?? 'user';
 
     // ---- App Granted Scopes 检查（应用已开通的权限）----
