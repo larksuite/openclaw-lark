@@ -17,15 +17,10 @@ import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { type NormalizeContext, type SentinelEntry, normalizeOutboundMentions } from './normalize-mentions';
+import { buildPostElements } from './deliver';
 
 const sendLog = larkLogger('outbound/send');
 
-/**
- * Runs the outbound text through mention normalization. Returns the
- * input unchanged on any failure so a parser bug never blocks send.
- * Sentinels collected during normalization are returned for the caller
- * to record after a successful send.
- */
 async function normalizeFeishuOutboundText(
   cfg: ClawdbotConfig,
   to: string,
@@ -176,7 +171,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
 
   if (i18nTexts && Object.keys(i18nTexts).length > 0) {
     // Multi-locale post: build each locale's content independently.
-    const postBody: Record<string, { content: Array<Array<{ tag: string; text: string }>> }> = {};
+    const postBody: Record<string, { content: Array<Array<Record<string, string>>> }> = {};
     for (const [locale, localeText] of Object.entries(i18nTexts)) {
       let processed = localeText;
 
@@ -192,7 +187,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
       processed = optimizeMarkdownStyle(processed, 1);
 
       postBody[locale] = {
-        content: [[{ tag: 'md', text: processed }]],
+        content: [buildPostElements(processed)],
       };
     }
     contentPayload = JSON.stringify(postBody);
@@ -213,7 +208,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
 
     contentPayload = JSON.stringify({
       zh_cn: {
-        content: [[{ tag: 'md', text: messageText }]],
+        content: [buildPostElements(messageText)],
       },
     });
   }
@@ -530,7 +525,7 @@ export async function editMessageFeishu(params: {
 
   const contentPayload = JSON.stringify({
     zh_cn: {
-      content: [[{ tag: 'md', text: optimizedText }]],
+      content: [buildPostElements(optimizedText)],
     },
   });
 
