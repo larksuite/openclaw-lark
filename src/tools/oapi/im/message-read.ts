@@ -2,7 +2,9 @@
  * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
  * SPDX-License-Identifier: MIT
  *
- * 消息读取工具集 -- 以用户身份获取/搜索飞书消息
+ * 消息读取工具集
+ * - list（会话/话题历史）走 TAT（应用身份），因 im.v1.message.list 使用 tenant_access_token
+ * - search（跨会话搜索）走 UAT（用户身份）
  *
  * 包含：
  *   - feishu_im_user_get_messages       (chat_id / open_id → 会话消息)
@@ -150,12 +152,13 @@ function registerGetMessages(api: OpenClawPluginApi): boolean {
       name: 'feishu_im_user_get_messages',
       label: 'Feishu: Get IM Messages',
       description:
-        '【以用户身份】获取群聊或单聊的历史消息。' +
+        '获取群聊或单聊的历史消息。' +
         '\n\n用法：' +
         '\n- 通过 chat_id 获取群聊/单聊消息' +
         '\n- 通过 open_id 获取与指定用户的单聊消息（自动解析 chat_id）' +
         '\n- 支持时间范围过滤：relative_time（如 today、last_3_days）或 start_time/end_time（ISO 8601 格式）' +
         '\n- 支持分页：page_size + page_token' +
+        '\n\n【限制】历史消息读取使用应用身份，机器人必须在目标会话中。读取用户与其他人的私聊通常会失败。' +
         '\n\n【参数约束】' +
         '\n- open_id 和 chat_id 必须二选一，不能同时提供' +
         '\n- relative_time 和 start_time/end_time 不能同时使用' +
@@ -207,7 +210,7 @@ function registerGetMessages(api: OpenClawPluginApi): boolean {
                 opts,
               ),
             {
-              as: 'user',
+              as: 'tenant',
             },
           );
           assertLarkOk(res);
@@ -255,11 +258,12 @@ function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
       name: 'feishu_im_user_get_thread_messages',
       label: 'Feishu: Get Thread Messages',
       description:
-        '【以用户身份】获取话题（thread）内的消息列表。' +
+        '获取话题（thread）内的消息列表。' +
         '\n\n用法：' +
         '\n- 通过 thread_id（omt_xxx）获取话题内的所有消息' +
         '\n- 支持分页：page_size + page_token' +
         '\n\n【注意】话题消息不支持时间范围过滤（飞书 API 限制）' +
+        '\n\n【限制】历史消息读取使用应用身份，机器人必须在目标会话中。' +
         '\n\n返回消息列表，格式同 feishu_im_user_get_messages。',
       parameters: GetThreadMessagesSchema,
       async execute(_toolCallId: string, params: unknown) {
@@ -287,7 +291,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
                 opts,
               ),
             {
-              as: 'user',
+              as: 'tenant',
             },
           );
           assertLarkOk(res);
