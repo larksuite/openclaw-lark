@@ -13,6 +13,7 @@ import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { buildConvertContextFromItem, convertMessageContent } from '../converters/content-converter';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
+import type { MentionInfo } from '../types';
 
 const log = larkLogger('shared/message-lookup');
 import { createBatchResolveNames, getUserNameCache } from '../inbound/user-name-cache';
@@ -47,6 +48,8 @@ export interface FeishuMessageInfo {
   createTime?: number;
   /** Thread ID if the message belongs to a thread (omt_xxx format). */
   threadId?: string;
+  /** Structured mentions returned by the Feishu message API. */
+  mentions: MentionInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +72,10 @@ export async function getMessageFeishu(params: {
   accountId?: string;
   /** When true, merge_forward content is recursively expanded via API. */
   expandForward?: boolean;
+  /** Current bot open_id, used to mark quoted-message bot mentions structurally. */
+  botOpenId?: string;
 }): Promise<FeishuMessageInfo | null> {
-  const { cfg, messageId, accountId, expandForward } = params;
+  const { cfg, messageId, accountId, expandForward, botOpenId } = params;
 
   const larkClient = LarkClient.fromCfg(cfg, accountId);
   const sdk = larkClient.sdk;
@@ -98,6 +103,7 @@ export async function getMessageFeishu(params: {
       ? {
           cfg,
           accountId,
+          botOpenId,
           fetchSubMessages: async (msgId: string) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const res = await (larkClient.sdk as any).request({
@@ -115,7 +121,13 @@ export async function getMessageFeishu(params: {
           ),
         }
       : undefined;
-    return await parseMessageItem(items[0], messageId, expandCtx);
+    return await parseMessageItem(items[0], messageId, {
+      cfg,
+      accountId,
+      botOpenId,
+      fetchSubMessages: expandCtx?.fetchSubMessages,
+      batchResolveNames: expandCtx?.batchResolveNames,
+    });
   } catch (error) {
     log.error(`get message failed (${messageId}): ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -140,6 +152,7 @@ async function parseMessageItem(
   expandCtx?: {
     cfg: ClawdbotConfig;
     accountId?: string;
+    botOpenId?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     fetchSubMessages?: (messageId: string) => Promise<any[]>;
     batchResolveNames?: (openIds: string[]) => Promise<void>;
@@ -151,13 +164,14 @@ async function parseMessageItem(
 
   const acctId = expandCtx?.accountId;
   const ctx = {
-    ...buildConvertContextFromItem(msg, fallbackMessageId, acctId),
+    ...buildConvertContextFromItem(msg, fallbackMessageId, acctId, expandCtx?.botOpenId),
     cfg: expandCtx?.cfg,
     accountId: acctId,
     fetchSubMessages: expandCtx?.fetchSubMessages,
     batchResolveNames: expandCtx?.batchResolveNames,
   };
   const { content } = await convertMessageContent(rawContent, msgType, ctx);
+  const mentions = Array.from(ctx.mentions.values());
 
   const senderId: string | undefined = msg.sender?.id ?? undefined;
   const senderType: string | undefined = msg.sender?.sender_type ?? undefined;
@@ -174,5 +188,6 @@ async function parseMessageItem(
     contentType: msgType,
     createTime: msg.create_time ? parseInt(String(msg.create_time), 10) : undefined,
     threadId: msg.thread_id || undefined,
+    mentions,
   };
 }

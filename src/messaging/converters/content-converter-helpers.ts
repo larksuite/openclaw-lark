@@ -31,6 +31,7 @@ export function buildConvertContextFromItem(
   item: ApiMessageItem,
   fallbackMessageId: string,
   accountId?: string,
+  botOpenId?: string,
 ): ConvertContext {
   const mentions = new Map<string, MentionInfo>();
   const mentionsByOpenId = new Map<string, MentionInfo>();
@@ -43,7 +44,7 @@ export function buildConvertContextFromItem(
       key: m.key,
       openId,
       name: m.name ?? '',
-      isBot: false,
+      isBot: Boolean(botOpenId && openId === botOpenId),
     };
     mentions.set(m.key, info);
     mentionsByOpenId.set(openId, info);

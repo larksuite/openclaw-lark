@@ -25,6 +25,7 @@
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuMediaInfo, MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
+import { LarkClient } from '../../core/lark-client';
 import { getMessageFeishu } from '../outbound/fetch';
 import type { PermissionError } from './permission';
 import { PERMISSION_ERROR_COOLDOWN_MS, permissionErrorNotifiedAt } from './permission';
@@ -252,18 +253,37 @@ export async function resolveQuotedContent(params: {
   /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
   accountScopedCfg: ClawdbotConfig;
   account: LarkAccount;
+  botOpenId?: string;
   log: (...args: unknown[]) => void;
 }): Promise<string | undefined> {
+  return (await resolveQuotedMessageContext(params))?.content;
+}
+
+export interface QuotedMessageContext {
+  content: string;
+  mentionOpenIds: string[];
+}
+
+export async function resolveQuotedMessageContext(params: {
+  ctx: MessageContext;
+  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: ClawdbotConfig;
+  account: LarkAccount;
+  botOpenId?: string;
+  log: (...args: unknown[]) => void;
+}): Promise<QuotedMessageContext | undefined> {
   const { ctx, accountScopedCfg, account, log } = params;
 
   if (!ctx.parentId) return undefined;
 
   try {
+    const botOpenId = params.botOpenId ?? LarkClient.fromAccount(account).botOpenId;
     const quotedMsg = await getMessageFeishu({
       cfg: accountScopedCfg,
       messageId: ctx.parentId,
       accountId: account.accountId,
       expandForward: true,
+      botOpenId,
     });
     if (!quotedMsg) return undefined;
 
@@ -272,10 +292,11 @@ export async function resolveQuotedContent(params: {
     // Build quoted text with message_id prefix so AI can correlate
     // file_key / image_key with the source message for resource download.
     const prefix = `[message_id=${ctx.parentId}]`;
+    const mentionOpenIds = quotedMsg.mentions.map((mention) => mention.openId).filter(Boolean);
     if (quotedMsg.senderName) {
-      return `${prefix} ${quotedMsg.senderName}: ${quotedMsg.content}`;
+      return { content: `${prefix} ${quotedMsg.senderName}: ${quotedMsg.content}`, mentionOpenIds };
     }
-    return `${prefix} ${quotedMsg.content}`;
+    return { content: `${prefix} ${quotedMsg.content}`, mentionOpenIds };
   } catch (err) {
     log(`feishu[${account.accountId}]: failed to fetch quoted message: ${String(err)}`);
     return undefined;
