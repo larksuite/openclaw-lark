@@ -46,6 +46,7 @@ export {
   sendFileLark,
   sendAudioLark,
   uploadAndSendMediaLark,
+  uploadAndSendImageLark,
 } from './src/messaging/outbound/media';
 export {
   sendTextLark,
