@@ -175,19 +175,22 @@ export async function resolveThreadSessionKey(params: {
   chatId: string;
   threadId: string;
   baseSessionKey: string;
+  forceIsolate?: boolean;
 }): Promise<string | undefined> {
-  const { accountScopedCfg, account, chatId, threadId, baseSessionKey } = params;
+  const { accountScopedCfg, account, chatId, threadId, baseSessionKey, forceIsolate } = params;
 
-  if (account.config?.threadSession !== true) return undefined;
+  if (!forceIsolate) {
+    if (account.config?.threadSession !== true) return undefined;
 
-  const threadCapable = await isThreadCapableGroup({
-    cfg: accountScopedCfg,
-    chatId,
-    accountId: account.accountId,
-  });
-  if (!threadCapable) {
-    log.info(`thread session skipped: group ${chatId} is not topic/thread mode`);
-    return undefined;
+    const threadCapable = await isThreadCapableGroup({
+      cfg: accountScopedCfg,
+      chatId,
+      accountId: account.accountId,
+    });
+    if (!threadCapable) {
+      log.info(`thread session skipped: group ${chatId} is not topic/thread mode`);
+      return undefined;
+    }
   }
 
   // 使用 SDK 标准函数，保证分隔符格式与 resolveThreadParentSessionKey 兼容
