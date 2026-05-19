@@ -15,6 +15,7 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv  } from 'openclaw/plugin-sdk';
+import { implicitMentionKindWhen, resolveInboundMentionDecision } from 'openclaw/plugin-sdk/channel-inbound';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
@@ -451,6 +452,53 @@ export async function dispatchToAgent(params: {
           threadId: dc.ctx.threadId,
         })
       : undefined;
+  const contentTrimmed = (params.ctx.content ?? '').trim();
+  const isCommentFlow = isCommentTarget(dc.ctx.chatId);
+  const hasControlCommand =
+    !isCommentFlow && dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
+  const explicitWasMentioned =
+    mentionedBot(params.ctx) ||
+    (params.ctx.mentionAll &&
+      resolveRespondToMentionAll({
+        groupConfig: params.groupConfig,
+        defaultConfig: params.defaultGroupConfig,
+        accountFeishuCfg: params.account.config,
+      }));
+  const implicitMentionKinds = implicitMentionKindWhen(
+    'reply_to_bot',
+    quotedMentionOpenIdsMentionCurrentBot(params.quotedMentionOpenIds, dc),
+  );
+  const requireMention =
+    dc.isGroup && dc.core.channel.groups?.resolveRequireMention
+      ? dc.core.channel.groups.resolveRequireMention({
+          cfg: dc.accountScopedCfg ?? {},
+          channel: 'feishu',
+          groupId: dc.ctx.chatId,
+          accountId: dc.account.accountId,
+          groupIdCaseInsensitive: true,
+          requireMentionOverride: dc.account.config?.requireMention,
+        })
+      : false;
+  const mentionDecision = resolveInboundMentionDecision({
+    facts: {
+      canDetectMention:
+        Boolean(dc.botOpenId) ||
+        params.ctx.mentions.length > 0 ||
+        params.ctx.mentionAll ||
+        Boolean(params.quotedMentionOpenIds?.length),
+      wasMentioned: explicitWasMentioned,
+      hasAnyMention:
+        params.ctx.mentions.length > 0 || params.ctx.mentionAll || Boolean(params.quotedMentionOpenIds?.length),
+      implicitMentionKinds,
+    },
+    policy: {
+      isGroup: dc.isGroup,
+      requireMention,
+      allowTextCommands: true,
+      hasControlCommand,
+      commandAuthorized: dc.commandAuthorized === true,
+    },
+  });
   const ctxPayload = buildInboundPayload(dc, {
     body: combinedBody,
     bodyForAgent,
@@ -460,15 +508,8 @@ export async function dispatchToAgent(params: {
     senderName: params.ctx.senderName ?? params.ctx.senderId,
     senderId: params.ctx.senderId,
     messageSid: params.ctx.messageId,
-    wasMentioned:
-      mentionedBot(params.ctx) ||
-      quotedMentionOpenIdsMentionCurrentBot(params.quotedMentionOpenIds, dc) ||
-      (params.ctx.mentionAll &&
-        resolveRespondToMentionAll({
-          groupConfig: params.groupConfig,
-          defaultConfig: params.defaultGroupConfig,
-          accountFeishuCfg: params.account.config,
-        })),
+    wasMentioned: mentionDecision.effectiveWasMentioned,
+    implicitMentionKinds: mentionDecision.matchedImplicitMentionKinds,
     replyToBody: params.quotedContent,
     inboundHistory,
     extraFields: {
@@ -486,8 +527,6 @@ export async function dispatchToAgent(params: {
   //     Skipped for comment targets: comment text won't match /feishu_*
   //     patterns in practice, and sendCardFeishu/sendMessageFeishu can't
   //     deliver to comment:... targets.
-  const contentTrimmed = (params.ctx.content ?? '').trim();
-  const isCommentFlow = isCommentTarget(dc.ctx.chatId);
   const isDoctorCommand = !isCommentFlow && /^\/feishu[_ ]doctor\s*$/i.test(contentTrimmed);
   const isAuthCommand = !isCommentFlow && /^\/feishu[_ ](?:auth|onboarding)\s*$/i.test(contentTrimmed);
   const isStartCommand = !isCommentFlow && /^\/feishu[_ ]start\s*$/i.test(contentTrimmed);
@@ -544,8 +583,7 @@ export async function dispatchToAgent(params: {
   // 8. Dispatch: system command vs. normal message
   //    Comment targets always go to normal dispatch — system command
   //    delivery uses sendMessageFeishu which can't reach comment threads.
-  const isCommand = !isCommentFlow &&
-    dc.core.channel.commands.isControlCommandMessage(params.ctx.content, params.accountScopedCfg);
+  const isCommand = hasControlCommand;
 
   // Resolve per-group skill filter (per-group > default "*")
   const skillFilter = dc.isGroup ? (params.groupConfig?.skills ?? params.defaultGroupConfig?.skills) : undefined;

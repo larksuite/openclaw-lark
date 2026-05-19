@@ -87,7 +87,7 @@ export function buildDispatchContext(params: {
   const isGroup = !isComment && ctx.chatType === 'group';
   const isThread = isGroup && Boolean(ctx.threadId);
   const core = LarkClient.runtime;
-  const botOpenId = params.botOpenId ?? LarkClient.fromAccount(account).botOpenId;
+  const botOpenId = params.botOpenId;
 
   const feishuFrom = `feishu:${ctx.senderId}`;
   // Comment targets use the comment target string directly as the "To"

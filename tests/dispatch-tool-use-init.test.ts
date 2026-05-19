@@ -273,8 +273,12 @@ describe('dispatchToAgent tool_use trace initialization', () => {
 
     expect(buildInboundPayloadMock).toHaveBeenCalledTimes(1);
     const buildInboundPayloadArgs =
-      buildInboundPayloadMock.mock.calls[0] as unknown as [unknown, { wasMentioned?: boolean }];
+      buildInboundPayloadMock.mock.calls[0] as unknown as [
+        unknown,
+        { wasMentioned?: boolean; implicitMentionKinds?: string[] },
+      ];
     expect(buildInboundPayloadArgs[1].wasMentioned).toBe(true);
+    expect(buildInboundPayloadArgs[1].implicitMentionKinds).toEqual(['reply_to_bot']);
   });
 
   it('does not mark the inbound payload mentioned from quoted display text without the bot open_id', async () => {
@@ -292,8 +296,12 @@ describe('dispatchToAgent tool_use trace initialization', () => {
 
     expect(buildInboundPayloadMock).toHaveBeenCalledTimes(1);
     const buildInboundPayloadArgs =
-      buildInboundPayloadMock.mock.calls[0] as unknown as [unknown, { wasMentioned?: boolean }];
+      buildInboundPayloadMock.mock.calls[0] as unknown as [
+        unknown,
+        { wasMentioned?: boolean; implicitMentionKinds?: string[] },
+      ];
     expect(buildInboundPayloadArgs[1].wasMentioned).toBe(false);
+    expect(buildInboundPayloadArgs[1].implicitMentionKinds).toEqual([]);
   });
 
 });
