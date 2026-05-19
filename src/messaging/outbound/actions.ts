@@ -19,6 +19,7 @@ import type {
   OpenClawConfig,
 } from 'openclaw/plugin-sdk';
 import type { ChannelMessageToolSchemaContribution, ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
+import { resolveReactionMessageId } from 'openclaw/plugin-sdk/channel-actions';
 import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';
 import { Type } from '@sinclair/typebox';
@@ -167,17 +168,6 @@ function readFeishuSendParams(
     replyInThread,
     card,
   };
-}
-
-export function readReactionMessageId(
-  params: Record<string, unknown>,
-  toolContext?: ChannelThreadingToolContext,
-): string | undefined {
-  return (
-    readStringParam(params, 'messageId') ??
-    readStringParam(params, 'message_id') ??
-    (toolContext?.currentMessageId != null ? String(toolContext.currentMessageId) : undefined)
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -352,10 +342,11 @@ async function handleReact(
   accountId?: string,
   toolContext?: ChannelThreadingToolContext,
 ) {
-  const messageId = readReactionMessageId(params, toolContext);
-  if (!messageId) {
-    throw new Error('messageId required');
+  const resolvedMessageId = resolveReactionMessageId({ args: params, toolContext });
+  if (resolvedMessageId == null) {
+    throw new Error('messageId required. Provide messageId explicitly or react to the current inbound message.');
   }
+  const messageId = String(resolvedMessageId);
   const { emoji, remove, isEmpty } = readReactionParams(params, {
     removeErrorMessage: 'Emoji is required to remove a Feishu reaction.',
   });
@@ -398,10 +389,11 @@ async function handleReactions(
   accountId?: string,
   toolContext?: ChannelThreadingToolContext,
 ) {
-  const messageId = readReactionMessageId(params, toolContext);
-  if (!messageId) {
-    throw new Error('messageId required');
+  const resolvedMessageId = resolveReactionMessageId({ args: params, toolContext });
+  if (resolvedMessageId == null) {
+    throw new Error('messageId required. Provide messageId explicitly or react to the current inbound message.');
   }
+  const messageId = String(resolvedMessageId);
   const emojiType = readStringParam(params, 'emoji');
 
   const reactions = await listReactionsFeishu({
