@@ -37,6 +37,7 @@ export interface CardElement {
 export interface FeishuCard {
   config: {
     wide_screen_mode: boolean;
+    width_mode?: 'fill' | 'compact';
     update_multi?: boolean;
     locales?: string[];
     summary?: { content: string };
@@ -701,6 +702,7 @@ export function buildStreamingPreAnswerCard(params: {
   return {
     schema: '2.0',
     config: {
+      width_mode: 'fill',
       streaming_mode: true,
       locales: ['zh_cn', 'en_us'],
       summary: {
@@ -764,9 +766,14 @@ function buildStreamingToolUseActivePanel(params: { steps: ToolUseDisplayStep[];
 }
 
 export function toCardKit2(card: FeishuCard): Record<string, unknown> {
+  const config: Record<string, unknown> = card.config ? { ...card.config } : {};
+  if (config.wide_screen_mode === true) {
+    config.width_mode = 'fill';
+    delete config.wide_screen_mode;
+  }
   const result: Record<string, unknown> = {
     schema: '2.0',
-    config: card.config,
+    config,
     body: { elements: card.elements },
   };
   if (card.header) result.header = card.header;
