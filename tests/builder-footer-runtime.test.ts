@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildCardContent, compactNumber, formatFooterRuntimeSegments } from '../src/card/builder';
+import { buildCardContent, compactNumber, formatFooterRuntimeSegments, toCardKit2 } from '../src/card/builder';
 import type { ToolUseDisplayStep } from '../src/card/tool-use-display';
 
 // ---------------------------------------------------------------------------
@@ -245,5 +245,62 @@ describe('buildCardContent – tool-use step rendering', () => {
     expect(((outputRow?.text ?? {}) as Record<string, unknown>).content).toContain('```text');
     expect(((outputRow?.text ?? {}) as Record<string, unknown>).content).toContain('exit code 1');
     expect(outputRow?.margin).toBe(toolUseContentIndent);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toCardKit2 – wide_screen_mode → width_mode migration
+// ---------------------------------------------------------------------------
+
+describe('toCardKit2', () => {
+  it('migrates wide_screen_mode to width_mode in v2 output', () => {
+    const result = toCardKit2({
+      config: { wide_screen_mode: true, update_multi: true },
+      elements: [],
+    });
+    expect(result).toEqual({
+      schema: '2.0',
+      config: { width_mode: 'fill', update_multi: true },
+      body: { elements: [] },
+    });
+  });
+
+  it('keeps other config fields intact during migration', () => {
+    const result = toCardKit2({
+      config: {
+        wide_screen_mode: true,
+        update_multi: true,
+        locales: ['zh_cn', 'en_us'],
+        summary: { content: 'test' },
+      },
+      elements: [{ tag: 'markdown', content: 'hello' }],
+      header: { title: { tag: 'plain_text' as const, content: 'Header' } },
+    });
+    expect(result.config).toEqual({
+      width_mode: 'fill',
+      update_multi: true,
+      locales: ['zh_cn', 'en_us'],
+      summary: { content: 'test' },
+    });
+    expect(result.body).toEqual({ elements: [{ tag: 'markdown', content: 'hello' }] });
+    expect(result.header).toEqual({ title: { tag: 'plain_text', content: 'Header' } });
+  });
+
+  it('does not add width_mode when wide_screen_mode is not present', () => {
+    const result = toCardKit2({
+      config: { update_multi: true },
+      elements: [],
+    });
+    expect(result.config).toEqual({ update_multi: true });
+    expect('wide_screen_mode' in (result.config as Record<string, unknown>)).toBe(false);
+    expect('width_mode' in (result.config as Record<string, unknown>)).toBe(false);
+  });
+
+  it('does not add width_mode when wide_screen_mode is false', () => {
+    const result = toCardKit2({
+      config: { wide_screen_mode: false, update_multi: true } as any,
+      elements: [],
+    });
+    expect(result.config).toEqual({ update_multi: true });
   });
 });
