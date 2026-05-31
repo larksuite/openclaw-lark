@@ -83,6 +83,19 @@ export async function parseMessageEvent(
     mentionsByOpenId.set(info.openId, info);
   }
 
+  // Fallback: Feishu sometimes omits @all from the mentions array in group
+  // messages but still includes the @_all token in the content text.
+  // Detect it here so that downstream gate logic can honour
+  // respondToMentionAll.
+  if (!mentionAll) {
+    try {
+      const parsed = JSON.parse(event.message.content ?? '{}');
+      if (typeof parsed.text === 'string' && parsed.text.includes('@_all')) {
+        mentionAll = true;
+      }
+    } catch { /* non-JSON content, ignore */ }
+  }
+
   // 2. Convert content via registered converter
   const acctId = expandCtx?.accountId;
 
