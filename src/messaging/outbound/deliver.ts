@@ -16,7 +16,8 @@ import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { parseFeishuCommentTarget } from '../../core/comment-target';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
-import { formatLarkError } from '../../core/api-error';
+import { extractLarkApiCode, formatLarkError } from '../../core/api-error';
+import { isTerminalMessageApiCode, markMessageUnavailable } from '../../core/message-unavailable';
 import { larkLogger } from '../../core/lark-logger';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { uploadAndSendMediaLark } from './media';
@@ -114,6 +115,12 @@ function recordSentinelsForChat(
   getSentinelStore(resolvedAccountId).recordSentinels(threadScopedKey(to, threadId), sentinels);
 }
 
+/** Read the replyFallbackOnWithdrawn setting from account-scoped channel config. */
+function getReplyFallbackMode(cfg: ClawdbotConfig, accountId?: string): 'top-level' | 'silent' {
+  const scopedCfg = createAccountScopedConfig(cfg, accountId);
+  return (scopedCfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as 'top-level' | 'silent' ?? 'silent';
+}
+
 /**
  * Unified IM message sender — handles both reply and create paths for any
  * `msg_type`.  Replaces the former `replyPostMessage`, `createPostMessage`,
@@ -126,23 +133,46 @@ async function sendImMessage(params: {
   msgType: 'post' | 'interactive';
   replyToMessageId?: string;
   replyInThread?: boolean;
+  replyFallbackOnWithdrawn?: 'top-level' | 'silent';
 }): Promise<FeishuSendResult> {
-  const { client, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { client, to, content, msgType, replyToMessageId, replyInThread, replyFallbackOnWithdrawn } = params;
 
   // --- Reply path ---
   if (replyToMessageId) {
-    log.info(`replying to message ${replyToMessageId} ` + `(msg_type=${msgType}, thread=${replyInThread ?? false})`);
-    const response = await client.im.message.reply({
-      path: { message_id: replyToMessageId },
-      data: { content, msg_type: msgType, reply_in_thread: replyInThread },
-    });
+    log.info(`replying to message ${replyToMessageId} (msg_type=${msgType}, thread=${replyInThread ?? false})`);
+    try {
+      const response = await client.im.message.reply({
+        path: { message_id: replyToMessageId },
+        data: { content, msg_type: msgType, reply_in_thread: replyInThread },
+      });
 
-    const result: FeishuSendResult = {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
-    log.debug(`reply sent: messageId=${result.messageId}`);
-    return result;
+      const result: FeishuSendResult = {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+      log.debug(`reply sent: messageId=${result.messageId}`);
+      return result;
+    } catch (err) {
+      // When the reply target has been recalled (230011) or deleted (231003),
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new message
+      // Other errors are propagated as-is.
+      const apiCode = extractLarkApiCode(err);
+      if (isTerminalMessageApiCode(apiCode)) {
+        // Mark in the unavailable cache so subsequent operations on the same
+        // messageId skip the API call (symmetric with send.ts which uses
+        // runWithMessageUnavailableGuard).
+        markMessageUnavailable({ messageId: replyToMessageId, apiCode, operation: `im.message.reply(${msgType})` });
+        if (replyFallbackOnWithdrawn === 'silent') {
+          log.warn(`reply target ${replyToMessageId} unavailable, silently discarding (config: replyFallbackOnWithdrawn=silent)`);
+          return { messageId: '', chatId: '' };
+        }
+        log.warn(`reply target ${replyToMessageId} unavailable, falling back to top-level send`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   // --- Create path ---
@@ -292,8 +322,11 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   const prepared = await prepareTextForLark(cfg, text, to, accountId);
   const content = buildPostContent(prepared.text);
 
-  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
-  recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
+  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg, accountId) });
+  // Skip sentinel recording when the reply was silently discarded (empty messageId).
+  if (result.messageId) {
+    recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
+  }
   return result;
 }
 
@@ -372,7 +405,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
   const content = JSON.stringify(card);
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread, replyFallbackOnWithdrawn: getReplyFallbackMode(cfg, accountId) });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);
