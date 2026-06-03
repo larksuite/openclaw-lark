@@ -370,14 +370,41 @@ export async function dispatchToAgent(params: {
     }
   }
 
-  // 1b. Resolve thread session isolation (async: may query group info API)
+  // 1b. Auto-create thread for new conversations when autoCreateThread is "enabled".
+  //     Unlike threadSession, this does NOT call isThreadCapableGroup — it trusts
+  //     the config directly and creates a new thread in the main group chat.
+  //     This mirrors the built-in channel behavior where autoCreateThread bypasses
+  //     the group capability check.
+  const autoCreateThreadCfg = dc.account?.config?.autoCreateThread === 'enabled';
+  const isFromThread = dc.isThread && dc.ctx.threadId; 
+  const shouldCreateAutoThread = !isFromThread && autoCreateThreadCfg && dc.isGroup;
+  const isFromExistingAutoThread = isFromThread && autoCreateThreadCfg && dc.isGroup;
+  if (shouldCreateAutoThread) {
+    log.info(`auto-thread: creating new thread in group ${dc.ctx.chatId}. Message ID: ${dc.ctx.messageId}`);
+    dc.isThread = true;
+    dc.ctx = { ...dc.ctx, threadId: dc.ctx.messageId };
+  } else if (isFromExistingAutoThread) {
+    // A hack to follow up automatically created threads.
+    if (!dc.ctx.rootId) {
+      log.warn(`auto-thread: no root ID for existing auto thread.`)
+    }
+    log.info(`auto-thread: continuing thread via root_id=${dc.ctx.rootId} in group
+        ${dc.ctx.chatId}. Thread ID is hacked from ${dc.ctx.threadId} to ${dc.ctx.rootId}`);
+    dc.ctx = { ...dc.ctx, threadId: dc.ctx.rootId };
+  } else {
+    log.info(`auto-thread: not proceeded`);
+  }
+
+  // 1c. Resolve thread session isolation (async: may query group info API)
   if (dc.isThread && dc.ctx.threadId) {
+    log.info(`Replying thread: ${dc.ctx.threadId}`);
     dc.threadSessionKey = await resolveThreadSessionKey({
       accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,
       chatId: dc.ctx.chatId,
       threadId: dc.ctx.threadId,
       baseSessionKey: dc.route.sessionKey,
+      forceIsolate: autoCreateThreadCfg,
     });
   }
 
