@@ -17,6 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
+import { imageSize } from 'image-size';
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
@@ -145,6 +146,20 @@ export interface SendMediaResult {
   chatId: string;
 }
 
+/**
+ * Result of uploading and sending an image in one strict operation.
+ */
+export interface UploadAndSendImageResult extends SendMediaResult {
+  /** The image_key assigned by Feishu. */
+  imageKey: string;
+  /** Detected image format, e.g. "png" or "jpg". */
+  imageFormat: string;
+  /** Detected image width, when available. */
+  width?: number;
+  /** Detected image height, when available. */
+  height?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Response extraction helpers
 // ---------------------------------------------------------------------------
@@ -244,6 +259,13 @@ async function extractBufferFromResponse(response: unknown): Promise<{ buffer: B
   }
 
   throw new Error('[feishu-media] Unable to extract binary data from response: unrecognised format');
+}
+
+function assertLarkResponseOk(response: unknown, context: string): void {
+  const res = response as { code?: number; msg?: string } | undefined;
+  if (res?.code !== undefined && res.code !== 0) {
+    throw new Error(`[feishu-media] ${context} failed: code=${res.code}, msg=${res.msg ?? 'unknown error'}`);
+  }
 }
 
 /**
@@ -358,6 +380,7 @@ export async function uploadImageLark(params: {
   const response = await client.im.image.create({
     data: { image_type: imageType, image: imageStream as any },
   });
+  assertLarkResponseOk(response, 'Image upload');
 
   const imageKey = (response as any)?.data?.image_key ?? (response as any)?.image_key;
   if (!imageKey) {
@@ -407,6 +430,7 @@ export async function uploadFileLark(params: {
       ...(duration !== undefined ? { duration: String(duration) } : {}),
     } as any,
   });
+  assertLarkResponseOk(response, 'File upload');
 
   const fileKey = (response as any)?.data?.file_key ?? (response as any)?.file_key;
   if (!fileKey) {
@@ -445,6 +469,7 @@ async function sendMediaMessage(params: {
       path: { message_id: replyToMessageId },
       data: { content, msg_type: msgType, reply_in_thread: replyInThread },
     });
+    assertLarkResponseOk(response, `Send ${msgType} reply`);
     return {
       messageId: response?.data?.message_id ?? '',
       chatId: response?.data?.chat_id ?? '',
@@ -464,6 +489,7 @@ async function sendMediaMessage(params: {
     params: { receive_id_type: receiveIdType as any },
     data: { receive_id: target, msg_type: msgType, content },
   });
+  assertLarkResponseOk(response, `Send ${msgType} message`);
 
   return {
     messageId: response?.data?.message_id ?? '',
@@ -607,6 +633,10 @@ export async function sendAudioLark(params: {
 
 /** Known image extensions. */
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.ico', '.tiff', '.tif', '.heic']);
+const FEISHU_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const FEISHU_SUPPORTED_IMAGE_FORMATS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'ico', 'tiff', 'heic']);
+const FEISHU_GIF_MAX_DIMENSION = 2000;
+const FEISHU_IMAGE_MAX_DIMENSION = 12000;
 
 /** Extension-to-Feishu-file-type mapping. */
 const EXTENSION_TYPE_MAP: Record<string, 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream'> = {
@@ -783,6 +813,56 @@ function isImageFileName(fileName: string): boolean {
   return IMAGE_EXTENSIONS.has(ext);
 }
 
+function assertSupportedFeishuImage(buffer: Buffer): { format: string; width?: number; height?: number } {
+  if (buffer.length === 0) {
+    throw new Error('[feishu-media] Image send failed: image size is 0 bytes.');
+  }
+
+  if (buffer.length > FEISHU_IMAGE_MAX_BYTES) {
+    throw new Error(
+      `[feishu-media] Image send failed: image size ${buffer.length} bytes exceeds Feishu's 10 MB image limit. ` +
+        'Send it as a file instead.',
+    );
+  }
+
+  let dimensions: ReturnType<typeof imageSize>;
+  try {
+    dimensions = imageSize(buffer);
+  } catch {
+    throw new Error(
+      '[feishu-media] Image send failed: unable to recognise the image format. ' +
+        'Feishu image messages require JPG, JPEG, PNG, WEBP, GIF, BMP, ICO, TIFF, or HEIC.',
+    );
+  }
+
+  const format = dimensions.type?.toLowerCase();
+  if (!format || !FEISHU_SUPPORTED_IMAGE_FORMATS.has(format)) {
+    throw new Error(
+      `[feishu-media] Image send failed: unsupported image format "${format ?? 'unknown'}". ` +
+        'Feishu image messages require JPG, JPEG, PNG, WEBP, GIF, BMP, ICO, TIFF, or HEIC.',
+    );
+  }
+
+  const { width, height } = dimensions;
+  if (width !== undefined && height !== undefined) {
+    const maxDimension = format === 'gif' ? FEISHU_GIF_MAX_DIMENSION : FEISHU_IMAGE_MAX_DIMENSION;
+    if (width > maxDimension || height > maxDimension) {
+      throw new Error(
+        `[feishu-media] Image send failed: image resolution ${width}x${height} exceeds Feishu's ` +
+          `${maxDimension}x${maxDimension} ${format === 'gif' ? 'GIF ' : ''}image limit. Send it as a file instead.`,
+      );
+    }
+  }
+
+  return { format, width, height };
+}
+
+function assertSentImageResult(result: SendMediaResult): void {
+  if (!result.messageId) {
+    throw new Error('[feishu-media] Image send failed: Feishu returned success without a message_id.');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // uploadAndSendMediaLark
 // ---------------------------------------------------------------------------
@@ -909,6 +989,71 @@ export async function uploadAndSendMediaLark(params: {
   });
 }
 
+/**
+ * Upload and send an image message in one strict operation.
+ *
+ * This follows Feishu's documented image path: upload the image with
+ * `image_type=message`, then send `msg_type=image` with the returned
+ * `image_key`. It never falls back to a text link or file message.
+ */
+export async function uploadAndSendImageLark(params: {
+  cfg: OpenClawConfig;
+  to: string;
+  imageUrl?: string;
+  imageBuffer?: Buffer;
+  fileName?: string;
+  replyToMessageId?: string;
+  replyInThread?: boolean;
+  accountId?: string;
+  /** Allowed root directories for local file access (SSRF prevention). */
+  mediaLocalRoots?: readonly string[];
+}): Promise<UploadAndSendImageResult> {
+  const { cfg, to, imageUrl, imageBuffer, replyToMessageId, replyInThread, accountId, mediaLocalRoots } = params;
+
+  log.info(
+    `uploadAndSendImageLark: target=${to || replyToMessageId || '(none)'}, ` +
+      `source=${imageBuffer ? 'buffer' : (imageUrl ?? '(none)')}`,
+  );
+
+  let buffer: Buffer;
+  if (imageBuffer) {
+    buffer = imageBuffer;
+  } else if (imageUrl) {
+    buffer = await fetchMediaBuffer(imageUrl, mediaLocalRoots);
+  } else {
+    throw new Error(
+      '[feishu-media] uploadAndSendImageLark requires either imageUrl or imageBuffer. ' +
+        'Provide a URL, local file path, or raw Buffer to send an image.',
+    );
+  }
+
+  const imageInfo = assertSupportedFeishuImage(buffer);
+  const { imageKey } = await uploadImageLark({
+    cfg,
+    image: buffer,
+    imageType: 'message',
+    accountId,
+  });
+
+  const sent = await sendImageLark({
+    cfg,
+    to,
+    imageKey,
+    replyToMessageId,
+    replyInThread,
+    accountId,
+  });
+  assertSentImageResult(sent);
+
+  return {
+    ...sent,
+    imageKey,
+    imageFormat: imageInfo.format,
+    width: imageInfo.width,
+    height: imageInfo.height,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // fetchRemoteImageBuffer — public wrapper for remote-only image downloads
 // ---------------------------------------------------------------------------
@@ -969,8 +1114,7 @@ async function validateRemoteUrl(raw: string): Promise<void> {
     // URL contains a literal IP address — check it directly.
     if (isPrivateIP(hostname)) {
       throw new Error(
-        `[feishu-media] Access to private/reserved IP "${hostname}" is denied (SSRF protection). ` +
-          `URL: "${raw}"`,
+        `[feishu-media] Access to private/reserved IP "${hostname}" is denied (SSRF protection). ` + `URL: "${raw}"`,
       );
     }
   } else {
