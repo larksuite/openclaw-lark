@@ -14,7 +14,8 @@
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
   "bin": {
-    "openclaw-lark": "bin/openclaw-lark.js"
+    "openclaw-lark": "bin/openclaw-lark.js",
+    "openclaw-lark-fix-contracts": "bin/openclaw-lark-fix-contracts.js"
   },
   "files": [
     "bin/",
