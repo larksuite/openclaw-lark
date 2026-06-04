@@ -516,13 +516,21 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
     account = fallback;
   }
 
-  // 2. 获取 SDK 实例（复用 LarkClient 的缓存）
+  // 2. 获取 senderOpenId — 优先级：
+  // 1. LarkTicket（来自 WebSocket 消息处理上下文）
+  // 2. 全局 openclaw.inboundMeta.sender_id（来自子代理调度场景）
+  let senderOpenId: string | undefined = ticket?.senderOpenId;
+  if (!senderOpenId && typeof global !== 'undefined' && (global as any).openclaw?.inboundMeta?.sender_id) {
+    senderOpenId = (global as any).openclaw.inboundMeta.sender_id;
+  }
+
+  // 3. 获取 SDK 实例（复用 LarkClient 的缓存）
   const larkClient = LarkClient.fromAccount(account);
 
-  // 3. 组装 ToolClient
+  // 4. 组装 ToolClient
   return new ToolClient({
     account,
-    senderOpenId: ticket?.senderOpenId,
+    senderOpenId,
     sdk: larkClient.sdk,
     config,
   });
