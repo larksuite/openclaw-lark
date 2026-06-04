@@ -42,6 +42,7 @@ export interface DispatchContext {
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
   threadSessionKey?: string;
   commandAuthorized?: boolean;
+  botOpenId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ export function buildDispatchContext(params: {
   accountScopedCfg: ClawdbotConfig;
   runtime?: RuntimeEnv;
   commandAuthorized?: boolean;
+  botOpenId?: string;
 }): DispatchContext {
   const { ctx, account, accountScopedCfg } = params;
 
@@ -85,6 +87,7 @@ export function buildDispatchContext(params: {
   const isGroup = !isComment && ctx.chatType === 'group';
   const isThread = isGroup && Boolean(ctx.threadId);
   const core = LarkClient.runtime;
+  const botOpenId = params.botOpenId;
 
   const feishuFrom = `feishu:${ctx.senderId}`;
   // Comment targets use the comment target string directly as the "To"
@@ -151,6 +154,7 @@ export function buildDispatchContext(params: {
     route,
     threadSessionKey: undefined,
     commandAuthorized: params.commandAuthorized,
+    botOpenId,
   };
 }
 
