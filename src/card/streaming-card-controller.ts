@@ -619,6 +619,8 @@ export class StreamingCardController {
             reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           },
           this.imageResolver,
+          undefined,
+          this.deps.cfg,
         );
         const errorCard = buildCardContent('complete', {
           text: terminalContent.text,
@@ -705,6 +707,8 @@ export class StreamingCardController {
             reasoningText: this.reasoning.accumulatedReasoningText || undefined,
           },
           this.imageResolver,
+          undefined,
+          this.deps.cfg,
         );
         const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
 
@@ -787,6 +791,8 @@ export class StreamingCardController {
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
         },
         this.imageResolver,
+        undefined,
+        this.deps.cfg,
       );
       const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
       if (effectiveCardId) {
@@ -1164,12 +1170,14 @@ export function prepareTerminalCardContent(
   content: TerminalCardContentInput,
   imageResolver: TerminalCardTextImageResolver,
   tableLimit: number = FEISHU_CARD_TABLE_LIMIT,
+  feishuCfg?: Record<string, unknown>,
 ): TerminalCardContentInput {
+  const resolvedLimit = feishuCfg ? resolveTableLimit(feishuCfg) : tableLimit;
   const resolvedReasoningText = content.reasoningText ? imageResolver.resolveImages(content.reasoningText) : undefined;
   const resolvedText = imageResolver.resolveImages(content.text);
   const sanitizedSegments = sanitizeTextSegmentsForCard(
     resolvedReasoningText ? [resolvedReasoningText, resolvedText] : [resolvedText],
-    tableLimit,
+    resolvedLimit,
   );
 
   if (resolvedReasoningText) {

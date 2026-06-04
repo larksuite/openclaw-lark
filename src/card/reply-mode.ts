@@ -9,7 +9,7 @@
  */
 
 import type { FeishuConfig } from '../core/types';
-import { FEISHU_CARD_TABLE_LIMIT, findMarkdownTablesOutsideCodeBlocks } from './card-error';
+import { FEISHU_CARD_TABLE_LIMIT, findMarkdownTablesOutsideCodeBlocks, resolveTableLimit } from './card-error';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,10 +75,11 @@ export function expandAutoMode(params: {
  * being rendered inside a Feishu interactive card (fenced code blocks or
  * markdown tables).
  */
-export function shouldUseCard(text: string): boolean {
+export function shouldUseCard(text: string, feishuCfg?: Record<string, unknown>): boolean {
   // Table limit takes priority -- even with code blocks, too many tables will fail
+  const tableLimit = resolveTableLimit(feishuCfg);
   const tableMatches = findMarkdownTablesOutsideCodeBlocks(text);
-  if (tableMatches.length > FEISHU_CARD_TABLE_LIMIT) {
+  if (tableMatches.length > tableLimit && tableLimit !== Infinity) {
     return false;
   }
   // Fenced code blocks
