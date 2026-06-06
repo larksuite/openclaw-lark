@@ -212,4 +212,38 @@ describe('handleFeishuMessage — empty message guard', () => {
 
     expect(mockResolveSenderInfo).toHaveBeenCalled();
   });
+
+  it('allows a bare @-mention (no text, no media) as a valid ping', async () => {
+    const ctx = {
+      ...makeCtx('', []),
+      mentions: [{ openId: 'ou_bot', name: 'Bot', isBot: true }],
+    };
+    mockParseMessageEvent.mockResolvedValue(ctx);
+    mockResolveSenderInfo.mockResolvedValue({ ctx, permissionError: undefined });
+    mockResolveMedia.mockResolvedValue({ mediaList: [], payload: undefined });
+    mockResolveQuotedContent.mockResolvedValue(undefined);
+
+    await handleFeishuMessage({
+      cfg: { channels: { feishu: {} } } as never,
+      event: makeEvent(''),
+    });
+
+    // A pure @ must NOT be dropped as an empty message.
+    expect(mockResolveSenderInfo).toHaveBeenCalled();
+  });
+
+  it('allows an @all with no text as a valid ping', async () => {
+    const ctx = { ...makeCtx('', []), mentionAll: true };
+    mockParseMessageEvent.mockResolvedValue(ctx);
+    mockResolveSenderInfo.mockResolvedValue({ ctx, permissionError: undefined });
+    mockResolveMedia.mockResolvedValue({ mediaList: [], payload: undefined });
+    mockResolveQuotedContent.mockResolvedValue(undefined);
+
+    await handleFeishuMessage({
+      cfg: { channels: { feishu: {} } } as never,
+      event: makeEvent(''),
+    });
+
+    expect(mockResolveSenderInfo).toHaveBeenCalled();
+  });
 });

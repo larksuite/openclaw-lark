@@ -91,6 +91,8 @@ vi.mock('../src/messaging/inbound/dispatch-builders', () => ({
   buildEnvelopeWithHistory: vi.fn(() => ({ combinedBody: 'body', historyKey: undefined })),
   buildBodyForAgent: vi.fn(() => 'body-for-agent'),
   buildInboundPayload: vi.fn(() => ({ inbound: true })),
+  buildFeishuIdentityFields: vi.fn(() => ({})),
+  buildFeishuGroupSystemPrompt: vi.fn(() => undefined),
 }))
 
 import { dispatchToAgent } from '../src/messaging/inbound/dispatch'

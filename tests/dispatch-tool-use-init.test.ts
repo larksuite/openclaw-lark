@@ -34,6 +34,8 @@ vi.mock('../src/messaging/inbound/dispatch-builders', () => ({
   buildEnvelopeWithHistory: buildEnvelopeWithHistoryMock,
   buildBodyForAgent: buildBodyForAgentMock,
   buildInboundPayload: buildInboundPayloadMock,
+  buildFeishuIdentityFields: vi.fn(() => ({})),
+  buildFeishuGroupSystemPrompt: vi.fn(() => undefined),
 }));
 
 vi.mock('../src/card/tool-use-config', () => ({

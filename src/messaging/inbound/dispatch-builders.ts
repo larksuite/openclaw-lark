@@ -39,7 +39,16 @@ export function buildMentionAnnotation(
   ctx: MessageContext,
   sentinels?: SentinelEntry[],
 ): string | undefined {
+  // When this bot itself was @-mentioned, tell the agent explicitly. The
+  // leading self-mention is stripped from the body, so without this the
+  // agent has no signal that it was the addressee and may mis-attribute
+  // instructions to another mentioned party.
+  const selfMention = ctx.mentions.find((m) => m.isBot);
   const sections = [
+    selfMention
+      ? `You (${selfMention.name}, open_id: ${selfMention.openId}) were directly @mentioned in this message; ` +
+        `the message body is addressed to you.`
+      : undefined,
     formatMentionList(nonBotMentions(ctx)),
     formatSentinelFeedback(sentinels),
   ].filter((s): s is string => !!s);
@@ -188,6 +197,61 @@ export function buildInboundPayload(
     OriginatingChannel: 'feishu' as const,
     OriginatingTo: opts.originatingTo ?? dc.feishuTo,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Bot-at-Bot identity & guidance
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured identity signals injected into the agent envelope so the LLM
+ * can tell "who is talking to me" apart — in particular whether the sender
+ * is a bot, and what the bot's own open_id is.
+ *
+ * BotOpenId is omitted when unknown (e.g. startup race before the bot info
+ * probe completes) to avoid surfacing an empty identity to the agent.
+ */
+export function buildFeishuIdentityFields(
+  ctx: MessageContext,
+  botOpenId?: string,
+): Record<string, unknown> {
+  return {
+    SenderIsBot: ctx.senderIsBot ?? false,
+    ...(botOpenId ? { BotOpenId: botOpenId } : {}),
+  };
+}
+
+/** Static guidance about Feishu's bot-at-bot @ semantics and loop hygiene. */
+const FEISHU_BOT_AT_BOT_GUIDANCE =
+  'On Feishu, another bot only receives a message when you explicitly @-mention it; ' +
+  'a plain message or a reply without an @ will NOT reach another bot. ' +
+  'When you need another bot to continue the work, @-mention it. ' +
+  'When no further action is needed, or you are asked to stop, do not reply — ' +
+  'this avoids endless bot-to-bot loops.';
+
+/**
+ * Build the effective group system prompt for a Feishu group chat.
+ *
+ * Always prepends bot-at-bot guidance (self-identity + @ semantics + loop
+ * hygiene) so the agent knows which open_id is itself, how Feishu @-delivery
+ * works, and when to stop; then appends any operator-configured group
+ * systemPrompt. Returns `undefined` only when there is nothing to inject.
+ */
+export function buildFeishuGroupSystemPrompt(
+  configured: string | undefined,
+  botOpenId?: string,
+): string | undefined {
+  const parts: string[] = [];
+  if (botOpenId) {
+    parts.push(`Your own Feishu open_id is "${botOpenId}"; any @-mention of this open_id refers to you.`);
+  }
+  parts.push(FEISHU_BOT_AT_BOT_GUIDANCE);
+  const trimmedConfigured = configured?.trim();
+  if (trimmedConfigured) {
+    parts.push(trimmedConfigured);
+  }
+  const merged = parts.join('\n\n').trim();
+  return merged || undefined;
 }
 
 // ---------------------------------------------------------------------------

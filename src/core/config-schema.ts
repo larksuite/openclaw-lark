@@ -148,6 +148,9 @@ export const FeishuGroupSchema = z.object({
   allowFrom: AllowFromSchema,
   systemPrompt: z.string().optional(),
   allowBots: AllowBotsSchema,
+  // When true, bot-to-bot replies are allowed to stay inside a thread/topic
+  // instead of being forced to the main chat (relaxes the #32980 guard).
+  replyInThread: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -197,6 +200,9 @@ export const FeishuAccountConfigSchema = z.object({
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
   allowBots: AllowBotsSchema,
+  // Account-level default for letting bot-to-bot replies stay in a thread
+  // (per-group `replyInThread` overrides this).
+  replyInThread: z.boolean().optional(),
   uat: UATConfigSchema,
 });
 
