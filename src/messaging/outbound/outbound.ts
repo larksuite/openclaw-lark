@@ -1,16 +1,3 @@
-// SPDX-License-Identifier: MIT
-
-/**
- * Copyright (c) 2026 ByteDance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- *
- * Outbound message adapter for the Lark/Feishu channel plugin.
- *
- * Exposes a `ChannelOutboundAdapter` that the OpenClaw core uses to deliver
- * agent-generated replies back to Feishu chats. The adapter translates SDK
- * parameters and delegates to standalone sending functions.
- */
-
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
 import { LarkClient } from '../../core/lark-client';
@@ -23,95 +10,10 @@ import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from 
 
 const log = larkLogger('outbound/outbound');
 
-// ---------------------------------------------------------------------------
-// channelData.feishu contract
-// ---------------------------------------------------------------------------
-
-/**
- * Channel-specific payload for Feishu, carried in `ReplyPayload.channelData.feishu`.
- *
- * Callers (skills, tools, programmatic code) populate this structure to send
- * Feishu-native content that the standard text/media path cannot express.
- *
- * Both card v1 (Message Card) and v2 (CardKit) formats are supported.
- * The Feishu server distinguishes the version by the presence of `schema: "2.0"`.
- *
- * @example
- * ```ts
- * // --- v1 Message Card (default) ---
- * const v1Reply: ReplyPayload = {
- *   channelData: {
- *     feishu: {
- *       card: {
- *         config: { wide_screen_mode: true },
- *         header: {
- *           title: { tag: "plain_text", content: "Task Created" },
- *           template: "green",
- *         },
- *         elements: [
- *           { tag: "div", text: { tag: "lark_md", content: "**Title:** Fix login bug" } },
- *           { tag: "action", actions: [
- *             { tag: "button", text: { tag: "plain_text", content: "View" }, type: "primary", url: "https://..." },
- *           ]},
- *         ],
- *       },
- *     },
- *   },
- * };
- *
- * // --- v2 CardKit ---
- * const v2Reply: ReplyPayload = {
- *   channelData: {
- *     feishu: {
- *       card: {
- *         schema: "2.0",
- *         config: { wide_screen_mode: true },
- *         header: {
- *           title: { tag: "plain_text", content: "Task Created" },
- *           template: "green",
- *         },
- *         body: {
- *           elements: [
- *             { tag: "markdown", content: "**Title:** Fix login bug" },
- *           ],
- *         },
- *       },
- *     },
- *   },
- * };
- * ```
- */
-export interface FeishuChannelData {
-  /**
-   * A complete Feishu interactive card JSON object (v1 or v2).
-   *
-   * The card is sent as-is via `msg_type: "interactive"`. The Feishu server
-   * uses the presence of `schema: "2.0"` to determine the card version.
-   *
-   * **v1 (Message Card)** — default when no `schema` field is present.
-   * Top-level fields: `config`, `header`, `elements`.
-   * Element tags: `div`, `action`, `button`, `button_group`, `note`,
-   * `img`, `hr`, `column_set`, `markdown` (limited), `lark_md` (in div.text).
-   *
-   * **v2 (CardKit)** — activated by `schema: "2.0"`.
-   * Top-level fields: `schema`, `config`, `header`, `body.elements`.
-   * Element tags: `markdown`, `plain_text`, `hr`, `collapsible_panel`,
-   * `column_set`, `table`, `image`, `button`, `select_static`, `overflow`.
-   * Not supported in v2: `action`, `button_group`, `note`, `div` + `lark_md`.
-   *
-   * @see https://open.larkoffice.com/document/feishu-cards/card-json-v2-structure (v2)
-   * @see https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-components (v1)
-   */
+interface FeishuChannelData {
   card?: Record<string, unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Shared context resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Common send context extracted from outbound adapter parameters.
- */
 interface FeishuSendContext {
   cfg: ClawdbotConfig;
   to: string;
@@ -121,12 +23,6 @@ interface FeishuSendContext {
   accountId?: string;
 }
 
-/**
- * Map adapter-level parameters to internal send context.
- *
- * Mirrors the pattern used by Telegram (`resolveTelegramSendContext`) and
- * Slack (`sendSlackOutboundMessage`) to centralise parameter mapping.
- */
 function resolveFeishuSendContext(params: {
   cfg: ClawdbotConfig;
   to: string;
@@ -155,10 +51,6 @@ function resolveFeishuSendContext(params: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Adapter
-// ---------------------------------------------------------------------------
-
 export const feishuOutbound: ChannelOutboundAdapter = {
   deliveryMode: 'direct',
 
@@ -171,15 +63,11 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   sendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {
     log.info(`sendText: target=${to}, textLength=${text.length}`);
 
-    // Synthetic targets (e.g. VC meeting-invited) have no real IM peer —
-    // drop the send silently so the agent pipeline stays uniform without
-    // producing unsolicited DMs. See core/synthetic-target.ts.
     if (isSyntheticTarget(to)) {
       log.debug(`sendText: synthetic target ${to}, dropping outbound IM send`);
       return { channel: 'feishu', messageId: '', chatId: to };
     }
 
-    // Comment thread routing — route replies through Drive comment API
     if (isCommentTarget(to)) {
       log.info(`sendText: detected comment target, routing through Drive comment API`);
       const result = await sendCommentReplyLark({ cfg, to, text, accountId: accountId ?? undefined });
@@ -194,13 +82,11 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   sendMedia: async ({ cfg, to, text, mediaUrl, mediaLocalRoots, accountId, replyToId, threadId }) => {
     log.info(`sendMedia: target=${to}, ` + `hasText=${Boolean(text?.trim())}, mediaUrl=${mediaUrl ?? '(none)'}`);
 
-    // Synthetic targets — drop silently (see sendText for rationale).
     if (isSyntheticTarget(to)) {
       log.debug(`sendMedia: synthetic target ${to}, dropping outbound IM send`);
       return { channel: 'feishu', messageId: '', chatId: to };
     }
 
-    // Comment thread routing — send text (with media URL appended) via Drive comment API
     if (isCommentTarget(to)) {
       log.info(`sendMedia: detected comment target, routing through Drive comment API`);
       const parts: string[] = [];
@@ -213,21 +99,27 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
-    // Feishu media messages do not support inline captions — send text first.
-    // Capture the result so the no-mediaUrl path can return it without re-sending.
+    // If this is a TTS voice file, send it ONLY and return immediately.
+    if (mediaUrl && mediaUrl.includes("/.openclaw/media/outbound/voice-")) {
+        log.info(`sendMedia: prioritized local TTS voice file: ${mediaUrl}`);
+        const result = await sendMediaLark({ ...ctx, to: ctx.to, mediaUrl, mediaLocalRoots });
+        return {
+            channel: "feishu",
+            messageId: result.messageId,
+            chatId: result.chatId,
+        };
+    }
+
     let captionResult: { messageId: string; chatId: string; warning?: string } | undefined;
     if (text?.trim()) {
       captionResult = await sendTextLark({ ...ctx, to: ctx.to, text });
     }
 
-    // No mediaUrl — text-only flow.
     if (!mediaUrl) {
       log.info('sendMedia: no mediaUrl provided, falling back to text-only');
       if (captionResult) {
-        // Caption was already sent above; return that result.
         return { channel: 'feishu', ...captionResult };
       }
-      // No caption text — send empty/raw text to satisfy the contract.
       const result = await sendTextLark({ ...ctx, to: ctx.to, text: text ?? '' });
       return { channel: 'feishu', ...result };
     }
@@ -242,7 +134,6 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   },
 
   sendPayload: async ({ cfg, to, payload, mediaLocalRoots, accountId, replyToId, threadId }) => {
-    // Synthetic targets — drop silently (see sendText for rationale).
     if (isSyntheticTarget(to)) {
       log.debug(`sendPayload: synthetic target ${to}, dropping outbound IM send`);
       return { channel: 'feishu', messageId: '', chatId: to };
@@ -250,10 +141,8 @@ export const feishuOutbound: ChannelOutboundAdapter = {
 
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
-    // --- channelData.feishu: card message support ---
     const feishuData = payload.channelData?.feishu as FeishuChannelData | undefined;
 
-    // --- Resolve text + media from payload ---
     const text = payload.text ?? '';
     const mediaUrls = payload.mediaUrls?.length ? payload.mediaUrls : payload.mediaUrl ? [payload.mediaUrl] : [];
 
@@ -263,9 +152,6 @@ export const feishuOutbound: ChannelOutboundAdapter = {
         `hasCard=${Boolean(feishuData?.card)}`,
     );
 
-    // --- channelData.feishu.card: card message path ---
-    // Feishu card messages are standalone (msg_type="interactive"), so
-    // text and media must be sent as separate messages around the card.
     if (feishuData?.card) {
       if (text.trim()) {
         await sendTextLark({ ...ctx, to: ctx.to, text });
@@ -289,15 +175,23 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       };
     }
 
-    // --- Standard text + media orchestration (no card) ---
-
-    // No media: text-only
     if (mediaUrls.length === 0) {
       const result = await sendTextLark({ ...ctx, to: ctx.to, text });
       return { channel: 'feishu', ...result };
     }
 
-    // Has media: send leading text, then loop media URLs
+    // Priority handling for TTS voice files in payload.
+    const voiceUrl = mediaUrls.find(url => url.includes("/.openclaw/media/outbound/voice-"));
+    if (voiceUrl) {
+        log.info(`sendPayload: prioritized local TTS voice file: ${voiceUrl}`);
+        const result = await sendMediaLark({ ...ctx, to: ctx.to, mediaUrl: voiceUrl, mediaLocalRoots });
+        return {
+            channel: "feishu",
+            messageId: result.messageId,
+            chatId: result.chatId,
+        };
+    }
+
     if (text.trim()) {
       await sendTextLark({ ...ctx, to: ctx.to, text });
     }
