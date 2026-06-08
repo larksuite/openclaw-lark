@@ -196,6 +196,9 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  /** When true, force all group messages (including direct @mentions without
+   *  root_id) into threaded replies regardless of the group's chat mode. */
+  forceGroupThread: z.boolean().optional(),
   allowBots: AllowBotsSchema,
   uat: UATConfigSchema,
 });

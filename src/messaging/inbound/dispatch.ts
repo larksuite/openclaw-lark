@@ -352,21 +352,30 @@ export async function dispatchToAgent(params: {
   // 1. Derive shared context (including route resolution + system event)
   const dc = buildDispatchContext(params);
 
-  // 1a. Thread detection fallback for topic groups.
-  //     In topic groups (chat_mode=topic), reply events may carry root_id
-  //     without thread_id.  When threadSession is enabled, use root_id as
-  //     a synthetic threadId so replies stay inside the topic instead of
-  //     creating a new top-level message.
-  if (!dc.isThread && dc.isGroup && dc.ctx.rootId && dc.account.config?.threadSession === true) {
-    const threadCapable = await isThreadCapableGroup({
-      cfg: dc.accountScopedCfg,
-      chatId: dc.ctx.chatId,
-      accountId: dc.account.accountId,
-    });
-    if (threadCapable) {
-      log.info(`inferred thread from root_id=${dc.ctx.rootId} in topic group ${dc.ctx.chatId}`);
+  // 1a. Thread detection for group messages.
+  //     - forceGroupThread = true: all group messages get threaded;
+  //       root_id is used when available, otherwise the message itself
+  //       serves as the thread anchor (Lark API auto-creates a new
+  //       thread when reply_in_thread=true with reply_to_message_id).
+  //     - threadSession = true (without forceGroupThread): only
+  //       thread-capable groups with a root_id get threaded.
+  if (!dc.isThread && dc.isGroup) {
+    if (dc.account.config?.forceGroupThread === true) {
+      const anchorId = dc.ctx.rootId || dc.ctx.messageId;
+      log.info(`forced thread in group ${dc.ctx.chatId} (anchor=${dc.ctx.rootId ? 'root_id' : 'messageId'})`);
       dc.isThread = true;
-      dc.ctx = { ...dc.ctx, threadId: dc.ctx.rootId };
+      dc.ctx = { ...dc.ctx, threadId: anchorId };
+    } else if (dc.account.config?.threadSession === true && dc.ctx.rootId) {
+      const threadCapable = await isThreadCapableGroup({
+        cfg: dc.accountScopedCfg,
+        chatId: dc.ctx.chatId,
+        accountId: dc.account.accountId,
+      });
+      if (threadCapable) {
+        log.info(`inferred thread from root_id=${dc.ctx.rootId} in topic group ${dc.ctx.chatId}`);
+        dc.isThread = true;
+        dc.ctx = { ...dc.ctx, threadId: dc.ctx.rootId };
+      }
     }
   }
 
