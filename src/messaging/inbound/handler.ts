@@ -149,7 +149,7 @@ export async function handleFeishuMessage(params: {
   // fresh human-driven exchange always starts clean (counter checked below,
   // after the gate, only for bot senders).
   if (!ctx.senderIsBot) {
-    resetBotLoop(ctx.chatId, ctx.threadId);
+    resetBotLoop(ctx.chatId, ctx.threadId ?? ctx.rootId);
   }
 
   log(`feishu[${account.accountId}]: received message from ${ctx.senderId} in ${ctx.chatId} (${ctx.chatType})`);
@@ -255,7 +255,12 @@ export async function handleFeishuMessage(params: {
   // above. Checked after the gate so only messages we would actually act on
   // are counted.
   if (ctx.senderIsBot) {
-    const verdict = noteBotTurnAndCheck(ctx.chatId, ctx.threadId);
+    // Use root_id when thread_id is absent: in topic groups, reply events
+    // often carry only root_id (thread_id is inferred later in dispatch), and
+    // the queue/dispatch key uses the same fallback. Without it, all topics in
+    // a chat share one chat-level counter and one topic's cutoff suppresses
+    // the others.
+    const verdict = noteBotTurnAndCheck(ctx.chatId, ctx.threadId ?? ctx.rootId);
     if (!verdict.allowed) {
       log(
         `feishu[${account.accountId}]: bot-loop guard tripped ` +
