@@ -9,6 +9,7 @@ import {
   noteBotTurnAndCheck,
   resetBotLoop,
   resetAllBotLoops,
+  botLoopStateSize,
 } from '../src/messaging/inbound/bot-loop-guard';
 
 beforeEach(() => resetAllBotLoops());
@@ -54,5 +55,18 @@ describe('noteBotTurnAndCheck', () => {
     const other = noteBotTurnAndCheck('oc_d', 'thread_1');
     expect(other.allowed).toBe(true);
     expect(other.count).toBe(1);
+  });
+
+  it('sweeps idle entries so the state map does not grow unbounded', () => {
+    const t0 = 5_000_000;
+    // Several bot-only conversations that never see a human reset.
+    noteBotTurnAndCheck('oc_1', undefined, t0);
+    noteBotTurnAndCheck('oc_2', undefined, t0);
+    noteBotTurnAndCheck('oc_3', undefined, t0);
+    expect(botLoopStateSize()).toBe(3);
+    // A new turn well past the idle window triggers a sweep of the stale ones.
+    const later = t0 + BOT_LOOP_IDLE_RESET_MS + 1;
+    noteBotTurnAndCheck('oc_new', undefined, later);
+    expect(botLoopStateSize()).toBe(1); // only oc_new survives
   });
 });

@@ -31,8 +31,26 @@ interface LoopState {
 // `${chatId}:${threadId ?? ''}` -> consecutive bot-turn state
 const states = new Map<string, LoopState>();
 
+// Timestamp of the last stale-entry sweep, to bound sweep frequency.
+let lastSweepAt = 0;
+
 function loopKey(chatId: string, threadId?: string): string {
   return `${chatId}:${threadId ?? ''}`;
+}
+
+/**
+ * Evict entries idle past the decay window. Called opportunistically from
+ * noteBotTurnAndCheck (at most once per idle window) so the Map can't grow
+ * unbounded for bot-only chats that never see a human turn to reset them.
+ * Dropping a stale entry is equivalent to leaving it: the next access would
+ * reset its count to 1 via the freshness check anyway.
+ */
+function sweepStale(now: number): void {
+  if (now - lastSweepAt < BOT_LOOP_IDLE_RESET_MS) return;
+  lastSweepAt = now;
+  for (const [key, state] of states) {
+    if (now - state.updatedAt > BOT_LOOP_IDLE_RESET_MS) states.delete(key);
+  }
 }
 
 export interface BotTurnVerdict {
@@ -57,6 +75,7 @@ export function noteBotTurnAndCheck(
   threadId?: string,
   now: number = Date.now(),
 ): BotTurnVerdict {
+  sweepStale(now);
   const key = loopKey(chatId, threadId);
   const prev = states.get(key);
   const fresh = prev && now - prev.updatedAt <= BOT_LOOP_IDLE_RESET_MS;
@@ -80,4 +99,10 @@ export function resetBotLoop(chatId: string, threadId?: string): void {
 /** Clear all loop state. Intended for tests. */
 export function resetAllBotLoops(): void {
   states.clear();
+  lastSweepAt = 0;
+}
+
+/** Number of tracked conversations. Intended for tests. */
+export function botLoopStateSize(): number {
+  return states.size;
 }
