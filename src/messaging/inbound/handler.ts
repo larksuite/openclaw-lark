@@ -272,15 +272,20 @@ export async function handleFeishuMessage(params: {
       // loop. A human message resets the counter and re-arms auto-reply.
       //
       // Deliver it where the debate actually is: reply to the triggering
-      // message and thread it when that message came from a thread, so a
-      // topic-scoped debate gets the notice inside the topic (not the main
-      // chat). When the debate is in the main chat the inbound carries no
-      // thread, so the notice lands in the main chat too.
+      // message. Only thread the notice when the inbound is genuinely in a
+      // Feishu thread (real thread_id) AND this account runs deliberate topic
+      // sessions — mirroring resolveFeishuReplyRouting, which keeps bot↔bot
+      // replies threaded only in that case and otherwise forces them flat
+      // (#32980). Crucially we must NOT treat root_id as a thread here: a plain
+      // bot↔bot quote-reply chain in a normal group carries root_id but no
+      // thread_id, and reply_in_thread=true on such a message makes Feishu mint
+      // a brand-new topic for just the notice — pulling it into a thread the
+      // debate itself was never in.
       if (verdict.count === verdict.limit + 1) {
         try {
           // Localized via i18nTexts so the viewer's Feishu client renders the
           // notice in its own language (same mechanism as /help, /doctor).
-          const inThread = Boolean(ctx.threadId ?? ctx.rootId);
+          const inThread = Boolean(ctx.threadId) && account.config?.threadSession === true;
           await sendMessageFeishu({
             cfg: accountScopedCfg,
             to: ctx.chatId,
@@ -292,7 +297,7 @@ export async function handleFeishuMessage(params: {
             accountId: account.accountId,
             replyToMessageId: replyToMessageId ?? ctx.messageId,
             replyInThread: inThread,
-            threadId: ctx.threadId ?? ctx.rootId,
+            threadId: inThread ? ctx.threadId : undefined,
           });
         } catch (err) {
           log(`feishu[${account.accountId}]: failed to send loop-guard notice: ${String(err)}`);
