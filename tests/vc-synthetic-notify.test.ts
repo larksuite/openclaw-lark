@@ -69,6 +69,7 @@ vi.mock('../src/card/tool-use-trace-store', () => ({
 
 vi.mock('../src/channel/abort-detect', () => ({
   isLikelyAbortText: vi.fn(() => false),
+  isConversationStopIntent: vi.fn(() => false),
 }))
 
 vi.mock('../src/messaging/outbound/deliver', () => ({

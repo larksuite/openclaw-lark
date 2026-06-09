@@ -101,6 +101,7 @@ vi.mock('../src/messaging/inbound/gate', () => ({
 
 vi.mock('../src/channel/abort-detect', () => ({
   isLikelyAbortText: vi.fn(() => false),
+  isConversationStopIntent: vi.fn(() => false),
 }));
 
 vi.mock('../src/core/lark-logger', () => ({

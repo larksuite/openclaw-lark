@@ -30,7 +30,7 @@ import {
 } from '../../channel/chat-queue';
 import { resolveToolUseDisplayConfig } from '../../card/tool-use-config';
 import { clearToolUseTraceRun, startToolUseTraceRun } from '../../card/tool-use-trace-store';
-import { isLikelyAbortText } from '../../channel/abort-detect';
+import { isConversationStopIntent, isLikelyAbortText } from '../../channel/abort-detect';
 import { runWithBotPeerContext } from '../outbound/bot-peer-context';
 import { isCommentTarget } from '../../core/comment-target';
 import { SYNTHETIC_VC_CHAT_ID, isSyntheticTarget } from '../../core/synthetic-target';
@@ -578,14 +578,20 @@ export async function dispatchToAgent(params: {
     // System commands intentionally skip history cleanup — command handlers
     // don't consume history context, so entries are preserved for the next
     // normal message.
-    const botPeer = resolveBotPeerForMention({
-      isGroup: dc.isGroup,
-      senderIsBot: dc.ctx.senderIsBot,
-      senderId: dc.ctx.senderId,
-      senderName: dc.ctx.senderName ?? undefined,
-      mentions: dc.ctx.mentions,
-      botOpenId: params.botOpenId,
-    });
+    // A human asking the bots to stop ("中断对话", "stop talking", …) must NOT
+    // get a forced peer-@: the deterministic ensureMention backstop would
+    // re-wake the peer bot and defeat the interruption. Skip peer resolution
+    // on stop-intent; the kickoff/continue path ("你们辩论") is unaffected.
+    const botPeer = isConversationStopIntent(dc.ctx.content ?? '')
+      ? undefined
+      : resolveBotPeerForMention({
+          isGroup: dc.isGroup,
+          senderIsBot: dc.ctx.senderIsBot,
+          senderId: dc.ctx.senderId,
+          senderName: dc.ctx.senderName ?? undefined,
+          mentions: dc.ctx.mentions,
+          botOpenId: params.botOpenId,
+        });
     await dispatchNormalMessage(
       dc,
       ctxPayload,

@@ -103,6 +103,67 @@ export function isLikelyAbortText(text: string): boolean {
   return isAbortTrigger(trimmed);
 }
 
+// ---------------------------------------------------------------------------
+// Conversation stop-intent (broader than the exact abort triggers)
+// ---------------------------------------------------------------------------
+
+/**
+ * Conversational "please stop / interrupt this exchange" phrases.
+ *
+ * Deliberately SEPARATE from {@link ABORT_TRIGGERS} (which is synced word-for-
+ * word with OpenClaw core and matched by exact equality, e.g. `/stop`). These
+ * are matched by substring so natural phrasings like "中断对话" or "stop
+ * talking" are caught. The list is intentionally distinctive to avoid false
+ * positives — a false positive only means we skip the deterministic peer-@
+ * backstop for that turn (the model can still @ on its own), which is mild.
+ */
+const STOP_INTENT_PHRASES = [
+  // zh
+  '中断',
+  '中止',
+  '停止',
+  '停下',
+  '停一下',
+  '暂停',
+  '别聊了',
+  '别说了',
+  '别回复',
+  '不要回复',
+  '结束对话',
+  '结束讨论',
+  '闭嘴',
+  // en
+  'stop talking',
+  'stop chatting',
+  'stop the conversation',
+  'stop this conversation',
+  'end the conversation',
+  'end conversation',
+  'shut up',
+  'be quiet',
+  'cut it out',
+  'knock it off',
+  'wrap it up',
+];
+
+/**
+ * Whether an inbound message expresses intent to stop / interrupt the ongoing
+ * (bot-to-bot) exchange. Superset of {@link isLikelyAbortText} plus the
+ * conversational phrases above.
+ *
+ * Used to suppress the deterministic peer-@ backstop: when a human asks the
+ * bots to stop, the acknowledgement must NOT @ the peer bot, or the forced @
+ * would re-wake it and defeat the interruption.
+ */
+export function isConversationStopIntent(text: string): boolean {
+  if (!text) return false;
+  // Drop bot mention placeholders so "@Bot 中断对话" → "中断对话".
+  const normalized = text.replace(/@_user_\d+/g, '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (isLikelyAbortText(normalized)) return true;
+  return STOP_INTENT_PHRASES.some((p) => normalized.includes(p));
+}
+
 /**
  * Extract the raw text payload from a Feishu message event.
  *
