@@ -33,8 +33,16 @@ import { currentBotPeerContext } from './bot-peer-context';
 function applyOutboundMentions(text: string, chatId: string): string {
   const normalized = normalizeOutboundMentions(text, chatId);
   const peer = currentBotPeerContext();
-  if (!peer) return normalized;
-  return ensureMention(normalized, peer.peerOpenId, peer.peerName);
+  // De-dupe the peer @ across chunks: once it has appeared on one chunk
+  // (model-written or injected), later chunks of the same dispatch skip it.
+  // Mirrors normalizeFeishuOutboundText in send.ts so both outbound paths
+  // behave the same and a long multi-chunk reply doesn't @ the peer repeatedly.
+  if (!peer || peer.mentioned) return normalized;
+  const out = ensureMention(normalized, peer.peerOpenId, peer.peerName);
+  if (out.includes(`user_id="${peer.peerOpenId}"`)) {
+    peer.mentioned = true;
+  }
+  return out;
 }
 
 const log = larkLogger('outbound/outbound');

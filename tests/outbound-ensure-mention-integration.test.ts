@@ -121,6 +121,26 @@ describe('sendText + ensureMention via AsyncLocalStorage', () => {
     expect(matches.length).toBe(1);
   });
 
+  it('does not re-@ the peer on later sends in the same dispatch (cross-chunk de-dup)', async () => {
+    await runWithBotPeerContext(
+      { peerOpenId: 'ou_peer_bot', peerName: 'PeerBot' },
+      async () => {
+        // Two sends within one dispatch (e.g. a reply split into chunks).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await feishuOutbound.sendText!({ cfg: {} as any, to: CHAT, text: '第一段', accountId: 'acct1' });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await feishuOutbound.sendText!({ cfg: {} as any, to: CHAT, text: '第二段', accountId: 'acct1' });
+      },
+    );
+
+    expect(sendTextLarkMock).toHaveBeenCalledTimes(2);
+    const first = sendTextLarkMock.mock.calls[0][0].text;
+    const second = sendTextLarkMock.mock.calls[1][0].text;
+    expect(first).toContain('<at user_id="ou_peer_bot">PeerBot</at>'); // first chunk @s the peer
+    expect(second).not.toContain('<at user_id="ou_peer_bot">'); // later chunk does not repeat it
+    expect(second).toContain('第二段');
+  });
+
   it('composes with normalize: LLM writes "@PeerBot", normalize rewrites, ensureMention then no-ops', async () => {
     recordMention(CHAT, 'ou_peer_bot', 'PeerBot');
     await runWithBotPeerContext(
