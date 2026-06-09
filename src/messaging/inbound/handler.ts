@@ -272,20 +272,26 @@ export async function handleFeishuMessage(params: {
       // loop. A human message resets the counter and re-arms auto-reply.
       //
       // Deliver it where the debate actually is: reply to the triggering
-      // message. Only thread the notice when the inbound is genuinely in a
-      // Feishu thread (real thread_id) AND this account runs deliberate topic
-      // sessions — mirroring resolveFeishuReplyRouting, which keeps bot↔bot
-      // replies threaded only in that case and otherwise forces them flat
-      // (#32980). Crucially we must NOT treat root_id as a thread here: a plain
-      // bot↔bot quote-reply chain in a normal group carries root_id but no
-      // thread_id, and reply_in_thread=true on such a message makes Feishu mint
-      // a brand-new topic for just the notice — pulling it into a thread the
-      // debate itself was never in.
+      // message. Thread the notice only when the bot↔bot reply body would also
+      // be threaded — i.e. mirror resolveFeishuReplyRouting's effective
+      // replyInThread for a bot turn: a real thread_id is present AND threading
+      // is opted in (threadSession or replyInThread). Crucially we must NOT
+      // treat root_id as a thread here: a plain bot↔bot quote-reply chain in a
+      // normal group carries root_id but no thread_id, and reply_in_thread=true
+      // on such a message makes Feishu mint a brand-new topic for just the
+      // notice — pulling it into a thread the debate itself was never in.
       if (verdict.count === verdict.limit + 1) {
         try {
           // Localized via i18nTexts so the viewer's Feishu client renders the
           // notice in its own language (same mechanism as /help, /doctor).
-          const inThread = Boolean(ctx.threadId) && account.config?.threadSession === true;
+          // replyInThread precedence matches dispatch (group > default > account).
+          const replyInThreadCfg =
+            groupConfig?.replyInThread ??
+            defaultGroupConfig?.replyInThread ??
+            account.config?.replyInThread;
+          const inThread =
+            Boolean(ctx.threadId) &&
+            (account.config?.threadSession === true || replyInThreadCfg === true);
           await sendMessageFeishu({
             cfg: accountScopedCfg,
             to: ctx.chatId,

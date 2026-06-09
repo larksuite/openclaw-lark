@@ -139,4 +139,22 @@ describe('loop-guard cutoff notice routing', () => {
     expect(arg.replyInThread).toBe(true);
     expect(arg.threadId).toBe('omt_real');
   });
+
+  it('DOES thread when in a real thread AND replyInThread is on (follows the body routing)', async () => {
+    accountConfig = { replyInThread: true }; // threadSession off, replyInThread on
+    await runWith(makeCtx({ threadId: 'omt_real', rootId: undefined }));
+
+    const arg = sendMessageFeishuMock.mock.calls[0][0] as { replyInThread: boolean; threadId: string | undefined };
+    expect(arg.replyInThread).toBe(true);
+    expect(arg.threadId).toBe('omt_real');
+  });
+
+  it('does NOT thread for a root_id-only chain even with replyInThread on (no real thread)', async () => {
+    accountConfig = { replyInThread: true };
+    await runWith(makeCtx({ threadId: undefined, rootId: 'om_root' }));
+
+    const arg = sendMessageFeishuMock.mock.calls[0][0] as { replyInThread: boolean; threadId: string | undefined };
+    expect(arg.replyInThread).toBe(false); // replyInThread relaxes thread suppression; it never mints a thread
+    expect(arg.threadId).toBeUndefined();
+  });
 });
