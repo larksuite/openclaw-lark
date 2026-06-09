@@ -83,7 +83,9 @@ describe('sendText + ensureMention via AsyncLocalStorage', () => {
 
     expect(sendTextLarkMock).toHaveBeenCalledTimes(1);
     const sent = sendTextLarkMock.mock.calls[0][0].text;
-    expect(sent).toContain('<at user_id="ou_peer_bot">PeerBot</at>');
+    // Assert the @ is PREPENDED (position + exact format), not merely present,
+    // so a regression to tail-append or extra spacing is caught.
+    expect(sent.startsWith('<at user_id="ou_peer_bot">PeerBot</at> ')).toBe(true);
     expect(sent).toContain('好的，我去查');
   });
 
