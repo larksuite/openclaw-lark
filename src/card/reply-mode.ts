@@ -71,23 +71,15 @@ export function expandAutoMode(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Detect whether the text contains markdown elements that benefit from
- * being rendered inside a Feishu interactive card (fenced code blocks or
- * markdown tables).
+ * scope A: rich text now renders natively as post(`tag:md`); we never force a
+ * card for code blocks / tables anymore. The only remaining card-path guard is
+ * the table-count hard limit, retained for the runtime fallback in
+ * reply-dispatcher (card rejected by Feishu → plain text).
  */
 export function shouldUseCard(text: string): boolean {
-  // Table limit takes priority -- even with code blocks, too many tables will fail
   const tableMatches = findMarkdownTablesOutsideCodeBlocks(text);
   if (tableMatches.length > FEISHU_CARD_TABLE_LIMIT) {
     return false;
-  }
-  // Fenced code blocks
-  if (/```[\s\S]*?```/.test(text)) {
-    return true;
-  }
-  // Markdown tables (header + separator rows separated by pipes)
-  if (tableMatches.length > 0) {
-    return true;
   }
   return false;
 }
