@@ -122,6 +122,55 @@ export async function getMessageFeishu(params: {
   }
 }
 
+/**
+ * Fetch the most recent message id in a Feishu thread (topic), for use as a
+ * reply anchor.
+ *
+ * Feishu can place a new message into an existing topic only via the reply API
+ * (`reply_to_message_id` + `reply_in_thread`); `im.message.create` cannot target
+ * a thread. Subagent/delayed deliveries reach the outbound adapter with only a
+ * threadId and no message anchor, so without one they fall through to create()
+ * and open a brand-new topic. Replying to any message in the thread lands the
+ * reply back in the original topic, so the latest message is a sufficient anchor.
+ *
+ * Uses the bot/tenant identity (like the rest of this module) — announce
+ * deliveries carry no user_access_token in context, so a user-identity read is
+ * not available here; the bot must be in the chat and hold im:message:readonly.
+ * Returns undefined on any error (missing scope, empty thread, network) so the
+ * caller can fall back to create().
+ */
+export async function getLatestThreadMessageIdFeishu(params: {
+  cfg: ClawdbotConfig;
+  threadId: string;
+  accountId?: string;
+}): Promise<string | undefined> {
+  const { cfg, threadId, accountId } = params;
+  const sdk = LarkClient.fromCfg(cfg, accountId).sdk;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = await (sdk as any).request({
+      method: 'GET',
+      url: '/open-apis/im/v1/messages',
+      params: {
+        container_id_type: 'thread',
+        container_id: threadId,
+        sort_type: 'ByCreateTimeDesc',
+        page_size: 1,
+      },
+    });
+    const messageId = response?.data?.items?.[0]?.message_id;
+    return typeof messageId === 'string' && messageId.length > 0 ? messageId : undefined;
+  } catch (error) {
+    log.warn(
+      `getLatestThreadMessageIdFeishu: lookup failed for thread ${threadId} ` +
+        `(reply will fall back to create, may open a new topic): ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
