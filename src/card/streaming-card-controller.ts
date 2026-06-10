@@ -66,6 +66,10 @@ import {
 import { UnavailableGuard } from './unavailable-guard';
 
 const log = larkLogger('card/streaming');
+const STALE_WATCHDOG_MS = Number(process.env.FEISHU_STREAMING_STALE_MS || process.env.LARK_STREAMING_STALE_MS || 5 * 60 * 1000);
+const EMPTY_FINAL_DIAGNOSTIC_TEXT =
+  '⚠️ 回复流程已结束，但没有收到可展示的最终内容。任务可能已完成但终态内容写回失败；请重试或检查会话日志。';
+
 
 interface TerminalCardTextImageResolver {
   resolveImages(text: string): string;
@@ -123,6 +127,9 @@ export class StreamingCardController {
   private cardCreationPromise: Promise<void> | null = null;
   private disposeShutdownHook: (() => void) | null = null;
   private readonly dispatchStartTime = Date.now();
+  private lastStreamingActivityAt = Date.now();
+  private staleWatchdogTimer: NodeJS.Timeout | null = null;
+
 
   // ---- Injected dependencies ----
   private readonly deps: StreamingCardDeps;
@@ -690,9 +697,11 @@ export class StreamingCardController {
         const isNoReplyLeak =
           !this.text.completedText && SILENT_REPLY_TOKEN.startsWith(this.text.accumulatedText.trim());
         const displayText =
-          this.text.completedText || (isNoReplyLeak ? '' : this.text.accumulatedText) || EMPTY_REPLY_FALLBACK_TEXT;
+          this.text.completedText ||
+          (isNoReplyLeak ? '' : this.text.accumulatedText) ||
+          EMPTY_FINAL_DIAGNOSTIC_TEXT;
         if (!this.text.completedText && !this.text.accumulatedText) {
-          log.warn('reply completed without visible text, using empty-reply fallback');
+          log.warn('reply completed without visible text, using explicit diagnostic fallback');
         }
 
         // 等待图片异步解析（最多 15s），避免终态卡片留占位符
@@ -765,6 +774,7 @@ export class StreamingCardController {
       accumulatedTextLen: this.text.accumulatedText.length,
     });
     this.dispatchFullyComplete = true;
+    this.markStreamingActivity('markFullyComplete');
   }
 
   async abortCard(): Promise<void> {
@@ -873,6 +883,7 @@ export class StreamingCardController {
 
           if (cId) {
             this.cardKit.cardKitCardId = cId;
+          this.markStreamingActivity('cardCreated');
             this.cardKit.originalCardKitCardId = cId;
             this.cardKit.cardKitSequence = 1;
             this.disposeShutdownHook = registerShutdownHook(`streaming-card:${cId}`, () => this.abortCard());
@@ -996,7 +1007,8 @@ export class StreamingCardController {
             seqBefore: prevSeq,
             seqAfter: this.cardKit.cardKitSequence,
           });
-          await streamCardContent({
+          this.markStreamingActivity('streamCardContent');
+      await streamCardContent({
             cfg: this.deps.cfg,
             cardId: this.cardKit.cardKitCardId,
             elementId: STREAMING_ELEMENT_ID,
@@ -1150,7 +1162,83 @@ export class StreamingCardController {
       accountId: this.deps.accountId,
     });
   }
+
+  private markStreamingActivity(reason: string): void {
+    this.lastStreamingActivityAt = Date.now();
+    log.debug('streaming activity', { reason });
+    this.armStaleWatchdog(reason);
+  }
+
+  private armStaleWatchdog(reason: string): void {
+    if (!STALE_WATCHDOG_MS || STALE_WATCHDOG_MS <= 0 || this.isTerminalPhase) return;
+    if (this.staleWatchdogTimer) clearTimeout(this.staleWatchdogTimer);
+    this.staleWatchdogTimer = setTimeout(() => {
+      void this.onStaleWatchdog().catch((err) => {
+        log.warn('streaming stale watchdog failed', { reason, error: String(err) });
+      });
+    }, STALE_WATCHDOG_MS);
+    this.staleWatchdogTimer.unref?.();
+  }
+
+  private async onStaleWatchdog(): Promise<void> {
+    if (this.isTerminalPhase) return;
+    const staleForMs = Date.now() - this.lastStreamingActivityAt;
+    if (staleForMs < STALE_WATCHDOG_MS - 100) {
+      this.armStaleWatchdog('staleWatchdog.race');
+      return;
+    }
+    log.warn('streaming card stale watchdog fired', {
+      staleForMs,
+      dispatchFullyComplete: this.dispatchFullyComplete,
+      phase: this.phase,
+    });
+    if (this.dispatchFullyComplete) {
+      await this.onIdle();
+      return;
+    }
+    const effectiveCardId = this.cardKit.cardKitCardId ?? this.cardKit.originalCardKitCardId;
+    if (!this.cardKit.cardMessageId || !effectiveCardId) {
+      this.armStaleWatchdog('staleWatchdog.noCard');
+      return;
+    }
+    const baseText = this.text.accumulatedText || this.text.completedText || '';
+    const minutes = Math.max(1, Math.round(staleForMs / 60000));
+    const watchdogNote = `\n\n---\n⚠️ 已超过 ${minutes} 分钟没有收到新的模型/工具/卡片更新事件。任务未被标记完成，可能仍在长时间等待，也可能已经卡在工具调用、模型返回或循环中；请不要把当前“三点进行中”视为健康信号。`;
+    const resolvedDisplayText = await this.imageResolver.resolveImagesAwait(`${baseText}${watchdogNote}`.trim(), 5000);
+    const display = this.computeToolUseDisplay();
+    const footerMetrics = this.needsFooterMetrics() ? await this.getFooterSessionMetrics() : undefined;
+    const diagnosticContent = prepareTerminalCardContent(
+      {
+        text: resolvedDisplayText,
+        reasoningText: this.reasoning.accumulatedReasoningText || undefined,
+      },
+      this.imageResolver,
+    );
+    const diagnosticCard = buildCardContent('streaming', {
+      text: diagnosticContent.text,
+      reasoningText: diagnosticContent.reasoningText,
+      reasoningElapsedMs: this.reasoning.reasoningElapsedMs || undefined,
+      toolUseSteps: display?.steps,
+      toolUseTitleSuffix: this.computeToolUseTitleSuffix(display),
+      toolUseElapsedMs: this.visibleToolUseElapsedMs,
+      showToolUse: this.deps.toolUseDisplay.showToolUse,
+      elapsedMs: this.elapsed(),
+      footer: this.deps.resolvedFooter,
+      footerMetrics,
+    });
+    this.cardKit.cardKitSequence += 1;
+    await updateCardKitCard({
+      cfg: this.deps.cfg,
+      cardId: effectiveCardId,
+      card: toCardKit2(diagnosticCard),
+      sequence: this.cardKit.cardKitSequence,
+      accountId: this.deps.accountId,
+    });
+    // This is a suspected-stall diagnostic, not completion. Keep the card/session open.
+    this.markStreamingActivity('staleWatchdog.diagnostic');
+  }
 }
+
 
 // ---------------------------------------------------------------------------
 // Error detail extraction helpers (replacing `any` casts)
