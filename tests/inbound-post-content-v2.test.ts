@@ -56,3 +56,45 @@ describe('convertPost — content_v2 selection (M1 Task 1)', () => {
     expect(r.content).toBe('SAFE_FALLBACK');
   });
 });
+
+describe('convertPost — native md passthrough & image intercept (M1 Task 2)', () => {
+  it('AC-M1-H2: tag:md native markdown is passed through verbatim', async () => {
+    const r = await run({ content_v2: [[{ tag: 'md', text: '## Heading\n- item' }]] });
+    expect(r.content).toContain('## Heading\n- item');
+  });
+
+  it('AC-M1-E3: feishu image_key registered+normalized; external/data: kept as-is', async () => {
+    const md = '![a](img_v3_abc) ![b](https://x/y.png) ![c](data:image/png;base64,AA)';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([{ type: 'image', fileKey: 'img_v3_abc' }]);
+    expect(r.content).toContain('![image](img_v3_abc)');
+    expect(r.content).toContain('![b](https://x/y.png)');
+    expect(r.content).toContain('![c](data:image/png;base64,AA)');
+  });
+
+  it('AC-M1-E4: duplicate fileKey registered once; first marker kept, rest → alt, no bare key', async () => {
+    const md = '![first](img_v3_dup) then ![second](img_v3_dup)';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([{ type: 'image', fileKey: 'img_v3_dup' }]);
+    const markerCount = (r.content.match(/!\[image\]\(img_v3_dup\)/g) ?? []).length;
+    expect(markerCount).toBe(1);
+    expect(r.content).toContain('second');
+    expect(r.content).not.toMatch(/!\[image\]\(img_v3_dup\)[\s\S]*!\[image\]\(img_v3_dup\)/);
+  });
+
+  it('§4.3: caps oversized inbound markdown at a safe boundary and tags [truncated]', async () => {
+    const huge = ('x'.repeat(50_000) + '\n').repeat(5); // > MAX_INBOUND_MD_LEN(100000)
+    const r = await run({ content_v2: [[{ tag: 'md', text: huge }]] });
+    expect(r.content.length).toBeLessThanOrEqual(100_020);
+    expect(r.content.endsWith('[truncated]')).toBe(true);
+  });
+
+  it('§4.3: drops image resources whose marker is truncated away (no orphan downloads)', async () => {
+    const filler = 'y'.repeat(100_000);
+    const md = `![keep](img_v3_keep)\n${filler}\n![gone](img_v3_gone)`;
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources.some((x) => x.fileKey === 'img_v3_keep')).toBe(true);
+    expect(r.resources.some((x) => x.fileKey === 'img_v3_gone')).toBe(false);
+    expect(r.content).toContain('[truncated]');
+  });
+});
