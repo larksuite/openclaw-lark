@@ -19,6 +19,7 @@ import { parseFeishuRouteTarget } from '../../core/targets';
 import { isCommentTarget } from '../../core/comment-target';
 import { isSyntheticTarget } from '../../core/synthetic-target';
 import type { FeishuSendResult } from '../types';
+import { getLatestThreadMessageIdFeishu } from '../shared/message-lookup';
 import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from './deliver';
 
 const log = larkLogger('outbound/outbound');
@@ -127,18 +128,32 @@ interface FeishuSendContext {
  * Mirrors the pattern used by Telegram (`resolveTelegramSendContext`) and
  * Slack (`sendSlackOutboundMessage`) to centralise parameter mapping.
  */
-function resolveFeishuSendContext(params: {
+async function resolveFeishuSendContext(params: {
   cfg: ClawdbotConfig;
   to: string;
   accountId?: string | null;
   replyToId?: string | null;
   threadId?: string | number | null;
-}): FeishuSendContext {
+}): Promise<FeishuSendContext> {
   const routeTarget = parseFeishuRouteTarget(params.to);
   const explicitThreadId =
     params.threadId != null && String(params.threadId).trim() !== '' ? String(params.threadId).trim() : undefined;
   const explicitReplyToId = params.replyToId?.trim() || undefined;
-  const replyToMessageId = explicitReplyToId ?? routeTarget.replyToMessageId;
+  const accountId = params.accountId ?? undefined;
+
+  // Feishu delivers a new message into an existing topic only via the reply API
+  // (needs reply_to_message_id); `im.message.create` cannot target a thread.
+  // Subagent/delayed deliveries arrive with only a threadId and no message
+  // anchor, so when none is supplied we look up the thread's latest message and
+  // reply to it, keeping the reply in the original topic instead of opening a
+  // new one. Falls back to create() if the lookup yields nothing.
+  let replyToMessageId = explicitReplyToId ?? routeTarget.replyToMessageId;
+  if (!replyToMessageId && explicitThreadId) {
+    replyToMessageId = await getLatestThreadMessageIdFeishu({ cfg: params.cfg, threadId: explicitThreadId, accountId });
+    if (!replyToMessageId) {
+      log.warn(`no reply anchor for thread ${explicitThreadId}; falling back to create() — this may open a new topic`);
+    }
+  }
   const replyInThread = Boolean(explicitThreadId ?? routeTarget.threadId);
 
   if (!explicitReplyToId && routeTarget.replyToMessageId) {
@@ -151,7 +166,7 @@ function resolveFeishuSendContext(params: {
     replyToMessageId,
     replyInThread,
     threadId: explicitThreadId,
-    accountId: params.accountId ?? undefined,
+    accountId,
   };
 }
 
@@ -186,7 +201,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       return { channel: 'feishu', ...result };
     }
 
-    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+    const ctx = await resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
     const result = await sendTextLark({ ...ctx, to: ctx.to, text });
     return { channel: 'feishu', ...result };
   },
@@ -211,7 +226,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       return { channel: 'feishu', ...result };
     }
 
-    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+    const ctx = await resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // Feishu media messages do not support inline captions — send text first.
     // Capture the result so the no-mediaUrl path can return it without re-sending.
@@ -248,7 +263,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       return { channel: 'feishu', messageId: '', chatId: to };
     }
 
-    const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+    const ctx = await resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
 
     // --- channelData.feishu: card message support ---
     const feishuData = payload.channelData?.feishu as FeishuChannelData | undefined;
