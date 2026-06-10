@@ -118,32 +118,54 @@ export function isLikelyAbortText(text: string): boolean {
  * backstop for that turn (the model can still @ on its own), which is mild.
  */
 const STOP_INTENT_PHRASES = [
-  // zh
+  // zh — stop / terminate / pause
   '中断',
   '中止',
+  '终止',
   '停止',
   '停下',
   '停一下',
   '暂停',
-  '别聊了',
+  '打住',
+  '停手',
+  '收手',
+  // zh — "don't keep going / replying"
+  '别聊',
   '别说了',
   '别回复',
+  '别继续',
+  '别再聊',
+  '别再说',
+  '别吵',
+  '别争',
   '不要回复',
+  '不要继续',
+  '不用回复',
+  '不用继续',
+  // zh — "wrap up / be quiet"
   '结束对话',
   '结束讨论',
+  '结束辩论',
+  '到此为止',
   '闭嘴',
   // en
   'stop talking',
   'stop chatting',
+  'stop debating',
+  'stop the debate',
   'stop the conversation',
   'stop this conversation',
+  'stop responding',
+  'stop replying',
   'end the conversation',
   'end conversation',
+  'end the debate',
   'shut up',
   'be quiet',
   'cut it out',
   'knock it off',
   'wrap it up',
+  'stand down',
 ];
 
 /**
@@ -151,9 +173,12 @@ const STOP_INTENT_PHRASES = [
  * (bot-to-bot) exchange. Superset of {@link isLikelyAbortText} plus the
  * conversational phrases above.
  *
- * Used to suppress the deterministic peer-@ backstop: when a human asks the
- * bots to stop, the acknowledgement must NOT @ the peer bot, or the forced @
- * would re-wake it and defeat the interruption.
+ * Two consumers: (1) suppress the deterministic peer-@ backstop so a stop
+ * acknowledgement doesn't re-wake the peer bot; (2) mute an active bot loop so
+ * the in-flight ping-pong drains instead of being re-armed. Substring match —
+ * keep the list distinctive (no bare "停"/"stop") to limit false positives;
+ * the worst case is a missed forced-@ or a self-healing mute (any normal
+ * message lifts it).
  */
 export function isConversationStopIntent(text: string): boolean {
   if (!text) return false;
