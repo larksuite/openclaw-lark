@@ -7,7 +7,7 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuSendResult, MentionInfo  } from '../types';
-import { createAccountScopedConfig, getLarkAccount } from '../../core/accounts';
+import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { threadScopedKey } from '../../channel/chat-queue';
@@ -112,33 +112,6 @@ export interface SendFeishuCardParams {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the configured markdown table mode for Feishu and convert tables if
- * the runtime converter is available.
- *
- * @param cfg - Plugin configuration
- * @param text - Raw markdown text
- * @param accountId - Optional account identifier for multi-account setups
- * @returns Converted text, or the original text when runtime helpers are unavailable
- */
-function convertMarkdownTablesForFeishu(cfg: ClawdbotConfig, text: string, accountId?: string): string {
-  try {
-    const accountScopedCfg = createAccountScopedConfig(cfg, accountId);
-    const runtime = LarkClient.runtime;
-    if (runtime?.channel?.text?.convertMarkdownTables && runtime.channel.text.resolveMarkdownTableMode) {
-      const tableMode = runtime.channel.text.resolveMarkdownTableMode({
-        cfg: accountScopedCfg,
-        channel: 'feishu',
-      });
-      return runtime.channel.text.convertMarkdownTables(text, tableMode);
-    }
-  } catch {
-    // Runtime not available -- use the text as-is.
-  }
-
-  return text;
-}
-
-/**
  * Send a text message (rendered as a Feishu "post" with markdown support)
  * to a chat or user.
  *
@@ -147,8 +120,8 @@ function convertMarkdownTablesForFeishu(cfg: ClawdbotConfig, text: string, accou
  * sent as a threaded reply; otherwise it is sent as a new message using
  * the appropriate `receive_id_type`.
  *
- * Markdown tables in the text are automatically converted to the format
- * supported by Feishu via the runtime's table converter when available.
+ * Markdown tables and code blocks are sent as-is so Feishu renders them
+ * natively in the post(`tag:md`); only `optimizeMarkdownStyle` is applied.
  *
  * @param params - See {@link SendFeishuMessageParams}.
  * @returns The send result containing the new message ID.
@@ -185,9 +158,6 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
         processed = buildMentionedMessage(mentions, processed);
       }
 
-      // Convert markdown tables to Feishu-compatible format.
-      processed = convertMarkdownTablesForFeishu(cfg, processed, accountId);
-
       // Apply Markdown style optimization.
       processed = optimizeMarkdownStyle(processed, 1);
 
@@ -204,9 +174,6 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     if (mentions && mentions.length > 0) {
       messageText = buildMentionedMessage(mentions, messageText);
     }
-
-    // Convert markdown tables to Feishu-compatible format.
-    messageText = convertMarkdownTablesForFeishu(cfg, messageText, accountId);
 
     // Apply Markdown style optimization.
     messageText = optimizeMarkdownStyle(messageText, 1);
@@ -524,9 +491,8 @@ export async function editMessageFeishu(params: {
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
-  const convertedText = convertMarkdownTablesForFeishu(cfg, text, accountId);
   // Use cardVersion=1 consistent with sendMessageFeishu post path.
-  const optimizedText = optimizeMarkdownStyle(convertedText, 1);
+  const optimizedText = optimizeMarkdownStyle(text, 1);
 
   const contentPayload = JSON.stringify({
     zh_cn: {

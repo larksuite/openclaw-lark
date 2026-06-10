@@ -14,7 +14,7 @@
 import { createReplyPrefixContext, createTypingCallbacks } from 'openclaw/plugin-sdk/channel-runtime';
 import { logTypingFailure } from 'openclaw/plugin-sdk/channel-feedback';
 import type { ReplyPayload } from 'openclaw/plugin-sdk';
-import { createAccountScopedConfig, getLarkAccount } from '../core/accounts';
+import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
@@ -44,8 +44,6 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
   const feishuCfg = account.config;
-  // accountScopedCfg 用于需要 account-level 覆盖的配置项（如 tableMode）
-  const accountScopedCfg = createAccountScopedConfig(cfg, account.accountId);
 
   const prefixContext = createReplyPrefixContext({ cfg, agentId });
 
@@ -82,11 +80,6 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // ---- Chunk & render settings (static mode only) ----
   const textChunkLimit = core.channel.text.resolveTextChunkLimit(cfg, 'feishu', accountId, { fallbackLimit: 4000 });
   const chunkMode = core.channel.text.resolveChunkMode(cfg, 'feishu');
-  // 使用 accountScopedCfg 以支持 per-account tableMode 覆盖
-  const tableMode = core.channel.text.resolveMarkdownTableMode({
-    cfg: accountScopedCfg,
-    channel: 'feishu',
-  });
 
   // ---- Streaming card controller (instantiated only when needed) ----
   const controller = useStreamingCards
@@ -316,8 +309,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             }
           }
         } else {
-          const converted = core.channel.text.convertMarkdownTables(text, tableMode);
-          const chunks = core.channel.text.chunkTextWithMode(converted, textChunkLimit, chunkMode);
+          const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
           log.info('deliver: sending text chunks', {
             count: chunks.length,
             chatId,

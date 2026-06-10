@@ -10,7 +10,7 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { FeishuSendResult } from '../types';
-import { createAccountScopedConfig, getLarkAccount } from '../../core/accounts';
+import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
 import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
@@ -47,8 +47,9 @@ interface PreparedText {
 
 /**
  * Pre-processes text before Feishu delivery. Runs the full mention
- * normalizer (tag rewrite + plain `@Name` resolution + `@all` aliases),
- * markdown-table conversion, and Markdown style optimization.
+ * normalizer (tag rewrite + plain `@Name` resolution + `@all` aliases)
+ * and Markdown style optimization. Markdown tables/code blocks are left
+ * as-is so Feishu renders them natively in the post(`tag:md`).
  *
  * Falls back to the raw text on any normalizer failure so a parser bug
  * never blocks send. Sentinels collected during normalization are
@@ -79,22 +80,6 @@ async function prepareTextForLark(
     } catch (err) {
       log.warn(`normalizeOutboundMentions failed in prepareTextForLark, using raw text: ${String(err)}`);
     }
-  }
-
-  // Convert markdown tables to Feishu-compatible format using per-account
-  // tableMode setting.
-  try {
-    const accountScopedCfg = createAccountScopedConfig(cfg, accountId);
-    const runtime = LarkClient.runtime;
-    if (runtime?.channel?.text?.convertMarkdownTables && runtime.channel.text.resolveMarkdownTableMode) {
-      const tableMode = runtime.channel.text.resolveMarkdownTableMode({
-        cfg: accountScopedCfg,
-        channel: 'feishu',
-      });
-      processed = runtime.channel.text.convertMarkdownTables(processed, tableMode);
-    }
-  } catch {
-    // Runtime not available -- use the text as-is.
   }
 
   return {

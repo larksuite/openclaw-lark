@@ -22,3 +22,24 @@ describe('shouldUseCard — scope A: never force a card for rich text (M2 Task 1
     expect(shouldUseCard('just a normal sentence')).toBe(false);
   });
 });
+
+import { optimizeMarkdownStyle } from '../src/card/markdown-style';
+
+describe('outbound post text transform — scope A invariants (M2 Task 2)', () => {
+  it('AC-M2-H2: a markdown table survives the only remaining transform (no table conversion)', () => {
+    const table = '| h1 | h2 |\n| --- | --- |\n| a | b |';
+    const out = optimizeMarkdownStyle(table, 1);
+    expect(out).toContain('| h1 | h2 |');
+    expect(out).toContain('| --- | --- |');
+    expect(out).toContain('| a | b |');
+  });
+
+  it('AC-M2-H3: heading downgrade is preserved (scope A keeps optimizeMarkdownStyle)', () => {
+    expect(optimizeMarkdownStyle('# Title', 1)).toMatch(/^#### Title/);
+  });
+
+  it('AC-M2-R1: external image link is still filtered by stripInvalidImageKeys', () => {
+    const out = optimizeMarkdownStyle('before ![x](https://a/b.png) after', 1);
+    expect(out).not.toContain('https://a/b.png');
+  });
+});
