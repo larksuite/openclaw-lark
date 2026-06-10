@@ -19,6 +19,7 @@ const LOCALE_PRIORITY = ['zh_cn', 'en_us', 'ja_jp'] as const;
 interface PostBody {
   title?: string;
   content?: PostElement[][];
+  content_v2?: PostElement[][];
 }
 
 /**
@@ -29,7 +30,7 @@ interface PostBody {
  *   - Locale: `{ zh_cn: { title, content }, en_us: { title, content } }`
  */
 function unwrapLocale(parsed: Record<string, unknown>): PostBody | undefined {
-  if ('title' in parsed || 'content' in parsed) {
+  if ('title' in parsed || 'content' in parsed || 'content_v2' in parsed) {
     return parsed as unknown as PostBody;
   }
 
@@ -70,7 +71,8 @@ export const convertPost: ContentConverterFn = (raw, ctx) => {
     lines.push(`**${parsed.title}**`, '');
   }
 
-  const contentBlocks = parsed.content ?? [];
+  const v2 = parsed.content_v2;
+  const contentBlocks = Array.isArray(v2) && v2.length ? v2 : (parsed.content ?? []);
 
   for (const paragraph of contentBlocks) {
     if (!Array.isArray(paragraph)) continue;
