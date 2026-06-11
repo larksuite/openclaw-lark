@@ -98,3 +98,50 @@ describe('convertPost — native md passthrough & image intercept (M1 Task 2)', 
     expect(r.content).toContain('[truncated]');
   });
 });
+
+describe('convertPost — code-block image exclusion (M1 Task 2 enhancement)', () => {
+  it('image inside a fenced code block is kept verbatim, never registered', async () => {
+    const md = '```\n![a](img_v3_fenced)\n```';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([]);
+    expect(r.content).toContain('![a](img_v3_fenced)');
+    expect(r.content).not.toContain('![image](img_v3_fenced)');
+  });
+
+  it('image inside a language-tagged fenced block is excluded', async () => {
+    const md = '```md\nsee ![logo](img_v3_lang) here\n```';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([]);
+    expect(r.content).toContain('![logo](img_v3_lang)');
+  });
+
+  it('image inside a ~~~ fenced block is excluded', async () => {
+    const md = '~~~\n![a](img_v3_tilde)\n~~~';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([]);
+    expect(r.content).toContain('![a](img_v3_tilde)');
+  });
+
+  it('image inside an inline code span is kept verbatim, never registered', async () => {
+    const md = 'use `![a](img_v3_inline)` literally';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([]);
+    expect(r.content).toContain('`![a](img_v3_inline)`');
+    expect(r.content).not.toContain('![image](img_v3_inline)');
+  });
+
+  it('normal-text image after a closed fenced block is still intercepted', async () => {
+    const md = '```\ncode\n```\n![real](img_v3_after)';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([{ type: 'image', fileKey: 'img_v3_after' }]);
+    expect(r.content).toContain('![image](img_v3_after)');
+  });
+
+  it('same key in a code block and in body: only the body occurrence is registered', async () => {
+    const md = '```\n![doc](img_v3_both)\n```\nand ![real](img_v3_both)';
+    const r = await run({ content_v2: [[{ tag: 'md', text: md }]] });
+    expect(r.resources).toEqual([{ type: 'image', fileKey: 'img_v3_both' }]);
+    expect(r.content).toContain('![doc](img_v3_both)'); // code block verbatim
+    expect(r.content).toContain('![image](img_v3_both)'); // body normalized
+  });
+});

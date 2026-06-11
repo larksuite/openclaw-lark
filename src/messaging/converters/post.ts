@@ -16,8 +16,15 @@ import { safeParse } from './utils';
 /** Preferred locale order for multi-language post unwrapping. */
 const LOCALE_PRIORITY = ['zh_cn', 'en_us', 'ja_jp'] as const;
 
-/** Markdown image syntax: ![alt](target) */
-const INLINE_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+/**
+ * Scan token for native markdown: a code region to SKIP, OR an image to intercept.
+ * Group 1 (code region) matches first so `![alt](key)` inside code is consumed
+ * verbatim and never intercepted:
+ *   - fenced block: ```...``` or ~~~...~~~ (multi-line, lazy)
+ *   - inline span:  ``...`` or `...` (single-line)
+ * Group 2 (alt) + Group 3 (target) are the image when no code region matched.
+ */
+const MD_SCAN_RE = /(```[\s\S]*?```|~~~[\s\S]*?~~~|``[\s\S]*?``|`[^`\n]*`)|!\[([^\]]*)\]\(([^)]+)\)/g;
 /** Feishu image_key prefix (aligned with markdown-style.ts stripInvalidImageKeys & case 'img'). */
 const FEISHU_IMAGE_KEY_RE = /^img_/;
 /**
@@ -182,9 +189,14 @@ function applyStyle(text: string, style?: string[]): string {
  *   to sanitized alt text so no bare key / un-replaceable marker leaks downstream.
  * - everything else (https/http, data:, protocol-relative, relative/anchor) is kept
  *   verbatim and never downloaded.
+ * Image syntax inside a code region (fenced block or inline span) is left verbatim
+ * and never intercepted — code is shown as-is, not rendered.
  */
 function renderInlineImages(md: string, resources: ResourceDescriptor[], seen: Set<string>): string {
-  return md.replace(INLINE_IMAGE_RE, (whole, alt: string, target: string) => {
+  return md.replace(MD_SCAN_RE, (whole, codeRegion: string | undefined, alt: string, target: string) => {
+    if (codeRegion !== undefined) {
+      return whole; // fenced block / inline code → keep verbatim, never intercept
+    }
     if (!FEISHU_IMAGE_KEY_RE.test(target)) {
       return whole;
     }
