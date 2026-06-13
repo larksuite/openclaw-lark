@@ -30,6 +30,9 @@ import { UnavailableGuard } from './unavailable-guard';
 
 const log = larkLogger('card/reply-dispatcher');
 
+export const NO_VISIBLE_REPLY_FALLBACK_TEXT =
+  '⚠️ This reply was interrupted before any visible content was delivered. Please retry, or send the message again if this keeps happening.';
+
 // Re-export the params type for backward compatibility with dispatch.ts
 export type { CreateFeishuReplyDispatcherParams } from './reply-dispatcher-types';
 
@@ -180,15 +183,50 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
   // ---- dispatchFullyComplete flag (static mode) ----
   let dispatchFullyComplete = false;
+  let visibleReplySent = false;
+  let skippedFinalReason: string | null = null;
+
+  const markVisibleReplySent = () => {
+    visibleReplySent = true;
+  };
+
+  const ensureNoVisibleReplyFallback = async (reason: string): Promise<boolean> => {
+    if (visibleReplySent) return false;
+    if (skippedFinalReason === 'silent') {
+      log.info('no-visible-reply fallback skipped for intentional silent final reply', { reason });
+      return false;
+    }
+
+    await sendMessageFeishu({
+      cfg,
+      to: chatId,
+      text: NO_VISIBLE_REPLY_FALLBACK_TEXT,
+      replyToMessageId,
+      replyInThread,
+      accountId,
+      threadId,
+    });
+    markVisibleReplySent();
+    log.warn('sent no-visible-reply fallback', { reason, skippedFinalReason });
+    return true;
+  };
 
   // ---- Build dispatcher ----
   const { dispatcher, replyOptions, markDispatchIdle } = core.channel.reply.createReplyDispatcherWithTyping({
     responsePrefix: prefixContext.responsePrefix,
     responsePrefixContextProvider: prefixContext.responsePrefixContextProvider,
+    silentReplyContext: {
+      cfg,
+      sessionKey,
+      surface: 'feishu',
+      conversationType: chatType === 'group' ? 'group' : 'direct',
+    },
     humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, agentId),
 
     onReplyStart: async () => {
       if (shouldSkip('onReplyStart')) return;
+      visibleReplySent = false;
+      skippedFinalReason = null;
       await typingCallbacks.onReplyStart?.();
     },
 
@@ -242,9 +280,11 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           if (controller.cardMessageId) {
             if (payload.isReasoning === true) {
               await controller.onReasoningStream({ ...payload, text: controllerText });
+              markVisibleReplySent();
               return;
             }
             await controller.onDeliver({ ...payload, text: controllerText });
+            markVisibleReplySent();
             return;
           }
           // Card creation failed — fall through to static delivery
@@ -275,6 +315,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                   accountId,
                   threadId,
                 });
+                markVisibleReplySent();
               } catch (fallbackErr) {
                 if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
                 throw fallbackErr;
@@ -290,6 +331,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 replyInThread,
                 accountId,
               });
+              markVisibleReplySent();
             } catch (err) {
               if (staticGuard?.terminate('deliver.cardChunk', err)) return;
               // 卡片表格数超出飞书限制 — 降级为纯文本
@@ -306,6 +348,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                     accountId,
                     threadId,
                   });
+                  markVisibleReplySent();
                 } catch (fallbackErr) {
                   if (staticGuard?.terminate('deliver.textFallback', fallbackErr)) return;
                   throw fallbackErr;
@@ -333,6 +376,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
                 accountId,
                 threadId,
               });
+              markVisibleReplySent();
             } catch (err) {
               if (staticGuard?.terminate('deliver.textChunk', err)) return;
               throw err;
@@ -356,6 +400,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             replyToMessageId,
             replyInThread,
           });
+          markVisibleReplySent();
         } catch (mediaErr) {
           if (staticGuard?.terminate('deliver.media', mediaErr)) return;
           log.error('deliver: static media send failed', {
@@ -398,9 +443,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       if (controller) {
         await controller.onIdle();
+        markVisibleReplySent();
       }
 
       typingCallbacks.onIdle?.();
+    },
+
+    onSkip: (_payload: ReplyPayload, info: { kind?: string; reason?: string }) => {
+      if (info.kind === 'final') skippedFinalReason = info.reason ?? null;
     },
 
     onCleanup: async () => {
@@ -439,6 +489,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       controller?.markFullyComplete();
     },
     abortCard,
+    ensureNoVisibleReplyFallback,
+    getVisibleReplyState: () => ({ visibleReplySent, skippedFinalReason }),
   };
 }
 

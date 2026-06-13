@@ -151,6 +151,8 @@ export interface FeishuReplyDispatcherResult {
   markDispatchIdle: () => void;
   markFullyComplete: () => void;
   abortCard: () => Promise<void>;
+  ensureNoVisibleReplyFallback: (reason: string) => Promise<boolean>;
+  getVisibleReplyState: () => { visibleReplySent: boolean; skippedFinalReason: string | null };
 }
 
 // ---------------------------------------------------------------------------
