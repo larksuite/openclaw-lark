@@ -19,6 +19,7 @@ import { Readable } from 'node:stream';
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk';
 import { LarkClient } from '../../core/lark-client';
+import { getLarkAccount } from '../../core/accounts';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { larkLogger } from '../../core/lark-logger';
 import {
@@ -91,6 +92,39 @@ function extractHttpStatus(err: unknown): number | undefined {
     }
   }
   return undefined;
+}
+
+function resolveLarkApiBaseUrl(domain?: string): string {
+  const normalized = domain?.trim().toLowerCase();
+  if (!normalized || normalized === 'feishu') return 'https://open.feishu.cn';
+  if (normalized === 'lark') return 'https://open.larksuite.com';
+  if (/^https?:\/\//i.test(normalized)) return normalized.replace(/\/$/, '');
+  return `https://${normalized.replace(/\/$/, '')}`;
+}
+
+async function fetchTenantAccessToken(cfg: OpenClawConfig, accountId?: string): Promise<{ token: string; baseUrl: string }> {
+  const account = getLarkAccount(cfg as any, accountId);
+  if (!account.configured || !account.appId || !account.appSecret) {
+    throw new Error(`[feishu-media] Account not configured: accountId=${accountId ?? 'default'}`);
+  }
+
+  const baseUrl = resolveLarkApiBaseUrl(account.config?.domain ?? account.brand);
+  const response = await fetch(`${baseUrl}/open-apis/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ app_id: account.appId, app_secret: account.appSecret }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`[feishu-media] Failed to get tenant access token: HTTP ${response.status}`);
+  }
+
+  const json = (await response.json()) as any;
+  if (json?.code !== 0 || !json?.tenant_access_token) {
+    throw new Error(`[feishu-media] Failed to get tenant access token: code=${json?.code}, msg=${json?.msg ?? 'unknown'}`);
+  }
+
+  return { token: String(json.tenant_access_token), baseUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -352,12 +386,29 @@ export async function uploadImageLark(params: {
 }): Promise<UploadImageResult> {
   const { cfg, image, imageType = 'message', accountId } = params;
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
-  const imageStream = Buffer.isBuffer(image) ? Readable.from(image) : fs.createReadStream(image);
+  const imageBuffer = Buffer.isBuffer(image) ? image : fs.readFileSync(image);
+  const uploadName = Buffer.isBuffer(image) ? 'image.png' : path.basename(image);
 
-  const response = await client.im.image.create({
-    data: { image_type: imageType, image: imageStream as any },
-  });
+  const response = await withRetry(async () => {
+    const { token, baseUrl } = await fetchTenantAccessToken(cfg, accountId);
+    const body = new FormData();
+    body.append('image_type', imageType);
+    body.append('image', new Blob([new Uint8Array(imageBuffer)]), uploadName);
+    const res = await fetch(`${baseUrl}/open-apis/im/v1/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    const json = (await res.json().catch(() => ({}))) as any;
+    if (!res.ok || json?.code !== 0) {
+      const err: any = new Error(
+        `[feishu-media] Image upload failed: HTTP ${res.status}, code=${json?.code}, msg=${json?.msg ?? 'unknown'}`,
+      );
+      err.status = res.status;
+      throw err;
+    }
+    return json;
+  }, 'uploadImage');
 
   const imageKey = (response as any)?.data?.image_key ?? (response as any)?.image_key;
   if (!imageKey) {
@@ -396,17 +447,31 @@ export async function uploadFileLark(params: {
 }): Promise<UploadFileResult> {
   const { cfg, file, fileName, fileType, duration, accountId } = params;
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
-  const fileStream = Buffer.isBuffer(file) ? Readable.from(file) : fs.createReadStream(file);
+  const fileBuffer = Buffer.isBuffer(file) ? file : fs.readFileSync(file);
+  const uploadName = fileName || (Buffer.isBuffer(file) ? 'file' : path.basename(file));
 
-  const response = await client.im.file.create({
-    data: {
-      file_type: fileType,
-      file_name: fileName,
-      file: fileStream,
-      ...(duration !== undefined ? { duration: String(duration) } : {}),
-    } as any,
-  });
+  const response = await withRetry(async () => {
+    const { token, baseUrl } = await fetchTenantAccessToken(cfg, accountId);
+    const body = new FormData();
+    body.append('file_type', fileType);
+    body.append('file_name', uploadName);
+    if (duration !== undefined) body.append('duration', String(duration));
+    body.append('file', new Blob([new Uint8Array(fileBuffer)]), uploadName);
+    const res = await fetch(`${baseUrl}/open-apis/im/v1/files`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    const json = (await res.json().catch(() => ({}))) as any;
+    if (!res.ok || json?.code !== 0) {
+      const err: any = new Error(
+        `[feishu-media] File upload failed: HTTP ${res.status}, code=${json?.code}, msg=${json?.msg ?? 'unknown'}`,
+      );
+      err.status = res.status;
+      throw err;
+    }
+    return json;
+  }, 'uploadFile');
 
   const fileKey = (response as any)?.data?.file_key ?? (response as any)?.file_key;
   if (!fileKey) {
@@ -431,24 +496,34 @@ export async function uploadFileLark(params: {
  * "interactive"), extracted here to avoid a cross-module dependency.
  */
 async function sendMediaMessage(params: {
-  client: ReturnType<typeof LarkClient.fromCfg>['sdk'];
+  cfg: OpenClawConfig;
+  accountId?: string;
   to: string;
   content: string;
   msgType: 'image' | 'file' | 'audio' | 'media';
   replyToMessageId?: string;
   replyInThread?: boolean;
 }): Promise<SendMediaResult> {
-  const { client, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { cfg, accountId, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { token, baseUrl } = await fetchTenantAccessToken(cfg, accountId);
 
   if (replyToMessageId) {
-    const response = await client.im.message.reply({
-      path: { message_id: replyToMessageId },
-      data: { content, msg_type: msgType, reply_in_thread: replyInThread },
+    const response = await fetch(`${baseUrl}/open-apis/im/v1/messages/${encodeURIComponent(replyToMessageId)}/reply`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ msg_type: msgType, content, ...(replyInThread !== undefined ? { reply_in_thread: replyInThread } : {}) }),
     });
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+    if (!response.ok) {
+      throw new Error(`[feishu-media] Failed to reply ${msgType} message: HTTP ${response.status}`);
+    }
+    const json = (await response.json()) as any;
+    if (json?.code !== 0) {
+      throw new Error(`[feishu-media] Failed to reply ${msgType} message: code=${json?.code}, msg=${json?.msg ?? 'unknown'}`);
+    }
+    return { messageId: json?.data?.message_id ?? '', chatId: json?.data?.chat_id ?? '' };
   }
 
   const target = normalizeFeishuTarget(to);
@@ -460,15 +535,23 @@ async function sendMediaMessage(params: {
   }
 
   const receiveIdType = resolveReceiveIdType(target);
-  const response = await client.im.message.create({
-    params: { receive_id_type: receiveIdType as any },
-    data: { receive_id: target, msg_type: msgType, content },
+  const response = await fetch(`${baseUrl}/open-apis/im/v1/messages?receive_id_type=${encodeURIComponent(receiveIdType)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ receive_id: target, msg_type: msgType, content }),
   });
+  if (!response.ok) {
+    throw new Error(`[feishu-media] Failed to send ${msgType} message: HTTP ${response.status}`);
+  }
+  const json = (await response.json()) as any;
+  if (json?.code !== 0) {
+    throw new Error(`[feishu-media] Failed to send ${msgType} message: code=${json?.code}, msg=${json?.msg ?? 'unknown'}`);
+  }
 
-  return {
-    messageId: response?.data?.message_id ?? '',
-    chatId: response?.data?.chat_id ?? '',
-  };
+  return { messageId: json?.data?.message_id ?? '', chatId: json?.data?.chat_id ?? '' };
 }
 
 // ---------------------------------------------------------------------------
@@ -497,9 +580,8 @@ export async function sendImageLark(params: {
   const { cfg, to, imageKey, replyToMessageId, replyInThread, accountId } = params;
   log.info(`sendImageLark: target=${to}, imageKey=${imageKey}`);
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ image_key: imageKey });
-  return sendMediaMessage({ client, to, content, msgType: 'image', replyToMessageId, replyInThread });
+  return sendMediaMessage({ cfg, accountId, to, content, msgType: 'image', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -528,9 +610,8 @@ export async function sendFileLark(params: {
   const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
   log.info(`sendFileLark: target=${to}, fileKey=${fileKey}`);
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'file', replyToMessageId, replyInThread });
+  return sendMediaMessage({ cfg, accountId, to, content, msgType: 'file', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -562,9 +643,8 @@ export async function sendVideoLark(params: {
   const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
   log.info(`sendVideoLark: target=${to}, fileKey=${fileKey}`);
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'media', replyToMessageId, replyInThread });
+  return sendMediaMessage({ cfg, accountId, to, content, msgType: 'media', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
@@ -596,9 +676,8 @@ export async function sendAudioLark(params: {
   const { cfg, to, fileKey, replyToMessageId, replyInThread, accountId } = params;
   log.info(`sendAudioLark: target=${to}, fileKey=${fileKey}`);
 
-  const client = LarkClient.fromCfg(cfg, accountId).sdk;
   const content = JSON.stringify({ file_key: fileKey });
-  return sendMediaMessage({ client, to, content, msgType: 'audio', replyToMessageId, replyInThread });
+  return sendMediaMessage({ cfg, accountId, to, content, msgType: 'audio', replyToMessageId, replyInThread });
 }
 
 // ---------------------------------------------------------------------------
