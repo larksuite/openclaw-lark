@@ -67,13 +67,15 @@ Before you start, make sure you have the following:
 
 ### Interactive card smoke test
 
-After configuring `channels.feishu.appId/appSecret`, you can send a demo interactive card with:
+After configuring `channels.feishu.appId/appSecret`, you can send the example interactive card with:
 
 ```bash
 openclaw-lark smoke-card
 ```
 
-Use `--chat-id oc_xxx` to send it to a test group, or `--open-id ou_xxx` to send it to a user. The demo card uses `value.action: "demo:approve"` / `"demo:reject"` and is useful for validating `card.action.trigger` routing, the synchronous processing ack, and the follow-up Agent message.
+By default this reads `examples/demo-smoke-card.card.json`. Use `--chat-id oc_xxx` to send it to a test group, or `--open-id ou_xxx` to send it to a user. Use `--card-file ./my-card.card.json` to send your own card JSON through the same path.
+
+The demo handler config lives in `examples/default-interactive.config.json`. The runtime itself only routes by `channels.feishu.interactive.handlers.<namespace>` and does not special-case the `demo` namespace.
 
 ## Contributing
 

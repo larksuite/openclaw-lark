@@ -1,0 +1,54 @@
+{
+  "schema": "2.0",
+  "config": { "wide_screen_mode": true },
+  "header": {
+    "title": { "tag": "plain_text", "content": "openclaw-lark interactive smoke card" },
+    "template": "blue"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "Click a button. You should see an immediate processing ack, then an Agent reply with demo variables."
+        }
+      },
+      {
+        "tag": "column_set",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "Approve" },
+                "type": "primary",
+                "value": {
+                  "action": "demo:approve",
+                  "demo": { "action": "approve", "note": "openclaw-lark smoke-card" }
+                }
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": { "tag": "plain_text", "content": "Reject" },
+                "type": "danger",
+                "value": {
+                  "action": "demo:reject",
+                  "demo": { "action": "reject", "note": "openclaw-lark smoke-card" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

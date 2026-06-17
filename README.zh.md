@@ -61,13 +61,15 @@
 
 ### 交互卡片联调测试
 
-配置好 `channels.feishu.appId/appSecret` 后，可以直接发送一张 demo 交互卡片：
+配置好 `channels.feishu.appId/appSecret` 后，可以直接发送一张 examples 里的 demo 交互卡片：
 
 ```bash
 openclaw-lark smoke-card
 ```
 
-追加 `--chat-id oc_xxx` 可发送到测试群，追加 `--open-id ou_xxx` 可发送到指定用户。demo 卡片使用 `value.action: "demo:approve"` / `"demo:reject"`，用于验证 `card.action.trigger` 路由、同步处理中回执，以及后续 Agent 消息。
+默认读取 `examples/demo-smoke-card.card.json`。追加 `--chat-id oc_xxx` 可发送到测试群，追加 `--open-id ou_xxx` 可发送到指定用户。追加 `--card-file ./my-card.card.json` 可用自己的卡片 JSON 走同一条发送链路。
+
+demo handler 配置样例位于 `examples/default-interactive.config.json`。运行时只按 `channels.feishu.interactive.handlers.<namespace>` 路由，不在核心源码里特殊处理 `demo` namespace。
 
 ## 贡献
 

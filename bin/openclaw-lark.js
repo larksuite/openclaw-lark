@@ -3,11 +3,12 @@ import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function printSmokeCardHelp() {
-  console.log(`Usage: openclaw-lark smoke-card [--chat-id oc_xxx] [--open-id ou_xxx]
+  console.log(`Usage: openclaw-lark smoke-card [--chat-id oc_xxx] [--open-id ou_xxx] [--card-file examples/demo-smoke-card.card.json]
 
-Sends the interactive demo card using ~/.openclaw/openclaw.json credentials.
+Sends an interactive example card using ~/.openclaw/openclaw.json credentials.
 Defaults to channels.feishu.allowFrom when --chat-id/--open-id is omitted.
 
 Environment:
@@ -24,7 +25,7 @@ function parseFlagArgs(args) {
       out.help = true;
       continue;
     }
-    if (arg === '--chat-id' || arg === '--open-id') {
+    if (arg === '--chat-id' || arg === '--open-id' || arg === '--card-file') {
       out[arg.slice(2)] = args[i + 1] ?? '';
       i += 1;
       continue;
@@ -91,44 +92,11 @@ async function getTenantToken(appId, appSecret) {
   return String(payload.tenant_access_token);
 }
 
-function buildSmokeCard() {
-  const button = (action, label, type) => ({
-    tag: 'button',
-    text: { tag: 'plain_text', content: label },
-    type,
-    value: {
-      action: `demo:${action}`,
-      demo: { action, note: 'openclaw-lark smoke-card' },
-    },
-  });
-
-  return {
-    schema: '2.0',
-    config: { wide_screen_mode: true },
-    header: {
-      title: { tag: 'plain_text', content: 'openclaw-lark interactive smoke card' },
-      template: 'blue',
-    },
-    body: {
-      elements: [
-        {
-          tag: 'div',
-          text: {
-            tag: 'plain_text',
-            content:
-              'Click a button. You should see an immediate processing ack, then an Agent reply with demo variables.',
-          },
-        },
-        {
-          tag: 'column_set',
-          columns: [
-            { tag: 'column', width: 'auto', elements: [button('approve', 'Approve', 'primary')] },
-            { tag: 'column', width: 'auto', elements: [button('reject', 'Reject', 'danger')] },
-          ],
-        },
-      ],
-    },
-  };
+async function loadSmokeCard(cardFile) {
+  const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const defaultCardFile = join(packageRoot, 'examples', 'demo-smoke-card.card.json');
+  const path = cardFile ? resolve(cardFile) : defaultCardFile;
+  return JSON.parse(await readFile(path, 'utf8'));
 }
 
 async function smokeCard(args) {
@@ -154,7 +122,7 @@ async function smokeCard(args) {
     {
       receive_id: receiveId,
       msg_type: 'interactive',
-      content: JSON.stringify(buildSmokeCard()),
+      content: JSON.stringify(await loadSmokeCard(parsed['card-file'])),
     },
     { authorization: `Bearer ${token}` },
   );
