@@ -59,6 +59,16 @@
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+### 交互卡片联调测试
+
+配置好 `channels.feishu.appId/appSecret` 后，可以直接发送一张 demo 交互卡片：
+
+```bash
+openclaw-lark smoke-card
+```
+
+追加 `--chat-id oc_xxx` 可发送到测试群，追加 `--open-id ou_xxx` 可发送到指定用户。demo 卡片使用 `value.action: "demo:approve"` / `"demo:reject"`，用于验证 `card.action.trigger` 路由、同步处理中回执，以及后续 Agent 消息。
+
 ## 贡献
 
 我们欢迎社区的贡献！如果你发现 Bug 或有功能建议，请随时提交 [Issue](https://github.com/larksuite/openclaw-larksuite/issues) 或 [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls)。

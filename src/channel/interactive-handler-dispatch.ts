@@ -2,7 +2,7 @@
  * Dispatch card actions to configured prompt handlers via synthetic Agent messages.
  *
  * Flow: sync ack (≤3s) → render handler prompt with card context → dispatch to Agent.
- * No child_process or external webhooks; the Agent executes skills/tools from the prompt.
+ * No local process launch or external webhooks; the Agent executes skills/tools from the prompt.
  */
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
@@ -53,6 +53,13 @@ export async function dispatchFeishuInteractiveHandler(params: {
   const text = renderInteractiveHandlerPrompt(handler.prompt, promptVars);
   const syntheticMessageId = `${route.openMessageId ?? 'om_unknown'}:interactive:${route.namespace}:${Date.now()}`;
   const forceMention = handler.forceMention ?? true;
+  log.info('interactive handler dispatch matched', {
+    namespace: route.namespace,
+    action: route.action,
+    openChatId: route.openChatId,
+    openMessageId: route.openMessageId,
+    senderOpenId: route.senderOpenId,
+  });
   setImmediate(() => {
     dispatchSyntheticTextMessage({
       cfg: params.cfg,

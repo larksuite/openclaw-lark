@@ -65,6 +65,16 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+### Interactive card smoke test
+
+After configuring `channels.feishu.appId/appSecret`, you can send a demo interactive card with:
+
+```bash
+openclaw-lark smoke-card
+```
+
+Use `--chat-id oc_xxx` to send it to a test group, or `--open-id ou_xxx` to send it to a user. The demo card uses `value.action: "demo:approve"` / `"demo:reject"` and is useful for validating `card.action.trigger` routing, the synchronous processing ack, and the follow-up Agent message.
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).
