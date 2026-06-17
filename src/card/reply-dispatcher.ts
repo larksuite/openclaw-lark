@@ -130,28 +130,42 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // ---- Typing indicator (reaction-based) ----
   let typingState: TypingIndicatorState | null = null;
   let typingStopped = false;
+  let typingStartPromise: Promise<void> | null = null;
+
+  const startTypingReaction = async () => {
+    if (shouldSkip('typing.start.precheck')) return;
+    if (!replyToMessageId || typingStopped || params.skipTyping) return;
+    if (typingState?.reactionId) return;
+
+    typingState = await addTypingIndicator({
+      cfg,
+      messageId: replyToMessageId,
+      accountId,
+    });
+    if (shouldSkip('typing.start.postcheck')) return;
+
+    if (typingStopped && typingState) {
+      await removeTypingIndicator({ cfg, state: typingState, accountId });
+      typingState = null;
+      log.info('removed typing indicator (raced with stop)');
+      return;
+    }
+    log.info('added typing indicator reaction');
+  };
 
   const typingCallbacks = createTypingCallbacks({
     keepaliveIntervalMs: 0,
     start: async () => {
-      if (shouldSkip('typing.start.precheck')) return;
-      if (!replyToMessageId || typingStopped || params.skipTyping) return;
-      if (typingState?.reactionId) return;
-
-      typingState = await addTypingIndicator({
-        cfg,
-        messageId: replyToMessageId,
-        accountId,
-      });
-      if (shouldSkip('typing.start.postcheck')) return;
-
-      if (typingStopped && typingState) {
-        await removeTypingIndicator({ cfg, state: typingState, accountId });
-        typingState = null;
-        log.info('removed typing indicator (raced with stop)');
+      if (typingStartPromise) {
+        await typingStartPromise;
         return;
       }
-      log.info('added typing indicator reaction');
+      typingStartPromise = startTypingReaction();
+      try {
+        await typingStartPromise;
+      } finally {
+        typingStartPromise = null;
+      }
     },
     stop: async () => {
       typingStopped = true;
@@ -177,6 +191,13 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       });
     },
   });
+
+  const startTypingIndicator = () => {
+    if (shouldSkip('typing.eagerStart')) return;
+    if (!replyToMessageId || typingStopped || params.skipTyping) return;
+    log.info('typing indicator eager start requested');
+    void typingCallbacks.onReplyStart?.();
+  };
 
   // ---- dispatchFullyComplete flag (static mode) ----
   let dispatchFullyComplete = false;
@@ -433,6 +454,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           }
         : {}),
     },
+    startTypingIndicator,
     markDispatchIdle,
     markFullyComplete: () => {
       dispatchFullyComplete = true;
