@@ -69,6 +69,7 @@ vi.mock('../src/card/tool-use-trace-store', () => ({
 
 vi.mock('../src/channel/abort-detect', () => ({
   isLikelyAbortText: vi.fn(() => false),
+  isConversationStopIntent: vi.fn(() => false),
 }))
 
 vi.mock('../src/messaging/outbound/deliver', () => ({
@@ -91,6 +92,8 @@ vi.mock('../src/messaging/inbound/dispatch-builders', () => ({
   buildEnvelopeWithHistory: vi.fn(() => ({ combinedBody: 'body', historyKey: undefined })),
   buildBodyForAgent: vi.fn(() => 'body-for-agent'),
   buildInboundPayload: vi.fn(() => ({ inbound: true })),
+  buildFeishuIdentityFields: vi.fn(() => ({})),
+  buildFeishuGroupSystemPrompt: vi.fn(() => undefined),
 }))
 
 import { dispatchToAgent } from '../src/messaging/inbound/dispatch'

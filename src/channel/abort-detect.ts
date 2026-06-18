@@ -103,6 +103,92 @@ export function isLikelyAbortText(text: string): boolean {
   return isAbortTrigger(trimmed);
 }
 
+// ---------------------------------------------------------------------------
+// Conversation stop-intent (broader than the exact abort triggers)
+// ---------------------------------------------------------------------------
+
+/**
+ * Conversational "please stop / interrupt this exchange" phrases.
+ *
+ * Deliberately SEPARATE from {@link ABORT_TRIGGERS} (which is synced word-for-
+ * word with OpenClaw core and matched by exact equality, e.g. `/stop`). These
+ * are matched by substring so natural phrasings like "中断对话" or "stop
+ * talking" are caught. The list is intentionally distinctive to avoid false
+ * positives — a false positive only means we skip the deterministic peer-@
+ * backstop for that turn (the model can still @ on its own), which is mild.
+ */
+const STOP_INTENT_PHRASES = [
+  // zh — stop / terminate / pause
+  '中断',
+  '中止',
+  '终止',
+  '停止',
+  '停下',
+  '停一下',
+  '暂停',
+  '打住',
+  '停手',
+  '收手',
+  // zh — "don't keep going / replying"
+  '别聊',
+  '别说了',
+  '别回复',
+  '别继续',
+  '别再聊',
+  '别再说',
+  '别吵',
+  '别争',
+  '不要回复',
+  '不要继续',
+  '不用回复',
+  '不用继续',
+  // zh — "wrap up / be quiet"
+  '结束对话',
+  '结束讨论',
+  '结束辩论',
+  '到此为止',
+  '闭嘴',
+  // en
+  'stop talking',
+  'stop chatting',
+  'stop debating',
+  'stop the debate',
+  'stop the conversation',
+  'stop this conversation',
+  'stop responding',
+  'stop replying',
+  'end the conversation',
+  'end conversation',
+  'end the debate',
+  'shut up',
+  'be quiet',
+  'cut it out',
+  'knock it off',
+  'wrap it up',
+  'stand down',
+];
+
+/**
+ * Whether an inbound message expresses intent to stop / interrupt the ongoing
+ * (bot-to-bot) exchange. Superset of {@link isLikelyAbortText} plus the
+ * conversational phrases above.
+ *
+ * Two consumers: (1) suppress the deterministic peer-@ backstop so a stop
+ * acknowledgement doesn't re-wake the peer bot; (2) mute an active bot loop so
+ * the in-flight ping-pong drains instead of being re-armed. Substring match —
+ * keep the list distinctive (no bare "停"/"stop") to limit false positives;
+ * the worst case is a missed forced-@ or a self-healing mute (any normal
+ * message lifts it).
+ */
+export function isConversationStopIntent(text: string): boolean {
+  if (!text) return false;
+  // Drop bot mention placeholders so "@Bot 中断对话" → "中断对话".
+  const normalized = text.replace(/@_user_\d+/g, '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (isLikelyAbortText(normalized)) return true;
+  return STOP_INTENT_PHRASES.some((p) => normalized.includes(p));
+}
+
 /**
  * Extract the raw text payload from a Feishu message event.
  *

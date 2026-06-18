@@ -72,9 +72,11 @@ export function expandAutoMode(params: {
 
 /**
  * scope A: rich text now renders natively as post(`tag:md`); we never force a
- * card for code blocks / tables anymore. The only remaining card-path guard is
- * the table-count hard limit, retained for the runtime fallback in
- * reply-dispatcher (card rejected by Feishu → plain text).
+ * card for code blocks OR tables anymore. Native rendering also keeps bot-at-bot
+ * @ delivery working — wrapping a reply in a card breaks it (cards have limited
+ * @ support). The only remaining card-path guard is the table-count hard limit,
+ * retained for the runtime fallback in reply-dispatcher (card rejected by
+ * Feishu → plain text).
  */
 export function shouldUseCard(text: string): boolean {
   const tableMatches = findMarkdownTablesOutsideCodeBlocks(text);

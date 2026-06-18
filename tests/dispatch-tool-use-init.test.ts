@@ -34,6 +34,8 @@ vi.mock('../src/messaging/inbound/dispatch-builders', () => ({
   buildEnvelopeWithHistory: buildEnvelopeWithHistoryMock,
   buildBodyForAgent: buildBodyForAgentMock,
   buildInboundPayload: buildInboundPayloadMock,
+  buildFeishuIdentityFields: vi.fn(() => ({})),
+  buildFeishuGroupSystemPrompt: vi.fn(() => undefined),
 }));
 
 vi.mock('../src/card/tool-use-config', () => ({
@@ -99,6 +101,7 @@ vi.mock('../src/messaging/inbound/gate', () => ({
 
 vi.mock('../src/channel/abort-detect', () => ({
   isLikelyAbortText: vi.fn(() => false),
+  isConversationStopIntent: vi.fn(() => false),
 }));
 
 vi.mock('../src/core/lark-logger', () => ({

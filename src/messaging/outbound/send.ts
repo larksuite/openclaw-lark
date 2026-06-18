@@ -17,6 +17,8 @@ import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 import { getSentinelStore } from '../inbound/sentinel-store';
 import { type NormalizeContext, type SentinelEntry, normalizeOutboundMentions } from './normalize-mentions';
+import { ensureMention } from './outbound-mention';
+import { currentBotPeerContext } from './bot-peer-context';
 
 const sendLog = larkLogger('outbound/send');
 
@@ -41,7 +43,22 @@ async function normalizeFeishuOutboundText(
       log: (...args) => sendLog.warn(args.map(String).join(' ')),
     };
     const r = await normalizeOutboundMentions(text, ctx);
-    return { text: r.normalizedText, sentinels: r.sentinels, resolvedAccountId: account.accountId };
+    let outText = r.normalizedText;
+    // Deterministic backstop on the real reply path: when this dispatch is
+    // replying to a designated bot peer (set via runWithBotPeerContext in the
+    // inbound dispatch), guarantee an @-mention so the peer actually receives
+    // the message even if the model didn't write one. No-op when no peer is
+    // in scope. De-duped across chunks: once the peer @ has appeared (whether
+    // the model wrote it or we injected it), later chunks of the same reply
+    // are left untouched so we don't @ on every chunk.
+    const peer = currentBotPeerContext();
+    if (peer && !peer.mentioned) {
+      outText = ensureMention(outText, peer.peerOpenId, peer.peerName);
+      if (outText.includes(`user_id="${peer.peerOpenId}"`)) {
+        peer.mentioned = true;
+      }
+    }
+    return { text: outText, sentinels: r.sentinels, resolvedAccountId: account.accountId };
   } catch (err) {
     sendLog.warn(`normalizeOutboundMentions failed, using raw text: ${String(err)}`);
     return { text, sentinels: [], resolvedAccountId: accountId };
@@ -449,14 +466,19 @@ export async function sendMarkdownCardFeishu(params: {
 }): Promise<FeishuSendResult> {
   const { cfg, to, text, replyToMessageId, mentions, accountId, replyInThread } = params;
 
-  let cardText = text;
+  // Normalize @-mentions and apply the bot-peer ensureMention backstop on the
+  // card path too (mirrors sendMessageFeishu), so a reply rendered as a card
+  // still reaches the designated peer bot.
+  const normalized = await normalizeFeishuOutboundText(cfg, to, text, accountId ?? undefined);
+
+  let cardText = normalized.text;
   if (mentions && mentions.length > 0) {
     cardText = buildMentionedCardContent(mentions, cardText);
   }
 
   const card = buildMarkdownCard(cardText);
 
-  return sendCardFeishu({
+  const result = await sendCardFeishu({
     cfg,
     to,
     card,
@@ -464,6 +486,8 @@ export async function sendMarkdownCardFeishu(params: {
     replyInThread,
     accountId,
   });
+  recordFeishuSendSentinels(normalized.resolvedAccountId, to, undefined, normalized.sentinels);
+  return result;
 }
 
 // ---------------------------------------------------------------------------

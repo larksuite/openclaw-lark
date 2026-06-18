@@ -30,6 +30,7 @@ import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { ticketElapsed } from '../../core/lark-ticket';
 import { threadScopedKey } from '../../channel/chat-queue';
+import { sendMessageFeishu } from '../outbound/send';
 import { parseMessageEvent } from './parse';
 import {
   prefetchUserNames,
@@ -42,6 +43,8 @@ import { type GateResult, checkMessageGate, readFeishuAllowFromStore } from './g
 import { injectInboundHandler } from './handler-registry';
 import { dispatchToAgent } from './dispatch';
 import { resolveFeishuGroupConfig, splitLegacyGroupAllowFrom } from './policy';
+import { recordMention, recordSender } from './mention-registry';
+import { noteBotTurnAndCheck, resetBotLoop } from './bot-loop-guard';
 
 const logger = larkLogger('inbound/handler');
 
@@ -97,13 +100,28 @@ export async function handleFeishuMessage(params: {
     accountId: account.accountId,
   });
 
+  // Self-echo hard filter — drop messages authored by this very bot before
+  // enrichment, gating, or dispatch. Mirrors the channel-layer filter in
+  // event-handlers.ts so alternate entrypoints into handleFeishuMessage
+  // (synthetic messages, replays, tests) don't bypass it. Skipped when
+  // botOpenId is not yet populated (startup race before bot probe resolves);
+  // the channel-layer filter and downstream bot-sender gate act as fallback.
+  if (botOpenId && ctx.senderId && ctx.senderId === botOpenId) {
+    log(`feishu[${account.accountId}]: drop self-echo message ${ctx.messageId}`);
+    return;
+  }
+
   // 3. Early reject: skip empty-text messages with no media resources.
   //    OpenClaw 2026.4.29 adds a core-side guard for this (##74634), but
   //    rejecting here avoids wasting cycles on enrichment, gate, and
   //    dispatch for messages that would be silently dropped at the deliver
   //    callback anyway.
-  if (!ctx.content.trim() && ctx.resources.length === 0) {
-    log(`feishu[${account.accountId}]: empty message ${ctx.messageId} (no text, no media), skipping`);
+  //    A "bare @" (only a mention, no text/media) is a valid ping in
+  //    bot-at-bot flows — treat it as an intentional wake-up rather than an
+  //    empty message. Only drop messages that carry no text, no media, AND
+  //    no mention at all.
+  if (!ctx.content.trim() && ctx.resources.length === 0 && ctx.mentions.length === 0 && !ctx.mentionAll) {
+    log(`feishu[${account.accountId}]: empty message ${ctx.messageId} (no text, no media, no mention), skipping`);
     return;
   }
 
@@ -114,6 +132,25 @@ export async function handleFeishuMessage(params: {
     log,
   });
   ctx = enrichedCtx;
+
+  // Feed the per-chat name→openId registry that the outbound layer uses to
+  // turn "@Name" in LLM output into a real <at user_id="ou_xxx"> element.
+  // Both the sender and any @-target observed here are valuable signal —
+  // recording them now (before the gate) means we keep learning names even
+  // for messages the gate rejects.
+  if (ctx.senderId && ctx.senderName) {
+    recordSender(ctx.chatId, ctx.senderId, ctx.senderName);
+  }
+  for (const m of ctx.mentions) {
+    if (m.openId && m.name) recordMention(ctx.chatId, m.openId, m.name);
+  }
+
+  // Bot-loop guard: a human turn re-arms the consecutive bot-turn budget so a
+  // fresh human-driven exchange always starts clean (counter checked below,
+  // after the gate, only for bot senders).
+  if (!ctx.senderIsBot) {
+    resetBotLoop(ctx.chatId, ctx.threadId ?? ctx.rootId);
+  }
 
   log(`feishu[${account.accountId}]: received message from ${ctx.senderId} in ${ctx.chatId} (${ctx.chatType})`);
   logger.info(`received from ${ctx.senderId} in ${ctx.chatId} (${ctx.chatType})`);
@@ -213,6 +250,69 @@ export async function handleFeishuMessage(params: {
     resolveCommandAuthorizedFromAuthorizers: core.channel.commands.resolveCommandAuthorizedFromAuthorizers,
   });
 
+  // Bot-loop guard: cap consecutive bot↔bot turns so a runaway debate stops
+  // itself. Only bot senders count; a human turn already reset the counter
+  // above. Checked after the gate so only messages we would actually act on
+  // are counted.
+  if (ctx.senderIsBot) {
+    // Use root_id when thread_id is absent: in topic groups, reply events
+    // often carry only root_id (thread_id is inferred later in dispatch), and
+    // the queue/dispatch key uses the same fallback. Without it, all topics in
+    // a chat share one chat-level counter and one topic's cutoff suppresses
+    // the others.
+    const verdict = noteBotTurnAndCheck(ctx.chatId, ctx.threadId ?? ctx.rootId);
+    if (!verdict.allowed) {
+      log(
+        `feishu[${account.accountId}]: bot-loop guard tripped ` +
+          `(${verdict.count}/${verdict.limit} consecutive bot turns) in ${ctx.chatId}, suppressing reply`,
+      );
+      // Surface the cutoff to humans ONCE, on the first over-cap turn, so the
+      // conversation doesn't just go silent. Plain text with no @ — so it
+      // neither wakes the peer bot (allowBots='mentions') nor extends the
+      // loop. A human message resets the counter and re-arms auto-reply.
+      //
+      // Deliver it where the debate actually is: reply to the triggering
+      // message. Thread the notice only when the bot↔bot reply body would also
+      // be threaded — i.e. mirror resolveFeishuReplyRouting's effective
+      // replyInThread for a bot turn: a real thread_id is present AND threading
+      // is opted in (threadSession or replyInThread). Crucially we must NOT
+      // treat root_id as a thread here: a plain bot↔bot quote-reply chain in a
+      // normal group carries root_id but no thread_id, and reply_in_thread=true
+      // on such a message makes Feishu mint a brand-new topic for just the
+      // notice — pulling it into a thread the debate itself was never in.
+      if (verdict.count === verdict.limit + 1) {
+        try {
+          // Localized via i18nTexts so the viewer's Feishu client renders the
+          // notice in its own language (same mechanism as /help, /doctor).
+          // replyInThread precedence matches dispatch (group > default > account).
+          const replyInThreadCfg =
+            groupConfig?.replyInThread ??
+            defaultGroupConfig?.replyInThread ??
+            account.config?.replyInThread;
+          const inThread =
+            Boolean(ctx.threadId) &&
+            (account.config?.threadSession === true || replyInThreadCfg === true);
+          await sendMessageFeishu({
+            cfg: accountScopedCfg,
+            to: ctx.chatId,
+            text: `⏸️ 已达连续 ${verdict.limit} 轮自动对话上限，已暂停自动回复。需要继续请在群里发一条消息。`,
+            i18nTexts: {
+              zh_cn: `⏸️ 已达连续 ${verdict.limit} 轮自动对话上限，已暂停自动回复。需要继续请在群里发一条消息。`,
+              en_us: `⏸️ Reached the limit of ${verdict.limit} consecutive automated turns; auto-replies are paused. Send a message in the chat to continue.`,
+            },
+            accountId: account.accountId,
+            replyToMessageId: replyToMessageId ?? ctx.messageId,
+            replyInThread: inThread,
+            threadId: inThread ? ctx.threadId : undefined,
+          });
+        } catch (err) {
+          log(`feishu[${account.accountId}]: failed to send loop-guard notice: ${String(err)}`);
+        }
+      }
+      return;
+    }
+  }
+
   // 9. Dispatch to agent
   // groupConfig and defaultGroupConfig are already resolved above.
 
@@ -232,6 +332,7 @@ export async function handleFeishuMessage(params: {
       groupConfig,
       defaultGroupConfig,
       skipTyping,
+      botOpenId,
     });
   } catch (err) {
     error(`feishu[${account.accountId}]: failed to dispatch message: ${String(err)}`);

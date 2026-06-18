@@ -20,6 +20,30 @@ import { isCommentTarget } from '../../core/comment-target';
 import { isSyntheticTarget } from '../../core/synthetic-target';
 import type { FeishuSendResult } from '../types';
 import { sendCardLark, sendCommentReplyLark, sendMediaLark, sendTextLark } from './deliver';
+import { ensureMention, normalizeOutboundMentions } from './outbound-mention';
+import { currentBotPeerContext } from './bot-peer-context';
+
+/**
+ * Apply the outbound mention safety net for the current send:
+ *  - rewrite LLM-emitted @-shapes into Feishu's standard <at> element
+ *  - when the dispatch layer marked the current reply as bot→bot in a
+ *    group (via `runWithBotPeerContext`), guarantee the peer bot is
+ *    explicitly @-mentioned so Feishu delivers the message at all.
+ */
+function applyOutboundMentions(text: string, chatId: string): string {
+  const normalized = normalizeOutboundMentions(text, chatId);
+  const peer = currentBotPeerContext();
+  // De-dupe the peer @ across chunks: once it has appeared on one chunk
+  // (model-written or injected), later chunks of the same dispatch skip it.
+  // Mirrors normalizeFeishuOutboundText in send.ts so both outbound paths
+  // behave the same and a long multi-chunk reply doesn't @ the peer repeatedly.
+  if (!peer || peer.mentioned) return normalized;
+  const out = ensureMention(normalized, peer.peerOpenId, peer.peerName);
+  if (out.includes(`user_id="${peer.peerOpenId}"`)) {
+    peer.mentioned = true;
+  }
+  return out;
+}
 
 const log = larkLogger('outbound/outbound');
 
@@ -187,7 +211,8 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     }
 
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
-    const result = await sendTextLark({ ...ctx, to: ctx.to, text });
+    const finalText = applyOutboundMentions(text, ctx.to);
+    const result = await sendTextLark({ ...ctx, to: ctx.to, text: finalText });
     return { channel: 'feishu', ...result };
   },
 
@@ -212,12 +237,13 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     }
 
     const ctx = resolveFeishuSendContext({ cfg, to, accountId, replyToId, threadId });
+    const normalizedCaption = text ? applyOutboundMentions(text, ctx.to) : text;
 
     // Feishu media messages do not support inline captions — send text first.
     // Capture the result so the no-mediaUrl path can return it without re-sending.
     let captionResult: { messageId: string; chatId: string; warning?: string } | undefined;
-    if (text?.trim()) {
-      captionResult = await sendTextLark({ ...ctx, to: ctx.to, text });
+    if (normalizedCaption?.trim()) {
+      captionResult = await sendTextLark({ ...ctx, to: ctx.to, text: normalizedCaption });
     }
 
     // No mediaUrl — text-only flow.
@@ -228,7 +254,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
         return { channel: 'feishu', ...captionResult };
       }
       // No caption text — send empty/raw text to satisfy the contract.
-      const result = await sendTextLark({ ...ctx, to: ctx.to, text: text ?? '' });
+      const result = await sendTextLark({ ...ctx, to: ctx.to, text: normalizedCaption ?? '' });
       return { channel: 'feishu', ...result };
     }
 

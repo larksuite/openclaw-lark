@@ -88,6 +88,16 @@ describe('shouldUseCard', () => {
     const text = buildCodeBlockWithTables(4);
     expect(shouldUseCard(text)).toBe(false);
   });
+
+  it('does NOT force a card for plain markdown tables (rendered natively)', () => {
+    const text = [buildTable('a'), buildTable('b')].join('\n\n');
+    expect(shouldUseCard(text)).toBe(false);
+  });
+
+  it('does NOT force a card for a fenced code block (rendered natively)', () => {
+    const text = ['Here is code:', '```ts\nconst x = 1;\n```'].join('\n\n');
+    expect(shouldUseCard(text)).toBe(false);
+  });
 });
 
 describe('sanitizeTextForCard', () => {
