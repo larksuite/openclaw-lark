@@ -73,7 +73,7 @@ function createMockCfg() {
  */
 async function seedPendingQuestion(opts?: {
   questionId?: string;
-  questions?: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }>;
+  questions?: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean; selectStyle?: 'dropdown' | 'checkbox' }>;
 }): Promise<string> {
   const cfg = createMockCfg();
   const questions = opts?.questions ?? [
@@ -349,6 +349,101 @@ describe('AskUserQuestion card callback', () => {
         (call: any) => call[0].card?.header?.template === 'green',
       );
       expect(answeredCall).toBeDefined();
+    });
+  });
+
+  describe('multi-select checkbox style', () => {
+    it('renders a checker per option when selectStyle is "checkbox"', async () => {
+      await seedPendingQuestion({
+        questions: [
+          {
+            question: '你喜欢哪些水果?',
+            header: '水果',
+            options: [
+              { label: '苹果', description: 'Apple' },
+              { label: '香蕉', description: 'Banana' },
+              { label: '橙子', description: 'Orange' },
+            ],
+            multiSelect: true,
+            selectStyle: 'checkbox',
+          },
+        ],
+      });
+
+      // The interactive form card is the one passed to createCardEntity.
+      const sentCard = mockCreateCardEntity.mock.calls[0][0].card;
+      const checkers = findDeep(sentCard, (el: any) => el?.tag === 'checker');
+
+      // One checker per option, no multi_select_static dropdown.
+      expect(checkers.length).toBe(3);
+      expect(findDeep(sentCard, (el: any) => el?.tag === 'multi_select_static').length).toBe(0);
+
+      // Each checker carries the per-option field name and a value (for 200340).
+      expect(checkers[0].name).toBe('selection_0_0');
+      expect(checkers[1].name).toBe('selection_0_1');
+      expect(checkers[2].name).toBe('selection_0_2');
+      expect(checkers[0].value).toEqual({ option: '苹果' });
+      expect(checkers[0].text.content).toBe('苹果');
+      expect(checkers[0].checked).toBe(false);
+    });
+
+    it('still renders multi_select_static dropdown by default (back-compat)', async () => {
+      await seedPendingQuestion({
+        questions: [
+          {
+            question: '你喜欢哪些水果?',
+            header: '水果',
+            options: [
+              { label: '苹果', description: '' },
+              { label: '香蕉', description: '' },
+            ],
+            multiSelect: true,
+            // selectStyle omitted → default dropdown
+          },
+        ],
+      });
+
+      const sentCard = mockCreateCardEntity.mock.calls[0][0].card;
+      expect(findDeep(sentCard, (el: any) => el?.tag === 'multi_select_static').length).toBe(1);
+      expect(findDeep(sentCard, (el: any) => el?.tag === 'checker').length).toBe(0);
+    });
+
+    it('parses checked checker fields into the answer (boolean and string true)', async () => {
+      const questionId = await seedPendingQuestion({
+        questions: [
+          {
+            question: '你喜欢哪些水果?',
+            header: '水果',
+            options: [
+              { label: '苹果', description: '' },
+              { label: '香蕉', description: '' },
+              { label: '橙子', description: '' },
+            ],
+            multiSelect: true,
+            selectStyle: 'checkbox',
+          },
+        ],
+      });
+
+      // 苹果 checked (boolean), 香蕉 unchecked (false), 橙子 checked (string 'true').
+      const event = createFormSubmitEvent(questionId, {
+        selection_0_0: true,
+        selection_0_1: false,
+        selection_0_2: 'true',
+      });
+      const result = handleAskUserAction(event, createMockCfg(), TEST_ACCOUNT_ID) as any;
+
+      // Submit succeeds (question is answered, not flagged unanswered).
+      expect(result.toast.type).toBe('success');
+
+      // The processing card should reflect the selected labels, comma-joined.
+      const answerEls = findDeep(result.card.data.body, (el: any) =>
+        el?.tag === 'markdown' && typeof el?.content === 'string' && el.content.includes('⏳'),
+      );
+      expect(answerEls.length).toBe(1);
+      expect(answerEls[0].content).toContain('苹果');
+      expect(answerEls[0].content).toContain('橙子');
+      expect(answerEls[0].content).not.toContain('香蕉');
     });
   });
 
