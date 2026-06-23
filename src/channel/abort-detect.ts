@@ -183,7 +183,10 @@ const STOP_INTENT_PHRASES = [
 export function isConversationStopIntent(text: string): boolean {
   if (!text) return false;
   // Drop bot mention placeholders so "@Bot 中断对话" → "中断对话".
-  const normalized = text.replace(/@_user_\d+/g, '').trim().toLowerCase();
+  const normalized = text
+    .replace(/@_user_\d+/g, '')
+    .trim()
+    .toLowerCase();
   if (!normalized) return false;
   if (isLikelyAbortText(normalized)) return true;
   return STOP_INTENT_PHRASES.some((p) => normalized.includes(p));
