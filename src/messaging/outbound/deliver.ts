@@ -126,8 +126,9 @@ async function sendImMessage(params: {
   msgType: 'post' | 'interactive';
   replyToMessageId?: string;
   replyInThread?: boolean;
+  threadId?: string;
 }): Promise<FeishuSendResult> {
-  const { client, to, content, msgType, replyToMessageId, replyInThread } = params;
+  const { client, to, content, msgType, replyToMessageId, replyInThread, threadId } = params;
 
   // --- Reply path ---
   if (replyToMessageId) {
@@ -142,6 +143,27 @@ async function sendImMessage(params: {
       chatId: response?.data?.chat_id ?? '',
     };
     log.debug(`reply sent: messageId=${result.messageId}`);
+    return result;
+  }
+
+  // --- Create-in-thread path ---
+  // When `threadId` is provided without a reply anchor, route into the topic
+  // via `receive_id_type='thread_id'`. Without this branch, agent follow-up
+  // turns (e.g. spawn-completion notices, multi-message replies) inside a
+  // topic group fall back to chat-level and visually "leak" out of the topic.
+  if (threadId) {
+    log.info(`creating message in thread ${threadId} (msg_type=${msgType})`);
+    const response = await client.im.message.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      params: { receive_id_type: 'thread_id' as any },
+      data: { receive_id: threadId, msg_type: msgType, content },
+    });
+
+    const result: FeishuSendResult = {
+      messageId: response?.data?.message_id ?? '',
+      chatId: response?.data?.chat_id ?? '',
+    };
+    log.debug(`thread message created: messageId=${result.messageId}`);
     return result;
   }
 
@@ -284,7 +306,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   if (card) {
     const version = card.schema === '2.0' ? 'v2' : 'v1';
     log.info(`detected ${version} card JSON in text (target=${to}), routing to sendCardLark`);
-    return sendCardLark({ cfg, to, card, replyToMessageId, replyInThread, accountId });
+    return sendCardLark({ cfg, to, card, replyToMessageId, replyInThread, accountId, threadId });
   }
 
   log.info(`sendTextLark: target=${to}, textLength=${text.length}`);
@@ -292,7 +314,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
   const prepared = await prepareTextForLark(cfg, text, to, accountId);
   const content = buildPostContent(prepared.text);
 
-  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread });
+  const result = await sendImMessage({ client, to, content, msgType: 'post', replyToMessageId, replyInThread, threadId });
   recordSentinelsForChat(prepared.resolvedAccountId, to, threadId, prepared.sentinels);
   return result;
 }
@@ -325,6 +347,12 @@ export interface SendCardLarkParams {
   replyInThread?: boolean;
   /** Optional account identifier for multi-account setups. */
   accountId?: string;
+  /**
+   * Thread root id. When provided without `replyToMessageId`, the card is
+   * created with `receive_id_type='thread_id'` so it lands inside the topic
+   * instead of bubbling up to the chat root.
+   */
+  threadId?: string;
 }
 
 /**
@@ -363,7 +391,7 @@ export interface SendCardLarkParams {
  * ```
  */
 export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSendResult> {
-  const { cfg, to, card, replyToMessageId, replyInThread, accountId } = params;
+  const { cfg, to, card, replyToMessageId, replyInThread, accountId, threadId } = params;
 
   const version = card.schema === '2.0' ? 'v2' : 'v1';
   log.info(`sendCardLark: target=${to}, cardVersion=${version}`);
@@ -372,7 +400,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
   const content = JSON.stringify(card);
 
   try {
-    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread });
+    return await sendImMessage({ client, to, content, msgType: 'interactive', replyToMessageId, replyInThread, threadId });
   } catch (err) {
     const detail = formatLarkError(err);
     log.error(`sendCardLark failed: ${detail}`);

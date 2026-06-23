@@ -122,6 +122,11 @@ export interface SendFeishuCardParams {
   accountId?: string;
   /** When true, the reply appears in the thread instead of main chat. */
   replyInThread?: boolean;
+  /**
+   * Thread root id. When provided without `replyToMessageId`, the card is
+   * created with `receive_id_type='thread_id'` so it lands inside the topic.
+   */
+  threadId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,12 +268,23 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
   }
 
   // Send as a new message.
-  const target = normalizeFeishuTarget(to);
-  if (!target) {
-    throw new Error(`[feishu-send] Invalid target: "${to}"`);
+  // When `threadId` is provided without `replyToMessageId`, route into the
+  // topic via `receive_id_type='thread_id'` so the message lands inside the
+  // thread instead of bubbling up to the chat root. See deliver.ts for the
+  // same routing on the unified path.
+  let receiveId: string;
+  let receiveIdType: string;
+  if (threadId) {
+    receiveId = threadId;
+    receiveIdType = 'thread_id';
+  } else {
+    const target = normalizeFeishuTarget(to);
+    if (!target) {
+      throw new Error(`[feishu-send] Invalid target: "${to}"`);
+    }
+    receiveId = target;
+    receiveIdType = resolveReceiveIdType(target);
   }
-
-  const receiveIdType = resolveReceiveIdType(target);
 
   const response = await client.im.message.create({
     params: {
@@ -276,7 +292,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
       receive_id_type: receiveIdType as any,
     },
     data: {
-      receive_id: target,
+      receive_id: receiveId,
       msg_type: 'post',
       content: contentPayload,
     },
@@ -300,7 +316,7 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
  * @returns The send result containing the new message ID.
  */
 export async function sendCardFeishu(params: SendFeishuCardParams): Promise<FeishuSendResult> {
-  const { cfg, to, card, replyToMessageId, accountId, replyInThread } = params;
+  const { cfg, to, card, replyToMessageId, accountId, replyInThread, threadId } = params;
 
   const client = LarkClient.fromCfg(cfg, accountId).sdk;
 
@@ -331,12 +347,20 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
     };
   }
 
-  const target = normalizeFeishuTarget(to);
-  if (!target) {
-    throw new Error(`[feishu-send] Invalid target: "${to}"`);
+  // See sendMessageFeishu for the same thread routing rationale.
+  let receiveId: string;
+  let receiveIdType: string;
+  if (threadId) {
+    receiveId = threadId;
+    receiveIdType = 'thread_id';
+  } else {
+    const target = normalizeFeishuTarget(to);
+    if (!target) {
+      throw new Error(`[feishu-send] Invalid target: "${to}"`);
+    }
+    receiveId = target;
+    receiveIdType = resolveReceiveIdType(target);
   }
-
-  const receiveIdType = resolveReceiveIdType(target);
 
   const response = await client.im.message.create({
     params: {
@@ -344,7 +368,7 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
       receive_id_type: receiveIdType as any,
     },
     data: {
-      receive_id: target,
+      receive_id: receiveId,
       msg_type: 'interactive',
       content: contentPayload,
     },
