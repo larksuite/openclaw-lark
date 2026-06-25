@@ -69,6 +69,7 @@ interface QuestionItem {
   header: string;
   options: Array<{ label: string; description: string }>;
   multiSelect: boolean;
+  selectStyle?: 'dropdown' | 'checkbox';
 }
 
 /** Lightweight context stored while awaiting user response (no Promise / timeout). */
@@ -186,6 +187,10 @@ function getInputFieldName(questionIndex: number): string {
 
 function getSelectFieldName(questionIndex: number): string {
   return `${SELECT_FIELD_NAME}_${questionIndex}`;
+}
+
+function getCheckerFieldName(questionIndex: number, optionIndex: number): string {
+  return `${SELECT_FIELD_NAME}_${questionIndex}_${optionIndex}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,8 +313,12 @@ export function handleAskUserAction(data: unknown, _cfg: ClawdbotConfig, account
       // Free-text input
       answer = readFormTextField(formValue, getInputFieldName(i));
     } else if (q.multiSelect) {
-      // Multi-select
-      const selected = readFormMultiSelect(formValue, getSelectFieldName(i));
+      // Multi-select — either a dropdown (multi_select_static) or a set of
+      // independent checker rows, depending on selectStyle.
+      const selected =
+        q.selectStyle === 'checkbox'
+          ? readFormCheckers(formValue, i, q.options)
+          : readFormMultiSelect(formValue, getSelectFieldName(i));
       if (selected.length > 0) {
         answer = selected.join(', ');
       }
@@ -519,6 +528,27 @@ function readFormMultiSelect(formValue: Record<string, unknown>, fieldName: stri
   return [];
 }
 
+/**
+ * Read the selected labels from a set of independent checker (checkbox)
+ * components — used when a multi-select question uses selectStyle 'checkbox'.
+ * Each option has its own boolean field (see getCheckerFieldName); Feishu may
+ * report the checked state as a boolean or a string.
+ */
+function readFormCheckers(
+  formValue: Record<string, unknown>,
+  questionIndex: number,
+  options: Array<{ label: string; description: string }>,
+): string[] {
+  const selected: string[] = [];
+  for (let optIndex = 0; optIndex < options.length; optIndex++) {
+    const raw = formValue[getCheckerFieldName(questionIndex, optIndex)];
+    if (raw === true || raw === 'true') {
+      selected.push(options[optIndex].label);
+    }
+  }
+  return selected;
+}
+
 // ---------------------------------------------------------------------------
 // Card Builders — unified form layout
 // ---------------------------------------------------------------------------
@@ -588,7 +618,23 @@ function buildQuestionFormElements(q: QuestionItem, questionIndex: number): Reco
     value: opt.label,
   }));
 
-  if (q.multiSelect) {
+  if (q.multiSelect && q.selectStyle === 'checkbox') {
+    // ---- Multi-select as independent checkbox rows ----
+    // Each option is its own checker so the user sees every selection at a
+    // glance before submitting (vs. the compact dropdown collapsed state).
+    // Note: checker requires a `value` field to pass Feishu's client-side
+    // interactive-component validation (otherwise code 200340).
+    elems.push(labelMd);
+    q.options.forEach((opt, optIndex) => {
+      elems.push({
+        tag: 'checker',
+        name: getCheckerFieldName(questionIndex, optIndex),
+        checked: false,
+        text: { tag: 'plain_text', content: opt.label },
+        value: { option: opt.label },
+      });
+    });
+  } else if (q.multiSelect) {
     // ---- Multi-select dropdown ----
     elems.push(
       buildLabeledRow(labelMd, {
@@ -914,6 +960,12 @@ const AskUserQuestionSchema = Type.Object({
       multiSelect: Type.Boolean({
         description: 'Whether multiple options can be selected (ignored when options is empty)',
       }),
+      selectStyle: Type.Optional(
+        Type.Union([Type.Literal('dropdown'), Type.Literal('checkbox')], {
+          description:
+            'For multi-select questions only: "dropdown" (default, compact multi-select dropdown) or "checkbox" (each option shown as a separate checkbox row, so the user can see all selected options at a glance before submitting). Ignored for single-select and free-text questions.',
+        }),
+      ),
     }),
     {
       description: 'Questions to ask the user (1-6 questions)',
