@@ -199,6 +199,7 @@ export const FeishuAccountConfigSchema = z.object({
   dedup: DedupSchema,
   reactionNotifications: ReactionNotificationModeSchema,
   threadSession: z.boolean().optional(),
+  replyFallbackOnWithdrawn: z.enum(['top-level', 'silent']).optional(),
   allowBots: AllowBotsSchema,
   // Account-level default for letting bot-to-bot replies stay in a thread
   // (per-group `replyInThread` overrides this).
