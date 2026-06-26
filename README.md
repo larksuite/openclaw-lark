@@ -65,6 +65,23 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+## Troubleshooting
+
+If gateway startup repeatedly logs:
+
+`plugin must declare contracts.tools before registering agent tools`
+
+you can re-apply the published manifest tool contract with:
+
+```bash
+openclaw-lark-fix-contracts
+```
+
+Optional flags:
+
+- `--no-restart`: patch manifest only, do not restart gateway
+- `--path <manifest-path>`: patch a specific `openclaw.plugin.json`
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).
