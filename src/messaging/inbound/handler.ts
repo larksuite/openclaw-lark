@@ -35,7 +35,7 @@ import { parseMessageEvent } from './parse';
 import {
   prefetchUserNames,
   resolveMedia,
-  resolveQuotedContent,
+  resolveQuotedMessageContext,
   resolveSenderInfo,
   substituteMediaPaths,
 } from './enrich';
@@ -185,10 +185,10 @@ export async function handleFeishuMessage(params: {
   await prefetchUserNames({ ctx, account, log });
 
   // 7. Enrich (heavyweight, after gate — parallel where possible)
-  const enrichParams = { ctx, accountScopedCfg, account, log };
-  const [mediaResult, quotedContent] = await Promise.all([
+  const enrichParams = { ctx, accountScopedCfg, account, botOpenId, log };
+  const [mediaResult, quotedMessage] = await Promise.all([
     resolveMedia(enrichParams),
-    resolveQuotedContent(enrichParams),
+    resolveQuotedMessageContext(enrichParams),
   ]);
 
   // 7b. Replace Feishu file-key placeholders in content with local
@@ -321,7 +321,9 @@ export async function handleFeishuMessage(params: {
       ctx,
       permissionError,
       mediaPayload: mediaResult.payload,
-      quotedContent,
+      quotedContent: quotedMessage?.content,
+      quotedMentionOpenIds: quotedMessage?.mentionOpenIds,
+      botOpenId,
       account,
       accountScopedCfg,
       runtime,

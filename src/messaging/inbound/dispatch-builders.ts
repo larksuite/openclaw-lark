@@ -11,6 +11,7 @@
 
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { buildPendingHistoryContextFromMap } from 'openclaw/plugin-sdk/reply-history';
+import type { InboundImplicitMentionKind } from 'openclaw/plugin-sdk/channel-inbound';
 import type { MessageContext } from '../types';
 import type { LarkClient } from '../../core/lark-client';
 import { threadScopedKey } from '../../channel/chat-queue';
@@ -117,12 +118,12 @@ export function buildMessageBody(
 }
 
 /**
- * Build the BodyForAgent value: the clean message content plus an
- * optional mention annotation.
+ * Build the BodyForAgent value: the clean message content plus optional
+ * mention annotations.
  *
  * SDK >= 2026.2.10 changed the BodyForAgent fallback chain from
  * `BodyForAgent ?? Body` to `BodyForAgent ?? CommandBody ?? RawBody ?? Body`,
- * so annotations embedded only in Body never reach the AI.  Setting
+ * so annotations embedded only in Body never reach the AI. Setting
  * BodyForAgent explicitly ensures the mention annotation survives.
  *
  * Sender identity, reply context, and chat history are NOT duplicated
@@ -166,6 +167,7 @@ export function buildInboundPayload(
     senderId: string;
     messageSid: string;
     wasMentioned: boolean;
+    implicitMentionKinds?: readonly InboundImplicitMentionKind[];
     replyToBody?: string;
     inboundHistory?: { sender: string; body: string; timestamp: number }[];
     extraFields?: Record<string, unknown>;
@@ -193,6 +195,8 @@ export function buildInboundPayload(
     InboundHistory: opts.inboundHistory,
     Timestamp: dc.ctx.createTime ?? Date.now(),
     WasMentioned: opts.wasMentioned,
+    ImplicitMentionKinds:
+      opts.implicitMentionKinds && opts.implicitMentionKinds.length > 0 ? [...opts.implicitMentionKinds] : undefined,
     CommandAuthorized: dc.commandAuthorized,
     OriginatingChannel: 'feishu' as const,
     OriginatingTo: opts.originatingTo ?? dc.feishuTo,

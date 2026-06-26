@@ -15,7 +15,7 @@ const mockParseMessageEvent = vi.fn();
 const mockResolveSenderInfo = vi.fn();
 const mockPrefetchUserNames = vi.fn();
 const mockResolveMedia = vi.fn();
-const mockResolveQuotedContent = vi.fn();
+const mockResolveQuotedMessageContext = vi.fn();
 const mockSubstituteMediaPaths = vi.fn();
 
 vi.mock('../src/messaging/inbound/parse', () => ({
@@ -26,7 +26,7 @@ vi.mock('../src/messaging/inbound/enrich', () => ({
   resolveSenderInfo: (...args: unknown[]) => mockResolveSenderInfo(...args),
   prefetchUserNames: (...args: unknown[]) => mockPrefetchUserNames(...args),
   resolveMedia: (...args: unknown[]) => mockResolveMedia(...args),
-  resolveQuotedContent: (...args: unknown[]) => mockResolveQuotedContent(...args),
+  resolveQuotedMessageContext: (...args: unknown[]) => mockResolveQuotedMessageContext(...args),
   substituteMediaPaths: (...args: unknown[]) => mockSubstituteMediaPaths(...args),
 }));
 
@@ -189,7 +189,7 @@ describe('handleFeishuMessage — empty message guard', () => {
   it('allows messages with text content even without resources', async () => {
     mockParseMessageEvent.mockResolvedValue(makeCtx('hello world', []));
     mockResolveMedia.mockResolvedValue({ mediaList: [], payload: undefined });
-    mockResolveQuotedContent.mockResolvedValue(undefined);
+    mockResolveQuotedMessageContext.mockResolvedValue(undefined);
 
     await handleFeishuMessage({
       cfg: { channels: { feishu: {} } } as never,
@@ -203,7 +203,7 @@ describe('handleFeishuMessage — empty message guard', () => {
     const resources = [{ type: 'image' as const, fileKey: 'img_key' }];
     mockParseMessageEvent.mockResolvedValue(makeCtx('', resources));
     mockResolveMedia.mockResolvedValue({ mediaList: [], payload: undefined });
-    mockResolveQuotedContent.mockResolvedValue(undefined);
+    mockResolveQuotedMessageContext.mockResolvedValue(undefined);
 
     await handleFeishuMessage({
       cfg: { channels: { feishu: {} } } as never,
