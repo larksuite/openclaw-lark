@@ -31,6 +31,7 @@
   },
   "scripts": {
     "build": "tsdown",
+    "pack:check": "mkdir -p .pack && rm -f .pack/*.tgz && pnpm pack --pack-destination .pack && node scripts/validate-pack.mjs .pack/*.tgz",
     "release": "node scripts/release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
