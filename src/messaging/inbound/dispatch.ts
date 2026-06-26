@@ -262,7 +262,7 @@ async function dispatchNormalMessage(
     clearToolUseTraceRun(effectiveSessionKey);
   }
 
-  const { dispatcher, replyOptions, markDispatchIdle, markFullyComplete, abortCard } = createFeishuReplyDispatcher({
+  const { dispatcher, replyOptions, markDispatchIdle, markFullyComplete, abortCard, ensureNoVisibleReplyFallback } = createFeishuReplyDispatcher({
     cfg: dc.accountScopedCfg,
     agentId: dc.route.agentId,
     chatId: dc.ctx.chatId,
@@ -331,6 +331,10 @@ async function dispatchNormalMessage(
         historyKey,
         limit: historyLimit,
       });
+    }
+
+    if (counts.final === 0) {
+      await ensureNoVisibleReplyFallback('dispatch-complete-zero-final');
     }
 
     dc.log(`feishu[${dc.account.accountId}]: dispatch complete (queuedFinal=${queuedFinal}, replies=${counts.final})`);
