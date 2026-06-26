@@ -11,6 +11,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Module mocks
 // ---------------------------------------------------------------------------
 
+const replyModeState = vi.hoisted(() => ({ mode: 'static' as 'static' | 'streaming' }));
+const streamingControllerInstances = vi.hoisted(
+  () =>
+    [] as Array<{
+      cardMessageId: string | null;
+      ensureCardCreated: ReturnType<typeof vi.fn>;
+      isAborted: boolean;
+      isTerminated: boolean;
+      markMediaDelivered: ReturnType<typeof vi.fn>;
+      onDeliver: ReturnType<typeof vi.fn>;
+      onIdle: ReturnType<typeof vi.fn>;
+      onReasoningStream: ReturnType<typeof vi.fn>;
+      onToolPayload: ReturnType<typeof vi.fn>;
+      shouldSkipForUnavailable: ReturnType<typeof vi.fn>;
+    }>,
+);
+
 vi.mock('openclaw/plugin-sdk/channel-runtime', () => ({
   createReplyPrefixContext: () => ({
     responsePrefix: '',
@@ -76,24 +93,43 @@ vi.mock('../src/card/card-error', () => ({
   isCardTableLimitError: () => false,
 }));
 vi.mock('../src/card/reply-mode', () => ({
-  resolveReplyMode: () => 'static',
+  resolveReplyMode: () => replyModeState.mode,
   expandAutoMode: ({ mode }: { mode: string }) => mode,
   shouldUseCard: () => false,
 }));
 vi.mock('../src/card/streaming-card-controller', () => ({
-  StreamingCardController: class {},
+  StreamingCardController: class {
+    cardMessageId: string | null = 'om_stream_card';
+    isAborted = false;
+    isTerminated = false;
+    ensureCardCreated = vi.fn().mockResolvedValue(undefined);
+    markMediaDelivered = vi.fn();
+    onDeliver = vi.fn().mockResolvedValue(undefined);
+    onIdle = vi.fn().mockResolvedValue(undefined);
+    onReasoningStream = vi.fn().mockResolvedValue(undefined);
+    onToolPayload = vi.fn().mockResolvedValue(undefined);
+    shouldSkipForUnavailable = vi.fn().mockReturnValue(false);
+
+    constructor() {
+      streamingControllerInstances.push(this);
+    }
+  },
 }));
 
 let terminateReturn = true;
 const terminateCalls: Array<{ source: string; err: unknown }> = [];
 vi.mock('../src/card/unavailable-guard', () => ({
   UnavailableGuard: class {
-    shouldSkip() { return false; }
+    shouldSkip() {
+      return false;
+    }
     terminate(source: string, err?: unknown) {
       terminateCalls.push({ source, err });
       return terminateReturn;
     }
-    get isTerminated() { return false; }
+    get isTerminated() {
+      return false;
+    }
   },
 }));
 
@@ -115,22 +151,34 @@ interface TestContext {
   sentMedia: unknown[];
 }
 
-function createDispatcher(options: {
-  sendMediaImpl?: (payload: unknown) => Promise<void>;
-  terminateReturn?: boolean;
-} = {}): TestContext {
+function createDispatcher(
+  options: {
+    replyMode?: 'static' | 'streaming';
+    sendMediaImpl?: (payload: unknown) => Promise<void>;
+    terminateReturn?: boolean;
+  } = {},
+): TestContext {
   const sentText: unknown[] = [];
   const sentCards: unknown[] = [];
   const sentMedia: unknown[] = [];
 
   // Reset module-level state
+  replyModeState.mode = options.replyMode ?? 'static';
   terminateReturn = options.terminateReturn ?? true;
   terminateCalls.length = 0;
 
-  mockSendMessageFeishu.mockImplementation(async (payload: unknown) => { sentText.push(payload); });
-  mockSendMarkdownCardFeishu.mockImplementation(async (payload: unknown) => { sentCards.push(payload); });
+  mockSendMessageFeishu.mockImplementation(async (payload: unknown) => {
+    sentText.push(payload);
+  });
+  mockSendMarkdownCardFeishu.mockImplementation(async (payload: unknown) => {
+    sentCards.push(payload);
+  });
 
-  const sendMediaImpl = options.sendMediaImpl ?? (async (payload: unknown) => { sentMedia.push(payload); });
+  const sendMediaImpl =
+    options.sendMediaImpl ??
+    (async (payload: unknown) => {
+      sentMedia.push(payload);
+    });
   mockSendMediaLark.mockImplementation(sendMediaImpl);
 
   const result = createFeishuReplyDispatcher({
@@ -166,6 +214,8 @@ function createDispatcher(options: {
 beforeEach(() => {
   vi.clearAllMocks();
   terminateCalls.length = 0;
+  streamingControllerInstances.length = 0;
+  replyModeState.mode = 'static';
 });
 
 describe('reply-dispatcher media delivery', () => {
@@ -196,10 +246,42 @@ describe('reply-dispatcher media delivery', () => {
     ]);
   });
 
+  it('streaming mixed payload routes text to the active card and still sends media', async () => {
+    const ctx = createDispatcher({ replyMode: 'streaming' });
+
+    await ctx.dispatcher.deliver({
+      text: 'created image',
+      mediaUrl: 'https://example.com/image.png',
+    });
+
+    const controller = streamingControllerInstances[0];
+    expect(controller.ensureCardCreated).toHaveBeenCalledTimes(1);
+    expect(controller.onDeliver).toHaveBeenCalledWith(expect.objectContaining({ text: 'created image' }));
+    expect(ctx.sentText).toHaveLength(0);
+    expect(ctx.sentCards).toHaveLength(0);
+    expect(ctx.sentMedia).toHaveLength(1);
+    expect((ctx.sentMedia[0] as { mediaUrl: string }).mediaUrl).toBe('https://example.com/image.png');
+  });
+
+  it('streaming media-only payload marks delivered media as a visible result', async () => {
+    const ctx = createDispatcher({ replyMode: 'streaming' });
+
+    await ctx.dispatcher.deliver({
+      text: '',
+      mediaUrl: 'https://example.com/image.png',
+    });
+
+    const controller = streamingControllerInstances[0];
+    expect(ctx.sentMedia).toHaveLength(1);
+    expect(controller.markMediaDelivered).toHaveBeenCalledTimes(1);
+  });
+
   it('failed media send triggers staticGuard terminate', async () => {
     const mediaError = new Error('bot removed from chat');
     const ctx = createDispatcher({
-      sendMediaImpl: async () => { throw mediaError; },
+      sendMediaImpl: async () => {
+        throw mediaError;
+      },
       terminateReturn: true,
     });
 

@@ -220,6 +220,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         return;
       }
 
+      let textHandledByController = false;
+
       // ---- Streaming card mode ----
       if (controller) {
         if (meta?.kind === 'tool' && shouldRouteToolPayloadToCard(payload, toolUseDisplay.showToolUse)) {
@@ -235,10 +237,12 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           if (controller.cardMessageId) {
             if (payload.isReasoning === true) {
               await controller.onReasoningStream({ ...payload, text: controllerText });
-              return;
+              textHandledByController = true;
+              if (payloadMediaUrls.length === 0) return;
+            } else {
+              await controller.onDeliver({ ...payload, text: controllerText });
+              textHandledByController = true;
             }
-            await controller.onDeliver({ ...payload, text: controllerText });
-            return;
           }
           // Card creation failed — fall through to static delivery
           log.warn('deliver: card creation failed, falling back to static delivery');
@@ -246,7 +250,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       }
 
       // ---- Static text delivery ----
-      if (text.trim()) {
+      if (text.trim() && !textHandledByController) {
         if (shouldUseCard(text)) {
           const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
           log.info('deliver: sending card chunks', {
@@ -348,6 +352,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             replyToMessageId,
             replyInThread,
           });
+          controller?.markMediaDelivered();
         } catch (mediaErr) {
           if (staticGuard?.terminate('deliver.media', mediaErr)) return;
           log.error('deliver: static media send failed', {
