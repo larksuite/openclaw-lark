@@ -154,6 +154,45 @@ export const FeishuGroupSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Interactive card action routing (declarative prompt handlers → Agent)
+// ---------------------------------------------------------------------------
+
+export const FeishuInteractiveToastSchema = z
+  .object({
+    type: z.enum(['info', 'success', 'warning', 'error']).optional(),
+    content: z.string().optional(),
+    i18n: z.record(z.string(), z.string()).optional(),
+  })
+  .optional();
+
+export const FeishuInteractiveDefaultAckSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    toast: FeishuInteractiveToastSchema,
+    cardPatch: z.enum(['processing', 'none']).optional(),
+  })
+  .optional();
+
+export const FeishuInteractiveHandlerSchema = z.object({
+  /** Prompt template sent to the Agent. Supports `{{action}}`, `{{namespace}}`, `{{payload}}`, `{{context}}`, `{{value}}`, etc. */
+  prompt: z.string().min(1),
+  /** When true (default), bypass group mention gate for synthetic dispatch. */
+  forceMention: z.boolean().optional(),
+});
+
+export const FeishuInteractiveConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    defaultAck: FeishuInteractiveDefaultAckSchema,
+    handlers: z.record(z.string(), FeishuInteractiveHandlerSchema).optional(),
+  })
+  .optional();
+
+export type FeishuInteractiveDefaultAckConfig = z.infer<typeof FeishuInteractiveDefaultAckSchema>;
+export type FeishuInteractiveHandlerConfig = z.infer<typeof FeishuInteractiveHandlerSchema>;
+export type FeishuInteractiveConfig = z.infer<typeof FeishuInteractiveConfigSchema>;
+
+// ---------------------------------------------------------------------------
 // Account config schema (same shape as top-level minus `accounts`)
 // ---------------------------------------------------------------------------
 
@@ -204,6 +243,7 @@ export const FeishuAccountConfigSchema = z.object({
   // (per-group `replyInThread` overrides this).
   replyInThread: z.boolean().optional(),
   uat: UATConfigSchema,
+  interactive: FeishuInteractiveConfigSchema,
 });
 
 // ---------------------------------------------------------------------------
