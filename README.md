@@ -1,5 +1,9 @@
 # OpenClaw Lark/Feishu Plugin
 
+> **🍴 Fork Notice**: This is a community fork of [larksuite/openclaw-lark](https://github.com/larksuite/openclaw-lark). This fork adds **Tenant Access Token (TAT) support** for MCP tools, allowing them to operate without user authorization. For the official version, please visit the upstream repository.
+>
+> **新增功能**: 此 fork 添加了 MCP 工具的 **Tenant Access Token (TAT) 支持**，允许 MCP 工具使用应用权限运行，无需用户授权。详见 [PR #263](https://github.com/larksuite/openclaw-lark/pull/263)。
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/@larksuite/openclaw-lark.svg)](https://www.npmjs.com/package/@larksuite/openclaw-lark)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](https://nodejs.org/)
@@ -26,6 +30,45 @@ Additionally, the plugin supports:
 - **🌊 Streaming Responses**: Live streaming text directly within message cards
 - **🔒 Permission Policies**: Flexible access control policies for DMs and group chats
 - **⚙️ Advanced Group Configuration**: Per-group settings including allowlists, skill bindings, and custom system prompts
+- **🔑 MCP Auth Mode** (This Fork): Supports `user` / `tenant` / `auto`, while respecting per-tool compatibility (`UAT-only` / `UAT+TAT`). See [TAT Support](#tat-support) below.
+
+---
+
+## 🆕 TAT Support (This Fork)
+
+This fork adds **Tenant Access Token (TAT) support** for MCP tools, while respecting tool-level compatibility defined by Feishu MCP.
+
+### Configuration
+
+Set in your OpenClaw config (`.openclaw/openclaw.json`):
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "mcpAuthMode": "auto"
+    }
+  }
+}
+```
+
+### Runtime Auth Behavior
+
+| `mcpAuthMode` | Runtime behavior |
+|------|-------------|
+| `user` | Use UAT |
+| `tenant` | Use TAT; for UAT-only tools, still use UAT |
+| `auto` | For UAT-only tools (e.g. `search-user`, `search-doc`), always use UAT. For UAT/TAT tools, try UAT first then fallback to TAT when user auth is unavailable |
+
+### Why this design
+
+- Keeps UAT-only tools safe in every mode
+- Avoids wasted TAT pre-requests for UAT-only tools
+- Keeps user-context behavior as default in `auto`, with TAT fallback when needed
+
+See [PR #263](https://github.com/larksuite/openclaw-lark/pull/263) for implementation details.
+
+---
 
 ## Security & Risk Warnings (Read Before Use)
 
