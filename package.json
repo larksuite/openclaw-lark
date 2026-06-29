@@ -6,13 +6,13 @@
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
+        "types": "./index.d.ts",
+        "default": "./index.js"
       }
     }
   },
-  "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
+  "main": "./index.js",
+  "types": "./index.d.ts",
   "bin": {
     "openclaw-lark": "bin/openclaw-lark.js"
   },
