@@ -336,6 +336,12 @@ async function dispatchNormalMessage(
     dc.log(`feishu[${dc.account.accountId}]: dispatch complete (queuedFinal=${queuedFinal}, replies=${counts.final})`);
     log.info(`dispatch complete (replies=${counts.final}, elapsed=${ticketElapsed()}ms)`);
   } finally {
+    // Release the ReplyDispatcher's pending=1 creation reservation on every
+    // exit path. Without this, the dispatcher never unregisters from the
+    // global reply-dispatcher registry (getTotalPendingReplies()), so every
+    // dispatched message leaks a permanently-stuck entry that stalls future
+    // gateway config-reload/restart waits. See #583.
+    dispatcher.markComplete();
     unregisterActiveDispatcher(queueKey);
   }
 }
