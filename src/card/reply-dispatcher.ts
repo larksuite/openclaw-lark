@@ -13,6 +13,7 @@
 
 import { createReplyPrefixContext, createTypingCallbacks } from 'openclaw/plugin-sdk/channel-runtime';
 import { logTypingFailure } from 'openclaw/plugin-sdk/channel-feedback';
+import { getAgentScopedMediaLocalRoots } from 'openclaw/plugin-sdk/agent-media-payload';
 import type { ReplyPayload } from 'openclaw/plugin-sdk';
 import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
@@ -46,6 +47,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const feishuCfg = account.config;
 
   const prefixContext = createReplyPrefixContext({ cfg, agentId });
+  const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, agentId);
 
   // ---- Reply mode resolution ----
   const chatType = params.chatType;
@@ -118,6 +120,39 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const isTerminated = (): boolean => {
     if (controller) return controller.isTerminated;
     return staticGuard?.isTerminated ?? false;
+  };
+
+  const deliverMediaUrls = async (mediaUrls: string[], source: string): Promise<void> => {
+    for (const mediaUrl of mediaUrls) {
+      const normalizedMediaUrl = mediaUrl?.trim();
+      if (!normalizedMediaUrl) continue;
+      if (staticAborted || controller?.isAborted || controller?.isTerminated || shouldSkip(`${source}.precheck`)) {
+        return;
+      }
+
+      try {
+        log.info('deliver: sending media', {
+          source,
+          mediaUrl: normalizedMediaUrl.slice(0, 80),
+        });
+        await sendMediaLark({
+          cfg,
+          to: chatId,
+          mediaUrl: normalizedMediaUrl,
+          mediaLocalRoots,
+          accountId,
+          replyToMessageId,
+          replyInThread,
+        });
+      } catch (mediaErr) {
+        if (controller?.terminateIfUnavailable(source, mediaErr)) return;
+        if (staticGuard?.terminate(source, mediaErr)) return;
+        log.error('deliver: media send failed', {
+          source,
+          error: String(mediaErr),
+        });
+      }
+    }
   };
 
   // ---- Typing indicator (reaction-based) ----
@@ -238,6 +273,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               return;
             }
             await controller.onDeliver({ ...payload, text: controllerText });
+            await deliverMediaUrls(payloadMediaUrls, 'deliver.streamingMedia');
             return;
           }
           // Card creation failed — fall through to static delivery
@@ -333,28 +369,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         }
       }
 
-      // ---- Static media delivery ----
-      for (const mediaUrl of payloadMediaUrls) {
-        if (!mediaUrl?.trim()) continue;
-        try {
-          log.info('deliver: sending media via static path', {
-            mediaUrl: mediaUrl.slice(0, 80),
-          });
-          await sendMediaLark({
-            cfg,
-            to: chatId,
-            mediaUrl,
-            accountId,
-            replyToMessageId,
-            replyInThread,
-          });
-        } catch (mediaErr) {
-          if (staticGuard?.terminate('deliver.media', mediaErr)) return;
-          log.error('deliver: static media send failed', {
-            error: String(mediaErr),
-          });
-        }
-      }
+      // ---- Static / media-only delivery ----
+      await deliverMediaUrls(payloadMediaUrls, 'deliver.media');
     },
 
     onError: async (err, info) => {
