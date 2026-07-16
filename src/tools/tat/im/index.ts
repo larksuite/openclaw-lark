@@ -8,6 +8,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { registerFeishuImBotImageTool } from './resource';
+import { registerFeishuImBotSendImageTool } from './send-image';
 
 /**
  * 注册所有 IM 工具
@@ -18,5 +19,8 @@ import { registerFeishuImBotImageTool } from './resource';
 export function registerFeishuImTools(api: OpenClawPluginApi): void {
   if (registerFeishuImBotImageTool(api)) {
     api.logger.debug?.('feishu_im: Registered feishu_im_bot_image');
+  }
+  if (registerFeishuImBotSendImageTool(api)) {
+    api.logger.debug?.('feishu_im: Registered feishu_im_bot_send_image');
   }
 }
