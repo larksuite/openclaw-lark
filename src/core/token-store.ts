@@ -4,11 +4,11 @@
  *
  * UAT (User Access Token) persistent storage with cross-platform support.
  *
- * Stores OAuth token data using OS-native credential services so that tokens
- * survive process restarts without introducing plain-text local files.
+ * Stores OAuth token data in encrypted local files so that tokens survive
+ * process restarts without introducing plain-text local files.
  *
  * Platform backends:
- *   macOS   – Keychain Access via `security` CLI
+ *   macOS   – AES-256-GCM encrypted files (XDG_DATA_HOME)
  *   Linux   – AES-256-GCM encrypted files (XDG_DATA_HOME)
  *   Windows – AES-256-GCM encrypted files (%LOCALAPPDATA%)
  *
@@ -18,8 +18,6 @@
  *   Password = JSON-serialised StoredUAToken
  */
 
-import { createRequire } from 'node:module';
-import { promisify } from 'node:util';
 import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -27,13 +25,6 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/token-store');
-
-// Dynamic require to avoid security scanner false positive (child-process).
-// CJS (tsc output) has __filename; ESM (tsdown output) has import.meta.url.
-const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
-const _cpMod = ['child', 'process'].join('_');
-const _cp = _require(`node:${_cpMod}`) as typeof import('node:child_process');
-const execFile = promisify(_cp.execFile);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,39 +73,6 @@ interface KeychainBackend {
   set(service: string, account: string, data: string): Promise<void>;
   remove(service: string, account: string): Promise<void>;
 }
-
-// ---------------------------------------------------------------------------
-// macOS backend – Keychain Access via `security` CLI
-// ---------------------------------------------------------------------------
-
-const darwinBackend: KeychainBackend = {
-  async get(service, account) {
-    try {
-      const { stdout } = await execFile('security', ['find-generic-password', '-s', service, '-a', account, '-w']);
-      return stdout.trim() || null;
-    } catch {
-      return null;
-    }
-  },
-
-  async set(service, account, data) {
-    // Delete first – `add-generic-password` fails if the item already exists.
-    try {
-      await execFile('security', ['delete-generic-password', '-s', service, '-a', account]);
-    } catch {
-      // Not found – fine.
-    }
-    await execFile('security', ['add-generic-password', '-s', service, '-a', account, '-w', data]);
-  },
-
-  async remove(service, account) {
-    try {
-      await execFile('security', ['delete-generic-password', '-s', service, '-a', account]);
-    } catch {
-      // Already absent – fine.
-    }
-  },
-};
 
 // ---------------------------------------------------------------------------
 // Linux backend – AES-256-GCM encrypted files (XDG Base Directory)
@@ -299,14 +257,15 @@ const win32Backend: KeychainBackend = {
 function createBackend(): KeychainBackend {
   switch (process.platform) {
     case 'darwin':
-      return darwinBackend;
+      // Avoid local process launch APIs. Use encrypted file storage on macOS as well.
+      return linuxBackend;
     case 'linux':
       return linuxBackend;
     case 'win32':
       return win32Backend;
     default:
-      log.warn(`unsupported platform "${process.platform}", falling back to macOS backend`);
-      return darwinBackend;
+      log.warn(`unsupported platform "${process.platform}", falling back to encrypted file backend`);
+      return linuxBackend;
   }
 }
 

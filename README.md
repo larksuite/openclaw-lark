@@ -65,6 +65,18 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+### Interactive card smoke test
+
+After configuring `channels.feishu.appId/appSecret`, you can send the example interactive card with:
+
+```bash
+openclaw-lark smoke-card
+```
+
+By default this reads `examples/demo-smoke-card.card.json`. Use `--chat-id oc_xxx` to send it to a test group, or `--open-id ou_xxx` to send it to a user. Use `--card-file ./my-card.card.json` to send your own card JSON through the same path.
+
+The demo handler config lives in `examples/default-interactive.config.json`. The runtime itself only routes by `channels.feishu.interactive.handlers.<namespace>` and does not special-case the `demo` namespace.
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).

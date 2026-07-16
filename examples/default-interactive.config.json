@@ -1,0 +1,20 @@
+{
+  "channels": {
+    "feishu": {
+      "interactive": {
+        "enabled": true,
+        "defaultAck": {
+          "enabled": true,
+          "toast": { "type": "info", "content": "Received, processing" },
+          "cardPatch": "processing"
+        },
+        "handlers": {
+          "demo": {
+            "prompt": "[interactive demo] variables dump\n\n```json\n{{context}}\n```",
+            "forceMention": true
+          }
+        }
+      }
+    }
+  }
+}

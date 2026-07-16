@@ -145,12 +145,12 @@ const TOOL_DESCRIPTORS: ToolDescriptor[] = [
     summaryPreference: ['url', 'quoted', 'matched', 'line'],
   },
   {
-    aliases: ['agent', 'task', 'spawn'],
+    aliases: ['agent', 'task'],
     iconToken: 'robot_outlined',
     title: 'Run sub-agent',
     sanitizer: 'generic',
     paramKeys: ['task', 'description', 'prompt'],
-    summaryPatterns: [/^(?:run\s+sub-?agent|spawn\s+agent)\s+(.+)$/i],
+    summaryPatterns: [/^run\s+sub-?agent\s+(.+)$/i],
   },
   {
     aliases: ['check', 'determine', 'verify'],

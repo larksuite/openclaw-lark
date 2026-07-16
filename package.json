@@ -19,6 +19,7 @@
   "files": [
     "bin/",
     "dist/",
+    "examples/",
     "skills/",
     "secret-contract-api.js",
     "openclaw.plugin.json",
