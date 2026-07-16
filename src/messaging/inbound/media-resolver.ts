@@ -53,7 +53,11 @@ export async function downloadResources(params: {
         contentType = await core.media.detectMime({ buffer: result.buffer });
       }
 
-      const fileName = result.fileName || res.fileName;
+      // Prefer the file name from the message body (res.fileName) over
+      // Content-Disposition (result.fileName), because Feishu may return
+      // raw UTF-8 bytes in the header that get misinterpreted as Latin1
+      // by Node.js HTTP clients, producing garbled non-ASCII filenames.
+      const fileName = res.fileName || result.fileName;
       const saved = await core.channel.media.saveMediaBuffer(result.buffer, contentType, 'inbound', maxBytes, fileName);
 
       const placeholder = inferPlaceholderFromType(res.type);
