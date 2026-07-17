@@ -51,6 +51,7 @@ import {
   UserScopeInsufficientError,
 } from './auth-errors';
 import type { AuthHint, ScopeErrorInfo, TryInvokeResult } from './auth-errors';
+import { getToolExecutionContext, resolveAccountFromBindings } from './tool-execution-context';
 
 // Re-export for backward compatibility — 下游模块可继续从 tool-client 导入
 export {
@@ -497,6 +498,19 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
       );
     }
     account = resolved;
+  }
+
+  if (!account) {
+    // #321: Try resolving account from bindings (agentId → accountId)
+    const tecCtx = getToolExecutionContext();
+    const bindingAccount = resolveAccountFromBindings(resolveConfig, tecCtx?.agentId);
+    if (bindingAccount?.configured) {
+      account = bindingAccount;
+      tcLog.info?.(`createToolClient: resolved via bindings`, {
+        agentId: tecCtx?.agentId,
+        accountId: bindingAccount.accountId,
+      });
+    }
   }
 
   if (!account) {
