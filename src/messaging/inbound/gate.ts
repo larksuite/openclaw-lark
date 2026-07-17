@@ -41,7 +41,7 @@ import { sendPairingReply } from './gate-effects';
 /**
  * Resolve the effective `respondToMentionAll` setting.
  *
- * Precedence: per-group > default ("*") group > global account config > false.
+ * Precedence: per-group > default ("*") group > global account config > true (opt-out).
  */
 export function resolveRespondToMentionAll(params: {
   groupConfig?: { respondToMentionAll?: boolean };
@@ -52,7 +52,7 @@ export function resolveRespondToMentionAll(params: {
     params.groupConfig?.respondToMentionAll ??
     params.defaultConfig?.respondToMentionAll ??
     params.accountFeishuCfg?.respondToMentionAll ??
-    false
+    true
   );
 }
 
