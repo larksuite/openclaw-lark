@@ -12,7 +12,7 @@ import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { threadScopedKey } from '../../channel/chat-queue';
 import { normalizeFeishuTarget, normalizeMessageId, resolveReceiveIdType } from '../../core/targets';
-import { runWithMessageUnavailableGuard } from '../../core/message-unavailable';
+import { isMessageUnavailableError, runWithMessageUnavailableGuard } from '../../core/message-unavailable';
 import { optimizeMarkdownStyle } from '../../card/markdown-style';
 import { buildMentionedCardContent, buildMentionedMessage } from '../inbound/mention';
 import { getSentinelStore } from '../inbound/sentinel-store';
@@ -21,6 +21,14 @@ import { ensureMention } from './outbound-mention';
 import { currentBotPeerContext } from './bot-peer-context';
 
 const sendLog = larkLogger('outbound/send');
+
+type ReplyFallbackMode = 'top-level' | 'silent';
+
+/** Read the replyFallbackOnWithdrawn setting from account-scoped channel config. */
+export function getReplyFallbackMode(cfg: ClawdbotConfig, accountId?: string): ReplyFallbackMode {
+  const scopedCfg = createAccountScopedConfig(cfg, accountId);
+  return (scopedCfg.channels?.feishu as Record<string, unknown> | undefined)?.replyFallbackOnWithdrawn as ReplyFallbackMode ?? 'silent';
+}
 
 /**
  * Runs the outbound text through mention normalization. Returns the
@@ -204,29 +212,50 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
 
   if (replyToMessageId) {
     // Send as a threaded reply.
-    // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
     const normalizedId = normalizeMessageId(replyToMessageId);
-    const response = await runWithMessageUnavailableGuard({
-      messageId: normalizedId,
-      operation: 'im.message.reply(post)',
-      fn: () =>
-        client.im.message.reply({
-          path: {
-            message_id: normalizedId!,
-          },
-          data: {
-            content: contentPayload,
-            msg_type: 'post',
-            reply_in_thread: replyInThread,
-          },
-        }),
-    });
+    try {
+      const response = await runWithMessageUnavailableGuard({
+        messageId: normalizedId,
+        operation: 'im.message.reply(post)',
+        fn: () =>
+          client.im.message.reply({
+            path: {
+              message_id: normalizedId!,
+            },
+            data: {
+              content: contentPayload,
+              msg_type: 'post',
+              reply_in_thread: replyInThread,
+            },
+          }),
+      });
 
-    recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+      recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
+      return {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+    } catch (err) {
+      // When the reply target has been recalled (230011) or deleted (231003),
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new message
+      // Other errors are propagated as-is.
+      if (isMessageUnavailableError(err)) {
+        const mode = getReplyFallbackMode(cfg, accountId);
+        if (mode === 'silent') {
+          sendLog.warn(
+            `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
+          );
+          return { messageId: '', chatId: '' };
+        }
+        sendLog.warn(
+          `reply target ${replyToMessageId} unavailable (${err.apiCode}), falling back to top-level send`,
+        );
+      } else {
+        throw err;
+      }
+    }
   }
 
   // Send as a new message.
@@ -274,28 +303,49 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
   const contentPayload = JSON.stringify(card);
 
   if (replyToMessageId) {
-    // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
     const normalizedId = normalizeMessageId(replyToMessageId);
-    const response = await runWithMessageUnavailableGuard({
-      messageId: normalizedId,
-      operation: 'im.message.reply(interactive)',
-      fn: () =>
-        client.im.message.reply({
-          path: {
-            message_id: normalizedId!,
-          },
-          data: {
-            content: contentPayload,
-            msg_type: 'interactive',
-            reply_in_thread: replyInThread,
-          },
-        }),
-    });
+    try {
+      const response = await runWithMessageUnavailableGuard({
+        messageId: normalizedId,
+        operation: 'im.message.reply(interactive)',
+        fn: () =>
+          client.im.message.reply({
+            path: {
+              message_id: normalizedId!,
+            },
+            data: {
+              content: contentPayload,
+              msg_type: 'interactive',
+              reply_in_thread: replyInThread,
+            },
+          }),
+      });
 
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+      return {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+    } catch (err) {
+      // When the reply target has been recalled (230011) or deleted (231003),
+      // behaviour depends on the replyFallbackOnWithdrawn config:
+      //   'silent'    — silently discard the reply (default)
+      //   'top-level' — fall back to sending as a new card
+      // Other errors are propagated as-is.
+      if (isMessageUnavailableError(err)) {
+        const mode = getReplyFallbackMode(cfg, accountId);
+        if (mode === 'silent') {
+          sendLog.warn(
+            `reply target ${replyToMessageId} unavailable (${err.apiCode}), silently discarding (config: replyFallbackOnWithdrawn=silent)`,
+          );
+          return { messageId: '', chatId: '' };
+        }
+        sendLog.warn(
+          `reply target ${replyToMessageId} unavailable (${err.apiCode}), falling back to top-level card send`,
+        );
+      } else {
+        throw err;
+      }
+    }
   }
 
   const target = normalizeFeishuTarget(to);
