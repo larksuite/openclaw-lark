@@ -206,7 +206,29 @@ export class ToolClient {
 
     let appScopeVerified = true;
     if (appCheckScopes.length > 0) {
-      const appGrantedScopes = await getAppGrantedScopes(this.sdk, this.account.appId, tokenType);
+      // 【重要】此处故意不传 tokenType。
+      //
+      // 背景：
+      //   getAppGrantedScopes() 调用飞书 GET /application/v6/applications/:appId，
+      //   返回的每条 scope 记录带有可选的 token_types 字段（如 ['user'] 或 ['tenant']）。
+      //   若传入 tokenType='user'，getAppGrantedScopes 内部会把 token_types 不含 'user'
+      //   的 scope 过滤掉，导致它们从 appGrantedScopes 中消失。
+      //
+      // 问题：
+      //   飞书对部分写操作 scope（如 sheets:spreadsheet:create、sheets:spreadsheet:write_only、
+      //   docx:document:write_only 等）的 token_types 字段标注为 ['tenant']，但实际上
+      //   以 UAT（用户身份）调用这些 API 时，服务端同样会放行。
+      //   传入 tokenType='user' 过滤后，这些已开通的 scope 会被错误地排除，
+      //   missingScopes() 计算出非空差集，进而抛出 AppScopeMissingError，
+      //   触发橙色"需要申请权限才能继续"卡片——即便权限已经开通，实际调用也能成功。
+      //
+      // 修复方案：
+      //   应用级权限检查的唯一目的是判断"该 scope 是否已在开放平台开通"，
+      //   与 token 类型无关。token 类型的合法性校验由服务端负责：
+      //     - 应用真的缺少权限 → 服务端返回 99991672 → rethrowStructuredError() 兜底
+      //     - 用户未完成 OAuth 授权 → 服务端返回 99991679 → UserAuthRequiredError
+      //   因此不传 tokenType，取全量已开通 scope 参与差集计算，避免误报。
+      const appGrantedScopes = await getAppGrantedScopes(this.sdk, this.account.appId);
 
       if (appGrantedScopes.length > 0) {
         // 严格模式：应用必须开通所有 Required Scopes（+ offline_access）
