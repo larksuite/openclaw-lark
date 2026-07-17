@@ -66,6 +66,61 @@ export type { ScopeErrorInfo, AuthHint, TryInvokeResult };
 const tcLog = larkLogger('core/tool-client');
 
 // ---------------------------------------------------------------------------
+// TAT Cache
+// ---------------------------------------------------------------------------
+
+interface TatCacheEntry {
+  token: string;
+  expiresAt: number;
+}
+
+const tatCache = new Map<string, TatCacheEntry>();
+
+async function getTenantAccessToken(appId: string, appSecret: string, domain: string): Promise<string> {
+  const cacheKey = `${domain}:${appId}`;
+  const cached = tatCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    tcLog.debug?.(`Using cached TAT for ${appId}`);
+    return cached.token;
+  }
+
+  tcLog.debug?.(`Fetching new TAT for ${appId}`);
+  const tokenUrl = domain === 'lark' || domain === 'https://open.larksuite.com'
+    ? 'https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal'
+    : 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal';
+
+  const res = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to get TAT: HTTP ${res.status}`);
+  }
+
+  const data = await res.json() as { code: number; msg: string; tenant_access_token?: string; expire?: number };
+  if (data.code !== 0) {
+    throw new Error(`Failed to get TAT: ${data.msg} (code: ${data.code})`);
+  }
+
+  const token = data.tenant_access_token;
+  if (!token) {
+    throw new Error('TAT response missing tenant_access_token');
+  }
+
+  // 缓存 token，提前 5 分钟过期
+  const expiresIn = data.expire ?? 7200;
+  tatCache.set(cacheKey, {
+    token,
+    expiresAt: Date.now() + (expiresIn - 300) * 1000,
+  });
+
+  return token;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -303,7 +358,13 @@ export class ToolClient {
 
   private async invokeAsTenant<T>(toolAction: ToolActionKey, fn: InvokeFn<T>, requiredScopes: string[]): Promise<T> {
     try {
-      return await fn(this.sdk);
+      // 获取 TAT 并传递给回调函数
+      const tat = await getTenantAccessToken(
+        this.account.appId,
+        this.account.appSecret,
+        this.account.brand,
+      );
+      return await fn(this.sdk, undefined, tat);
     } catch (err) {
       this.rethrowStructuredError(err, toolAction, requiredScopes, undefined, 'tenant');
       throw err;
