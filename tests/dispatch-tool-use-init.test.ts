@@ -11,6 +11,7 @@ const {
   clearToolUseTraceRunMock,
   createFeishuReplyDispatcherMock,
   dispatchReplyFromConfigMock,
+  startTypingIndicatorMock,
 } = vi.hoisted(() => ({
   buildDispatchContextMock: vi.fn(),
   buildMessageBodyMock: vi.fn(() => 'message-body'),
@@ -22,6 +23,7 @@ const {
   clearToolUseTraceRunMock: vi.fn(),
   createFeishuReplyDispatcherMock: vi.fn(),
   dispatchReplyFromConfigMock: vi.fn(),
+  startTypingIndicatorMock: vi.fn(),
 }));
 
 vi.mock('../src/messaging/inbound/dispatch-context', () => ({
@@ -185,6 +187,7 @@ beforeEach(() => {
   createFeishuReplyDispatcherMock.mockReturnValue({
     dispatcher: createDispatcher(),
     replyOptions: {},
+    startTypingIndicator: startTypingIndicatorMock,
     markDispatchIdle: vi.fn(),
     markFullyComplete: vi.fn(),
     abortCard: vi.fn(),
@@ -210,6 +213,33 @@ describe('dispatchToAgent tool_use trace initialization', () => {
     expect(startToolUseTraceRunMock).toHaveBeenCalledTimes(1);
     expect(startToolUseTraceRunMock).toHaveBeenCalledWith('session-1');
     expect(clearToolUseTraceRunMock).not.toHaveBeenCalled();
+  });
+
+  it('starts the typing indicator before dispatching the agent reply', async () => {
+    const order: string[] = [];
+    startTypingIndicatorMock.mockImplementationOnce(() => {
+      order.push('typing');
+    });
+    dispatchReplyFromConfigMock.mockImplementationOnce(async () => {
+      order.push('dispatch');
+      return {
+        queuedFinal: false,
+        counts: { final: 0 },
+      };
+    });
+
+    const dc = createDispatchContext();
+
+    await dispatchToAgent({
+      ctx: dc.ctx as never,
+      mediaPayload: {},
+      account: dc.account as never,
+      accountScopedCfg: {} as never,
+      historyLimit: 0,
+    });
+
+    expect(startTypingIndicatorMock).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['typing', 'dispatch']);
   });
 
   it('clears the trace run without initializing it when tool_use is disabled', async () => {

@@ -148,6 +148,7 @@ export interface CreateFeishuReplyDispatcherParams {
 export interface FeishuReplyDispatcherResult {
   dispatcher: ReplyDispatcher;
   replyOptions: Record<string, unknown>;
+  startTypingIndicator: () => void;
   markDispatchIdle: () => void;
   markFullyComplete: () => void;
   abortCard: () => Promise<void>;

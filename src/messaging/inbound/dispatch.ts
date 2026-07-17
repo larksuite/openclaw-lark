@@ -262,19 +262,20 @@ async function dispatchNormalMessage(
     clearToolUseTraceRun(effectiveSessionKey);
   }
 
-  const { dispatcher, replyOptions, markDispatchIdle, markFullyComplete, abortCard } = createFeishuReplyDispatcher({
-    cfg: dc.accountScopedCfg,
-    agentId: dc.route.agentId,
-    chatId: dc.ctx.chatId,
-    sessionKey: effectiveSessionKey,
-    replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
-    accountId: dc.account.accountId,
-    chatType: dc.ctx.chatType,
-    skipTyping,
-    replyInThread: routing.replyInThread,
-    threadId: routing.threadId,
-    toolUseDisplay,
-  });
+  const { dispatcher, replyOptions, startTypingIndicator, markDispatchIdle, markFullyComplete, abortCard } =
+    createFeishuReplyDispatcher({
+      cfg: dc.accountScopedCfg,
+      agentId: dc.route.agentId,
+      chatId: dc.ctx.chatId,
+      sessionKey: effectiveSessionKey,
+      replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
+      accountId: dc.account.accountId,
+      chatType: dc.ctx.chatType,
+      skipTyping,
+      replyInThread: routing.replyInThread,
+      threadId: routing.threadId,
+      toolUseDisplay,
+    });
 
   // Create an AbortController so the abort fast-path can cancel the
   // underlying LLM request (not just the streaming card UI).
@@ -287,6 +288,7 @@ async function dispatchNormalMessage(
 
   dc.log(`feishu[${dc.account.accountId}]: dispatching to agent (session=${effectiveSessionKey})`);
   log.info(`dispatching to agent (session=${effectiveSessionKey})`);
+  startTypingIndicator();
 
   // Attach the resolved bot-peer (if any) so the outbound `ensureMention`
   // backstop can guarantee an @ even when the LLM forgets. Resolved by the
