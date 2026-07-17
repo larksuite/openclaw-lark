@@ -39,3 +39,8 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Validate packed artifact
+        run: |
+          pnpm build
+          pnpm pack:check
