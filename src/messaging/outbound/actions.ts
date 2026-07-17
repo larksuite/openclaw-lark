@@ -30,6 +30,7 @@ import { larkLogger } from '../../core/lark-logger';
 import { addReactionFeishu, listReactionsFeishu, removeReactionFeishu } from './reactions';
 import { sendCardLark, sendTextLark } from './deliver';
 import { uploadAndSendMediaLark } from './media';
+import { handleGet, handleList, handleMembers, handleSearch } from './read-actions';
 
 const log = larkLogger('outbound/actions');
 
@@ -62,13 +63,18 @@ function assertLarkOk(res: any, context: string): void {
 // Supported actions
 // ---------------------------------------------------------------------------
 
-const SUPPORTED_ACTIONS: Set<ChannelMessageActionName> = new Set([
+// NOTE: 'list', 'get', 'members' are not yet in the openclaw SDK
+// `ChannelMessageActionName` union (only 'search' is). They are valid Lark
+// channel actions and we cast through `unknown` so the channel can advertise
+// them today; an SDK union extension will follow in a separate openclaw PR.
+const SUPPORTED_ACTIONS = new Set<ChannelMessageActionName>([
   'send',
   'react',
   'reactions',
   'delete',
   'unsend',
-  // "member-info",
+  'search',
+  ...(['list', 'get', 'members'] as unknown as ChannelMessageActionName[]),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -197,7 +203,7 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
     log.info(`handleAction: action=${action}, accountId=${aid ?? 'default'}`);
 
     try {
-      switch (action) {
+      switch (action as string) {
         case 'send':
           return await deliverMessage(cfg, readFeishuSendParams(params, toolContext), aid, ctx.mediaLocalRoots);
         case 'react':
@@ -207,6 +213,14 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
         case 'delete':
         case 'unsend':
           return await handleDelete(cfg, params, aid);
+        case 'list':
+          return await handleList(cfg, params, aid);
+        case 'get':
+          return await handleGet(cfg, params, aid);
+        case 'search':
+          return await handleSearch(cfg, params, aid);
+        case 'members':
+          return await handleMembers(cfg, params, aid);
         default:
           throw new Error(
             `Action "${action}" is not supported for Feishu. ` +
