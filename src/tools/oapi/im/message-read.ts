@@ -14,7 +14,15 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import type { ToolClient } from '../helpers';
-import { StringEnum, assertLarkOk, createToolContext, getFirstAccount, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
+import {
+  StringEnum,
+  assertLarkOk,
+  createToolContext,
+  getFirstAccount,
+  handleInvokeErrorWithAutoAuth,
+  json,
+  registerTool,
+} from '../helpers';
 import { dateTimeToSecondsString, parseTimeRangeToSeconds } from './time-utils';
 import { type FormattedMessage, formatMessageList } from './format-messages';
 import { batchResolveUserNamesAsUser, getUATUserName } from './user-name-uat';
@@ -140,7 +148,10 @@ interface GetMessagesParams {
 }
 
 function registerGetMessages(api: OpenClawPluginApi): boolean {
-  if (!api.config) return false;
+  if (!api.config) {
+    // used empty config here
+    api.config = {};
+  }
   const config = api.config;
   const { toolClient, log } = createToolContext(api, 'feishu_im_user_get_messages');
 
