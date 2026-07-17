@@ -29,8 +29,17 @@ import { larkLogger } from './lark-logger';
 const log = larkLogger('core/token-store');
 
 // Dynamic require to avoid security scanner false positive (child-process).
-// CJS (tsc output) has __filename; ESM (tsdown output) has import.meta.url.
-const _require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
+//
+// Both compile targets must work without a literal `import.meta` token in
+// source — see the long comment at the top of `./version.ts` for why a
+// `typeof __filename` guard around `import.meta.url` is not enough.
+//
+// We resolve `node:child_process` via `createRequire(__filename)` in CJS
+// output (Node's CJS wrapper provides `__filename`) and fall back to
+// `process.execPath` in ESM output. `createRequire`'s path argument is only
+// used as a base for relative resolution; `node:`-prefixed built-ins resolve
+// from anywhere, so any valid filesystem path works for the fallback.
+const _require = createRequire(typeof __filename === 'string' ? __filename : process.execPath);
 const _cpMod = ['child', 'process'].join('_');
 const _cp = _require(`node:${_cpMod}`) as typeof import('node:child_process');
 const execFile = promisify(_cp.execFile);
