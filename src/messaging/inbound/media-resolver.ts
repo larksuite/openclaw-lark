@@ -46,6 +46,7 @@ export async function downloadResources(params: {
         fileKey: res.fileKey,
         type: resourceType,
         accountId,
+        maxBytes,
       });
 
       let contentType = result.contentType;
