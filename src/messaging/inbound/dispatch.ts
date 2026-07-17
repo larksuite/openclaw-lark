@@ -457,7 +457,7 @@ export async function dispatchToAgent(params: {
     ? buildFeishuGroupSystemPrompt(configuredGroupPrompt, params.botOpenId)
     : undefined;
   const originatingTo =
-    isBareNewOrReset && dc.isThread
+    dc.isThread
       ? encodeFeishuRouteTarget({
           target: dc.feishuTo,
           replyToMessageId: params.replyToMessageId ?? params.ctx.messageId,
