@@ -6,11 +6,16 @@
  *
  * 从 uat-client.ts 迁移 owner 检查逻辑到独立 policy 层。
  * 提供 fail-close 策略（安全优先：授权发起路径）。
+ *
+ * 支持通过配置 `uat.allowedUsers` 白名单，让非 owner 用户也能使用 API 功能。
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { ConfiguredLarkAccount } from './types';
 import { getAppOwnerFallback } from './app-owner-fallback';
+import { larkLogger } from './lark-logger';
+
+const log = larkLogger('core/owner-policy');
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -39,10 +44,23 @@ export class OwnerAccessDeniedError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * 校验用户是否为应用 owner（fail-close 版本）。
+ * 检查用户是否在 `uat.allowedUsers` 白名单中。
  *
- * - 获取 owner 失败时 → 拒绝（安全优先）
- * - owner 不匹配时 → 拒绝
+ * - 白名单包含 `"*"` 时，允许所有用户
+ * - 白名单包含该用户的 open_id 时，允许该用户
+ */
+function isUserAllowlisted(account: ConfiguredLarkAccount, userOpenId: string): boolean {
+  const allowedUsers = account.config.uat?.allowedUsers;
+  if (!allowedUsers || allowedUsers.length === 0) return false;
+  return allowedUsers.includes('*') || allowedUsers.includes(userOpenId);
+}
+
+/**
+ * 校验用户是否为应用 owner 或在白名单中（fail-close 版本）。
+ *
+ * 检查顺序：
+ * 1. 白名单（`uat.allowedUsers`）— 包含 `"*"` 时允许所有用户
+ * 2. Owner 匹配 — 获取 owner 失败或不匹配时拒绝
  *
  * 适用于：`executeAuthorize`（OAuth 授权发起）、`commands/auth.ts`（批量授权）等
  * 赋予实质性权限的入口。
@@ -52,6 +70,11 @@ export async function assertOwnerAccessStrict(
   sdk: Lark.Client,
   userOpenId: string,
 ): Promise<void> {
+  if (isUserAllowlisted(account, userOpenId)) {
+    log.info(`user ${userOpenId} granted access via uat.allowedUsers allowlist`);
+    return;
+  }
+
   const ownerOpenId = await getAppOwnerFallback(account, sdk);
 
   if (!ownerOpenId) {

@@ -284,7 +284,9 @@ export async function executeAuthorize(
       log.warn(`non-owner user ${senderOpenId} attempted to authorize`);
       return json({
         error: 'permission_denied',
-        message: '当前应用仅限所有者（App Owner）使用。您没有权限发起授权，无法使用相关功能。',
+        message:
+          '当前应用仅限所有者（App Owner）或白名单用户使用。您没有权限发起授权，无法使用相关功能。' +
+          '\n如需授权更多用户，请在配置中添加 channels.feishu.uat.allowedUsers（open_id 数组）。',
       });
     }
     throw err;
