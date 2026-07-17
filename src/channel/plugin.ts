@@ -80,6 +80,7 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
 
   meta: {
     ...meta,
+    preferSessionLookupForAnnounceTarget: true,
   },
 
   // -------------------------------------------------------------------------
