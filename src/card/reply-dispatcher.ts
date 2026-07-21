@@ -19,6 +19,7 @@ import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { sendMediaLark } from '../messaging/outbound/deliver';
+import { applyFeishuMessageSendingHook, hasFeishuMessageSendingHooks } from '../messaging/outbound/hooks';
 import { sendMarkdownCardFeishu, sendMessageFeishu } from '../messaging/outbound/send';
 import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } from '../messaging/outbound/typing';
 import { splitReasoningText, stripReasoningTags } from './builder';
@@ -173,6 +174,24 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
   // ---- dispatchFullyComplete flag (static mode) ----
   let dispatchFullyComplete = false;
+  // Streaming callbacks can publish before the final deliver() hook runs.
+  // Withhold them when message_sending is active so rewrites or cancellation happen before any reply content is visible.
+  const messageSendingHooksEnabled = hasFeishuMessageSendingHooks();
+
+  const applyMessageSendingHook = async (payload: ReplyPayload, text: string): Promise<ReplyPayload | null> => {
+    const sendingResult = await applyFeishuMessageSendingHook({
+      to: chatId,
+      text,
+      accountId,
+      mediaUrls: getPayloadMediaUrls(payload),
+    });
+    if (sendingResult.cancelled) {
+      log.info('delivery cancelled by message_sending hook', { chatId });
+      return null;
+    }
+    if (sendingResult.text === payload.text) return payload;
+    return { ...payload, text: sendingResult.text };
+  };
 
   // ---- Build dispatcher ----
   const { dispatcher, replyOptions, markDispatchIdle } = core.channel.reply.createReplyDispatcherWithTyping({
@@ -208,13 +227,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       }
 
       // 提取文本和媒体 URL
-      const text = getVisiblePayloadText(payload);
-      const reasoningText = payload.isReasoning === true ? (payload.text ?? '') : '';
-      const payloadMediaUrls = payload.mediaUrls?.length
-        ? payload.mediaUrls
-        : payload.mediaUrl
-          ? [payload.mediaUrl]
-          : [];
+      const visibleText = getVisiblePayloadText(payload);
+      const visibleReasoningText = payload.isReasoning === true ? (payload.text ?? '') : '';
+      const deliveryPayload = await applyMessageSendingHook(payload, visibleReasoningText || visibleText);
+      if (!deliveryPayload) return;
+
+      const text = getVisiblePayloadText(deliveryPayload);
+      const reasoningText = deliveryPayload.isReasoning === true ? (deliveryPayload.text ?? '') : '';
+      const payloadMediaUrls = getPayloadMediaUrls(deliveryPayload);
       if (!text.trim() && !reasoningText.trim() && payloadMediaUrls.length === 0) {
         log.debug('deliver: empty text and no media, skipping');
         return;
@@ -222,8 +242,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       // ---- Streaming card mode ----
       if (controller) {
-        if (meta?.kind === 'tool' && shouldRouteToolPayloadToCard(payload, toolUseDisplay.showToolUse)) {
-          await controller.onToolPayload(payload);
+        if (meta?.kind === 'tool' && shouldRouteToolPayloadToCard(deliveryPayload, toolUseDisplay.showToolUse)) {
+          await controller.onToolPayload(deliveryPayload);
           return;
         }
 
@@ -233,11 +253,11 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
           if (controller.isTerminated) return;
 
           if (controller.cardMessageId) {
-            if (payload.isReasoning === true) {
-              await controller.onReasoningStream({ ...payload, text: controllerText });
+            if (deliveryPayload.isReasoning === true) {
+              await controller.onReasoningStream({ ...deliveryPayload, text: controllerText });
               return;
             }
-            await controller.onDeliver({ ...payload, text: controllerText });
+            await controller.onDeliver({ ...deliveryPayload, text: controllerText });
             return;
           }
           // Card creation failed — fall through to static delivery
@@ -417,7 +437,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
         prefixContext.onModelSelected(ctx);
       },
       disableBlockStreaming: !enableBlockStreaming,
-      ...(controller
+      ...(controller && !messageSendingHooksEnabled
         ? {
             onReasoningStream: (payload: ReplyPayload) => controller.onReasoningStream(payload),
             onPartialReply: (payload: ReplyPayload) => controller.onPartialReply(payload),
@@ -445,6 +465,11 @@ function getVisiblePayloadText(payload: ReplyPayload): string {
     return split.answerText;
   }
   return stripReasoningTags(rawText);
+}
+
+function getPayloadMediaUrls(payload: ReplyPayload): string[] {
+  if (payload.mediaUrls?.length) return payload.mediaUrls;
+  return payload.mediaUrl ? [payload.mediaUrl] : [];
 }
 
 function shouldRouteToolPayloadToCard(payload: ReplyPayload, showToolUse: boolean): boolean {

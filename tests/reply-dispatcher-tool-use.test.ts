@@ -4,6 +4,10 @@ const { replyModeState } = vi.hoisted(() => ({
   replyModeState: { mode: 'streaming' as 'streaming' | 'static' },
 }));
 
+const { messageSendingHookState } = vi.hoisted(() => ({
+  messageSendingHookState: { enabled: false },
+}));
+
 const controllerSpies = {
   ensureCardCreated: vi.fn().mockResolvedValue(undefined),
   onDeliver: vi.fn().mockResolvedValue(undefined),
@@ -75,6 +79,16 @@ vi.mock('../src/core/lark-client', () => ({
 vi.mock('../src/core/lark-logger', () => ({
   larkLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
+
+const mockApplyFeishuMessageSendingHook = vi.fn(async (params: { text: string }) => ({
+  cancelled: false,
+  text: params.text,
+}));
+vi.mock('../src/messaging/outbound/hooks', () => ({
+  applyFeishuMessageSendingHook: (params: unknown) => mockApplyFeishuMessageSendingHook(params as { text: string }),
+  hasFeishuMessageSendingHooks: () => messageSendingHookState.enabled,
+}));
+
 vi.mock('../src/messaging/outbound/send', () => ({
   sendMessageFeishu: vi.fn(),
   sendMarkdownCardFeishu: vi.fn(),
@@ -122,6 +136,7 @@ import { createFeishuReplyDispatcher } from '../src/card/reply-dispatcher';
 beforeEach(() => {
   vi.clearAllMocks();
   replyModeState.mode = 'streaming';
+  messageSendingHookState.enabled = false;
 });
 
 describe('reply-dispatcher tool_use mode', () => {
@@ -157,6 +172,7 @@ describe('reply-dispatcher tool_use mode', () => {
     expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
       text: 'Reasoning:\n_first pass_',
     });
+    expect(mockApplyFeishuMessageSendingHook).not.toHaveBeenCalled();
   });
 
   it('routes tool payloads to the controller instead of the answer text path', async () => {
@@ -180,8 +196,33 @@ describe('reply-dispatcher tool_use mode', () => {
     result.dispatcher.sendToolResult({ text: 'Read main.ts' });
     await Promise.resolve();
 
-    expect(controllerSpies.onToolPayload).toHaveBeenCalledWith({ text: 'Read main.ts' });
+    await vi.waitFor(() => {
+      expect(controllerSpies.onToolPayload).toHaveBeenCalledWith({ text: 'Read main.ts' });
+    });
     expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
+  });
+
+  it('withholds streaming previews when message_sending hooks are registered', () => {
+    messageSendingHookState.enabled = true;
+    const result = createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'on',
+        showToolUse: true,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+    expect(result.replyOptions).not.toHaveProperty('onPartialReply');
+    expect(result.replyOptions).not.toHaveProperty('onReasoningStream');
+    expect(result.replyOptions).not.toHaveProperty('onToolStart');
   });
 
   it('routes reasoning payload text through the streaming card reasoning lane', async () => {
@@ -205,10 +246,12 @@ describe('reply-dispatcher tool_use mode', () => {
     result.dispatcher.sendFinalReply({ text: 'Reasoning:\n_checking context_', isReasoning: true });
     await Promise.resolve();
 
-    expect(controllerSpies.ensureCardCreated).toHaveBeenCalled();
-    expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
-      text: 'Reasoning:\n_checking context_',
-      isReasoning: true,
+    await vi.waitFor(() => {
+      expect(controllerSpies.ensureCardCreated).toHaveBeenCalled();
+      expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
+        text: 'Reasoning:\n_checking context_',
+        isReasoning: true,
+      });
     });
     expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
   });
@@ -234,10 +277,12 @@ describe('reply-dispatcher tool_use mode', () => {
     result.dispatcher.sendFinalReply({ text: 'checking context', isReasoning: true });
     await Promise.resolve();
 
-    expect(controllerSpies.ensureCardCreated).toHaveBeenCalled();
-    expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
-      text: 'checking context',
-      isReasoning: true,
+    await vi.waitFor(() => {
+      expect(controllerSpies.ensureCardCreated).toHaveBeenCalled();
+      expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
+        text: 'checking context',
+        isReasoning: true,
+      });
     });
     expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
   });
