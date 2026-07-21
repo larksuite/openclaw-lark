@@ -61,6 +61,15 @@ vi.mock('../src/core/lark-logger', () => ({
   larkLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+const mockApplyFeishuMessageSendingHook = vi.fn(async (params: { text: string }) => ({
+  cancelled: false,
+  text: params.text,
+}));
+vi.mock('../src/messaging/outbound/hooks', () => ({
+  applyFeishuMessageSendingHook: (params: unknown) => mockApplyFeishuMessageSendingHook(params as { text: string }),
+  hasFeishuMessageSendingHooks: () => false,
+}));
+
 const mockSendMessageFeishu = vi.fn();
 const mockSendMarkdownCardFeishu = vi.fn();
 vi.mock('../src/messaging/outbound/send', () => ({
@@ -194,6 +203,56 @@ describe('reply-dispatcher media delivery', () => {
       'https://example.com/image-a.png',
       'https://example.com/image-b.png',
     ]);
+    expect(mockApplyFeishuMessageSendingHook).toHaveBeenCalledWith({
+      to: 'chat-test',
+      text: 'hello from feishu',
+      accountId: 'default',
+      mediaUrls: ['https://example.com/image-a.png', 'https://example.com/image-b.png'],
+    });
+  });
+
+  it('delivers text rewritten by the message_sending hook', async () => {
+    mockApplyFeishuMessageSendingHook.mockResolvedValueOnce({
+      cancelled: false,
+      text: 'rewritten reply',
+    });
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({ text: 'original reply' });
+
+    expect(ctx.sentText).toHaveLength(1);
+    expect((ctx.sentText[0] as { text: string }).text).toBe('rewritten reply');
+  });
+
+  it('does not expose stripped reasoning text to the message_sending hook', async () => {
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({ text: '<think>hidden reasoning</think>visible reply' });
+
+    expect(mockApplyFeishuMessageSendingHook).toHaveBeenCalledWith({
+      to: 'chat-test',
+      text: 'visible reply',
+      accountId: 'default',
+      mediaUrls: [],
+    });
+    expect((ctx.sentText[0] as { text: string }).text).toBe('visible reply');
+  });
+
+  it('skips text and media when the message_sending hook cancels delivery', async () => {
+    mockApplyFeishuMessageSendingHook.mockResolvedValueOnce({
+      cancelled: true,
+      text: 'original reply',
+    });
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({
+      text: 'original reply',
+      mediaUrl: 'https://example.com/image.png',
+    });
+
+    expect(ctx.sentText).toHaveLength(0);
+    expect(ctx.sentCards).toHaveLength(0);
+    expect(ctx.sentMedia).toHaveLength(0);
   });
 
   it('failed media send triggers staticGuard terminate', async () => {
