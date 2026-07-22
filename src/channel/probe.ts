@@ -14,10 +14,11 @@ import type { FeishuProbeResult } from './types';
  * checks to verify credentials before committing them to config.
  */
 export async function probeFeishu(credentials?: LarkClientCredentials): Promise<FeishuProbeResult> {
-  if (!credentials?.appId || !credentials?.appSecret) {
+  const keyless = credentials?.authMethod === 'private_key_jwt' && Boolean(credentials.keyRef);
+  if (!credentials?.appId || (!credentials.appSecret && !keyless)) {
     return {
       ok: false,
-      error: 'missing credentials (appId, appSecret)',
+      error: 'missing credentials (appId and authentication method)',
     };
   }
 

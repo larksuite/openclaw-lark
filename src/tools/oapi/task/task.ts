@@ -29,7 +29,6 @@ import {
   registerTool,
 } from '../helpers';
 import type { PaginatedData, TaskCreateData } from '../sdk-types';
-import { rawLarkRequest } from '../../../core/raw-request';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -763,34 +762,19 @@ export function registerFeishuTaskTaskTool(api: OpenClawPluginApi): void {
                 });
               }
 
-              const tatRes = await rawLarkRequest(
-                {
-                  brand: client.account.brand,
-                  path: '/open-apis/auth/v3/tenant_access_token/internal/',
-                  method: 'POST',
-                  body: {
-                    app_id: client.sdk.appId,
-                    app_secret: client.sdk.appSecret,
-                  },
-                },
-              );;
-              const token = (tatRes as any)?.tenant_access_token ?? "";
-
-              const res = await client.invokeByPath(
+              const res = await client.invoke(
                 'feishu_task_task.append_steps',
-                '/open-apis/task/v2/agent_task_step_info/append_task_steps',
-                {
-                  method: 'POST',
-                  as: 'tenant',
-                  body: {
-                    task_guid: p.task_guid,
-                    idempotent_key: p.idempotent_key,
-                    task_steps: p.task_steps,
-                  },
-                  headers: {
-                    'authorization': `Bearer ${token}`,
-                  },
-                },
+                (sdk) =>
+                  sdk.request({
+                    method: 'POST',
+                    url: '/open-apis/task/v2/agent_task_step_info/append_task_steps',
+                    data: {
+                      task_guid: p.task_guid,
+                      idempotent_key: p.idempotent_key,
+                      task_steps: p.task_steps,
+                    },
+                  }),
+                { as: 'tenant' },
               );
               return json(res);
             }

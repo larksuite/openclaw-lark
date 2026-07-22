@@ -32,6 +32,7 @@ import * as Lark from '@larksuiteoapi/node-sdk';
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import type { ConfiguredLarkAccount } from './types';
 import { getEnabledLarkAccounts, getLarkAccount } from './accounts';
+import { createClientAssertionProvider } from './client-assertion-provider';
 import { LarkClient, getResolvedConfig } from './lark-client';
 import { getTicket } from './lark-ticket';
 import { callWithUAT } from './uat-client';
@@ -111,7 +112,7 @@ export type InvokeByPathOptions = InvokeOptions & {
 
 export class ToolClient {
   readonly config: ClawdbotConfig;
-  /** 当前解析的账号信息（appId、appSecret 保证存在）。 */
+  /** 当前解析的账号信息（appId 与所选认证凭据保证存在）。 */
   readonly account: ConfiguredLarkAccount;
 
   /** 当前请求的用户 open_id（来自 LarkTicket，可能为 undefined）。 */
@@ -365,13 +366,21 @@ export class ToolClient {
       }
     }
 
-    // 通过 callWithUAT 执行（自动 refresh + retry）
+    // 通过 callWithUAT 执行（自动 refresh + retry）。刷新 UAT 时复用账号的
+    // client authentication：secret 账号发 client_secret，keyless 账号签
+    // private_key_jwt，不在两种认证方式之间 fallback。
+    const clientAuthentication =
+      this.account.authMethod === 'private_key_jwt'
+        ? {
+            appId: this.account.appId,
+            clientAssertionProvider: createClientAssertionProvider(this.account)!,
+          }
+        : { appId: this.account.appId, appSecret: this.account.appSecret };
     try {
       return await callWithUAT(
         {
+          ...clientAuthentication,
           userOpenId,
-          appId: this.account.appId,
-          appSecret: this.account.appSecret,
           domain: this.account.brand,
         },
         (accessToken) => fn(this.sdk, Lark.withUserAccessToken(accessToken), accessToken),
@@ -486,7 +495,7 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
     const resolved = getLarkAccount(resolveConfig, ticket.accountId);
     if (!resolved.configured) {
       throw new Error(
-        `Feishu account "${ticket.accountId}" is not configured (missing appId or appSecret). ` +
+        `Feishu account "${ticket.accountId}" is not configured (missing appId or selected authentication credential). ` +
           `Please check channels.feishu.accounts.${ticket.accountId} in your config.`,
       );
     }
@@ -503,7 +512,7 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
     const accounts = getEnabledLarkAccounts(resolveConfig);
     if (accounts.length === 0) {
       throw new Error(
-        'No enabled Feishu accounts configured. ' + 'Please add appId and appSecret in config under channels.feishu',
+        'No enabled Feishu accounts configured. Add appId plus appSecret, or private_key_jwt plus keyRef, under channels.feishu.',
       );
     }
     if (accountIndex >= accounts.length) {
@@ -511,7 +520,7 @@ export function createToolClient(config: ClawdbotConfig, accountIndex = 0): Tool
     }
     const fallback = accounts[accountIndex];
     if (!fallback.configured) {
-      throw new Error(`Account at index ${accountIndex} is not fully configured (missing appId or appSecret)`);
+      throw new Error(`Account at index ${accountIndex} is missing appId or its selected authentication credential`);
     }
     account = fallback;
   }

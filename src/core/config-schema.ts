@@ -160,6 +160,15 @@ export const FeishuGroupSchema = z.object({
 export const FeishuAccountConfigSchema = z.object({
   appId: z.string().optional(),
   appSecret: z.string().optional(),
+  // Authentication method for this account. "app_secret" (default) uses the
+  // long-lived app secret; "private_key_jwt" signs a short-lived client
+  // assertion with a non-exportable device key (keyless); see
+  // core/keyless-signer and core/client-assertion-provider.
+  authMethod: z.enum(['app_secret', 'private_key_jwt']).optional(),
+  // Device-key label the keyless signer uses to locate the key in the OS key
+  // facility (Keychain / TPM). Only meaningful when authMethod is
+  // "private_key_jwt".
+  keyRef: z.string().optional(),
   encryptKey: z.string().optional(),
   verificationToken: z.string().optional(),
   name: z.string().optional(),

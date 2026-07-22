@@ -320,7 +320,11 @@ async function checkBasicInfo(
     lines.push(t.legacyDisabled);
   }
 
-  lines.push(`${t.credentials}: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret, locale)}`);
+  lines.push(
+    account.authMethod === 'private_key_jwt'
+      ? `${t.credentials}: appId: ${account.appId}, authMethod: private_key_jwt, keyRef: ${account.keyRef}`
+      : `${t.credentials}: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret, locale)}`,
+  );
   lines.push(t.accountEnabled);
 
   // API 连通性
@@ -329,6 +333,8 @@ async function checkBasicInfo(
       accountId: account.accountId,
       appId: account.appId,
       appSecret: account.appSecret,
+      authMethod: account.authMethod,
+      keyRef: account.keyRef,
       brand: account.brand,
     });
 

@@ -25,13 +25,16 @@ import { executeAuthorize } from './oauth';
 
 const log = larkLogger('tools/oauth-batch-auth');
 
+export const FEISHU_OAUTH_BATCH_AUTH_DESCRIPTION =
+  '飞书插件自身的批量授权工具，一次性授权 openclaw-lark 插件已开通的所有用户权限。' +
+  "仅在用户明确要求插件自身'授权所有权限'、'一次性授权'时使用。" +
+  '【严格排除】用户提到 lark-cli 或 CLI 时严禁调用；必须遵循 lark-shared 授权流程并通过 exec 执行 lark-cli auth login。' +
+  '插件自身的 keyless 用户授权使用 private_key_jwt，不要求配置 app secret。';
+
 const FeishuOAuthBatchAuthSchema = Type.Object(
   {},
   {
-    description:
-      '飞书批量授权工具。一次性授权应用已开通的所有用户权限（User Access Token scope）。' +
-      "【使用场景】用户明确要求'授权所有权限'、'一次性授权完成'时使用。" +
-      '【重要】禁止主动推荐此工具，仅在用户明确要求时使用。',
+    description: FEISHU_OAUTH_BATCH_AUTH_DESCRIPTION,
   },
 );
 
@@ -45,9 +48,7 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi): void {
     {
       name: 'feishu_oauth_batch_auth',
       label: 'Feishu: OAuth Batch Authorization',
-      description:
-        '飞书批量授权工具，一次性授权应用已开通的所有用户权限。' +
-        "仅在用户明确要求'授权所有权限'、'一次性授权'时使用。",
+      description: FEISHU_OAUTH_BATCH_AUTH_DESCRIPTION,
       parameters: FeishuOAuthBatchAuthSchema,
 
       async execute(_toolCallId: string, _params: unknown) {
@@ -63,10 +64,11 @@ export function registerFeishuOAuthBatchAuthTool(api: OpenClawPluginApi): void {
           const acct = getLarkAccount(cfg, ticket.accountId);
           if (!acct.configured) {
             return json({
-              error: `账号 ${ticket.accountId} 缺少 appId 或 appSecret 配置`,
+              error: `账号 ${ticket.accountId} 缺少 appId 或所选认证方式的完整凭据`,
             });
           }
           const account = acct; // Now we know it's ConfiguredLarkAccount
+
           const { appId } = account;
 
           // 1. 查询应用已开通的 user scope

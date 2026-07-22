@@ -7,14 +7,10 @@
  * Actions:
  * - upload: Upload task attachment (tenant identity)
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
 import { StringEnum, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
-import { rawLarkRequest } from '../../../core/raw-request';
-
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -96,36 +92,16 @@ export function registerFeishuTaskAttachmentTool(api: OpenClawPluginApi): void {
                     const file = new File([fileBuffer], p.name ?? 'attachment');
                     formData.append('file', file);
 
-                    const as = 'tenant';
-
-                    const tatRes = await rawLarkRequest<{
-                        tenant_access_token?: string;
-                        [k: string]: unknown;
-                    }>({
-                        brand: client.account.brand,
-                        path: '/open-apis/auth/v3/tenant_access_token/internal/',
-                        method: 'POST',
-                        body: {
-                            app_id: client.account.appId,
-                            app_secret: client.account.appSecret,
-                        },
-                    });
-                    const token = tatRes?.tenant_access_token;
-                    if (!token) {
-                        return json({
-                            error: 'Failed to get tenant_access_token.',
-                            response: tatRes,
-                        });
-                    }
-
-                    const res = await client.invokeByPath('feishu_task_attachment.upload', resolved.path, {
-                        method: 'POST',
-                        as,
-                        body: formData,
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                        },
-                    });
+                    const res = await client.invoke(
+                        'feishu_task_attachment.upload',
+                        (sdk) =>
+                            sdk.request({
+                                method: 'POST',
+                                url: resolved.path,
+                                data: formData,
+                            }),
+                        { as: 'tenant' },
+                    );
                     return json(res);
                 } catch (err) {
                     return await handleInvokeErrorWithAutoAuth(err, cfg);

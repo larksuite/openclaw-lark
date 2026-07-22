@@ -14,7 +14,7 @@ import type { ChannelSetupDmPolicy, ChannelSetupWizardAdapter } from 'openclaw/p
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import { formatDocsLink } from 'openclaw/plugin-sdk/setup';
 import type { FeishuConfig } from '../core/types';
-import { getLarkCredentials } from '../core/accounts';
+import { getLarkAccount } from '../core/accounts';
 import { probeFeishu } from './probe';
 import {
   parseAllowFromInput,
@@ -197,7 +197,7 @@ export const feishuOnboardingAdapter: ChannelSetupWizardAdapter = {
   // -----------------------------------------------------------------------
   getStatus: async ({ cfg }) => {
     const feishuCfg = cfg.channels?.feishu as FeishuConfig | undefined;
-    const configured = Boolean(getLarkCredentials(feishuCfg));
+    const configured = getLarkAccount(cfg).configured;
 
     // Attempt a live probe when credentials are present.
     let probeResult = null;
@@ -232,17 +232,20 @@ export const feishuOnboardingAdapter: ChannelSetupWizardAdapter = {
   // -----------------------------------------------------------------------
   configure: async ({ cfg, prompter }) => {
     const feishuCfg = cfg.channels?.feishu as FeishuConfig | undefined;
-    const resolved = getLarkCredentials(feishuCfg);
+    const account = getLarkAccount(cfg);
 
     let next = cfg;
 
     // Show credential help if nothing is configured yet.
-    if (!resolved) {
+    if (!account.configured) {
       await noteFeishuCredentialHelp(prompter);
     }
 
     // --- Credential acquisition ---
-    const creds = await acquireCredentials({ cfg: next, prompter, feishuCfg });
+    const creds =
+      account.configured && account.authMethod === 'private_key_jwt'
+        ? { cfg: next, appId: null, appSecret: null }
+        : await acquireCredentials({ cfg: next, prompter, feishuCfg });
     next = creds.cfg;
 
     // --- Persist and test credentials ---

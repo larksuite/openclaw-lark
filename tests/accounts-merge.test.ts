@@ -86,6 +86,37 @@ describe('getLarkAccount – footer inheritance', () => {
   });
 });
 
+describe('getLarkAccountIds – top-level keyless default', () => {
+  it('includes default when named accounts coexist with top-level keyless credentials', () => {
+    const cfg = makeCfg({
+      appId: 'cli_keyless_default',
+      authMethod: 'private_key_jwt',
+      keyRef: 'openclaw-lark',
+      accounts: {
+        named: { appId: 'cli_named', appSecret: 'named_secret' },
+      },
+    });
+
+    expect(getLarkAccountIds(cfg)).toEqual(['default', 'named']);
+    const account = getLarkAccount(cfg, 'default');
+    expect(account.configured).toBe(true);
+    expect(account.authMethod).toBe('private_key_jwt');
+    expect(account.keyRef).toBe('openclaw-lark');
+  });
+
+  it('does not include an incomplete top-level keyless account', () => {
+    const cfg = makeCfg({
+      appId: 'cli_incomplete',
+      authMethod: 'private_key_jwt',
+      accounts: {
+        named: { appId: 'cli_named', appSecret: 'named_secret' },
+      },
+    });
+
+    expect(getLarkAccountIds(cfg)).toEqual(['named']);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Tests matching the user's real multi-account config structure
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import type { MessageDedup } from '../messaging/inbound/dedup';
 import { clearUserNameCache } from '../messaging/inbound/user-name-cache-store';
 import type { FeishuProbeResult, LarkAccount, LarkBrand } from './types';
 import { getLarkAccount } from './accounts';
+import { type ClientAssertionProvider, createClientAssertionProvider, isKeyless } from './client-assertion-provider';
 import { clearChatInfoCache, injectLarkClient } from './chat-info-cache';
 import { larkLogger } from './lark-logger';
 import { getLarkRuntime, setLarkRuntime } from './runtime-store';
@@ -64,6 +65,8 @@ export interface LarkClientCredentials {
   accountId?: string;
   appId?: string;
   appSecret?: string;
+  authMethod?: 'app_secret' | 'private_key_jwt';
+  keyRef?: string;
   brand?: LarkBrand;
 }
 
@@ -191,6 +194,8 @@ export class LarkClient {
     if (
       existing &&
       existing.account.appId === account.appId &&
+      existing.account.authMethod === account.authMethod &&
+      existing.account.keyRef === account.keyRef &&
       credentialsEqual(existing.account.appSecret, account.appSecret)
     ) {
       return existing;
@@ -218,10 +223,33 @@ export class LarkClient {
       config: {} as any,
     };
 
-    const account: LarkAccount =
-      credentials.appId && credentials.appSecret
-        ? { ...base, configured: true as const, appId: credentials.appId, appSecret: credentials.appSecret }
-        : { ...base, configured: false as const, appId: credentials.appId, appSecret: credentials.appSecret };
+    let account: LarkAccount;
+    if (credentials.appId && credentials.appSecret) {
+      // Preserve app-secret precedence when both credential forms are present.
+      account = {
+        ...base,
+        configured: true,
+        appId: credentials.appId,
+        appSecret: credentials.appSecret,
+      };
+    } else if (credentials.appId && credentials.authMethod === 'private_key_jwt' && credentials.keyRef) {
+      account = {
+        ...base,
+        configured: true,
+        authMethod: 'private_key_jwt',
+        appId: credentials.appId,
+        keyRef: credentials.keyRef,
+      };
+    } else {
+      account = {
+        ...base,
+        configured: false,
+        appId: credentials.appId,
+        appSecret: credentials.appSecret,
+        authMethod: credentials.authMethod,
+        keyRef: credentials.keyRef,
+      };
+    }
 
     return new LarkClient(account);
   }
@@ -253,10 +281,12 @@ export class LarkClient {
   /** Lazily-created Lark SDK client. */
   get sdk(): Lark.Client {
     if (!this._sdk) {
-      const { appId, appSecret } = this.requireCredentials();
+      const appId = this.requireAppId();
       this._sdk = new Lark.Client({
         appId,
-        appSecret,
+        ...(isKeyless(this.account)
+          ? { clientAssertionProvider: this.requireKeylessProvider() }
+          : { appSecret: this.requireAppSecret() }),
         appType: Lark.AppType.SelfBuild,
         domain: resolveBrand(this.account.brand),
       });
@@ -278,8 +308,8 @@ export class LarkClient {
       return this._lastProbeResult;
     }
 
-    if (!this.account.appId || !this.account.appSecret) {
-      return { ok: false, error: 'missing credentials (appId, appSecret)' };
+    if (!this.account.appId || (!isKeyless(this.account) && !this.account.appSecret)) {
+      return { ok: false, error: 'missing credentials (appId and authentication method)' };
     }
 
     try {
@@ -359,7 +389,7 @@ export class LarkClient {
     });
     dispatcher.register(handlers as any);
 
-    const { appId, appSecret } = this.requireCredentials();
+    const appId = this.requireAppId();
     // Close any existing WSClient before creating a new one to prevent
     // orphaned connections when startWS is called multiple times.
     if (this._wsClient) {
@@ -374,7 +404,9 @@ export class LarkClient {
 
     this._wsClient = new Lark.WSClient({
       appId,
-      appSecret,
+      ...(isKeyless(this.account)
+        ? { clientAssertionProvider: this.requireKeylessProvider() }
+        : { appSecret: this.requireAppSecret() }),
       domain: resolveBrand(this.account.brand),
       loggerLevel: Lark.LoggerLevel.info,
     });
@@ -429,14 +461,37 @@ export class LarkClient {
 
   // ---- Private helpers -------------------------------------------------------
 
-  /** Assert credentials exist or throw. */
-  private requireCredentials(): { appId: string; appSecret: string } {
+  /** Assert the application ID exists or throw. */
+  private requireAppId(): string {
     const appId = this.account.appId;
-    const appSecret = this.account.appSecret;
-    if (!appId || !appSecret) {
-      throw new Error(`LarkClient[${this.accountId}]: appId and appSecret are required`);
+    if (!appId) {
+      throw new Error(`LarkClient[${this.accountId}]: appId is required`);
     }
-    return { appId, appSecret };
+    return appId;
+  }
+
+  /** Assert the app-secret credential exists or throw. */
+  private requireAppSecret(): string {
+    const appSecret = this.account.appSecret;
+    if (!appSecret) {
+      throw new Error(`LarkClient[${this.accountId}]: appSecret is required`);
+    }
+    return appSecret;
+  }
+
+  /**
+   * Build the SDK client_assertion provider for a keyless account. Missing
+   * signer support is a configuration error: a keyless account must never
+   * silently fall back to app-secret authentication.
+   */
+  private requireKeylessProvider(): ClientAssertionProvider {
+    const provider = createClientAssertionProvider(this.account);
+    if (!provider) {
+      throw new Error(
+        `LarkClient[${this.accountId}]: invalid keyless account configuration; appId and keyRef are required`,
+      );
+    }
+    return provider;
   }
 
   /**

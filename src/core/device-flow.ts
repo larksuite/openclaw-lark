@@ -14,6 +14,7 @@
  */
 
 import type { LarkBrand } from './types';
+import type { ClientAssertionProvider } from './client-assertion-provider';
 import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/device-flow');
@@ -45,6 +46,26 @@ export type DeviceFlowResult =
   | { ok: false; error: DeviceFlowError; message: string };
 
 export type DeviceFlowError = 'authorization_pending' | 'slow_down' | 'access_denied' | 'expired_token';
+
+interface SecretClientAuthentication {
+  appId: string;
+  appSecret: string;
+  clientAssertionProvider?: never;
+}
+
+interface KeylessClientAuthentication {
+  appId: string;
+  appSecret?: never;
+  clientAssertionProvider: ClientAssertionProvider;
+}
+
+export type DeviceClientAuthentication = SecretClientAuthentication | KeylessClientAuthentication;
+
+const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
+
+function usesAppSecret(params: DeviceClientAuthentication): params is SecretClientAuthentication {
+  return typeof params.appSecret === 'string' && params.appSecret.length > 0;
+}
 
 // ---------------------------------------------------------------------------
 // Endpoint resolution
@@ -88,6 +109,14 @@ export function resolveOAuthEndpoints(brand: LarkBrand): {
   };
 }
 
+/**
+ * IAM client assertions use the bare Open API host as `aud`. This matches the
+ * deployed lark-cli/App Authentication JWT contract for TAT and OAuth flows.
+ */
+export function resolveClientAssertionAudience(brand: LarkBrand): string {
+  return new URL(resolveOAuthEndpoints(brand).token).host;
+}
+
 // ---------------------------------------------------------------------------
 // Step 1 – Device Authorization Request
 // ---------------------------------------------------------------------------
@@ -95,18 +124,20 @@ export function resolveOAuthEndpoints(brand: LarkBrand): {
 /**
  * Request a device authorisation code from the Feishu OAuth server.
  *
- * Uses Confidential Client authentication (HTTP Basic with appId:appSecret).
+ * Uses confidential-client authentication: HTTP Basic for app-secret accounts,
+ * or RFC 7523 private_key_jwt for keyless accounts.
  * The `offline_access` scope is automatically appended so that the token
  * response includes a refresh_token.
  */
-export async function requestDeviceAuthorization(params: {
-  appId: string;
-  appSecret: string;
-  brand: LarkBrand;
-  scope?: string;
-}): Promise<DeviceAuthResponse> {
-  const { appId, appSecret, brand } = params;
+export async function requestDeviceAuthorization(
+  params: DeviceClientAuthentication & {
+    brand: LarkBrand;
+    scope?: string;
+  },
+): Promise<DeviceAuthResponse> {
+  const { appId, brand } = params;
   const endpoints = resolveOAuthEndpoints(brand);
+  const assertionAudience = resolveClientAssertionAudience(brand);
 
   // Ensure offline_access is always requested.
   let scope = params.scope ?? '';
@@ -114,11 +145,19 @@ export async function requestDeviceAuthorization(params: {
     scope = scope ? `${scope} offline_access` : 'offline_access';
   }
 
-  const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString('base64');
-
   const body = new URLSearchParams();
   body.set('client_id', appId);
   body.set('scope', scope);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  if (usesAppSecret(params)) {
+    headers.Authorization = `Basic ${Buffer.from(`${appId}:${params.appSecret}`).toString('base64')}`;
+  } else {
+    const assertion = await params.clientAssertionProvider.retrieveToken(assertionAudience);
+    body.set('client_assertion_type', CLIENT_ASSERTION_TYPE);
+    body.set('client_assertion', assertion.value);
+  }
 
   log.info(
     `requesting device authorization (scope="${scope}") url=${endpoints.deviceAuthorization} token_url=${endpoints.token}`,
@@ -126,21 +165,21 @@ export async function requestDeviceAuthorization(params: {
 
   const resp = await feishuFetch(endpoints.deviceAuthorization, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${basicAuth}`,
-    },
+    headers,
     body: body.toString(),
   });
 
   const text = await resp.text();
-  log.info(`response status=${resp.status} body=${text.slice(0, 500)}`);
+  // A successful RFC 8628 response contains device_code and user_code. Never
+  // write the raw body to logs; status and byte length are sufficient for
+  // transport diagnostics without leaking a still-live authorization grant.
+  log.info(`response status=${resp.status} bytes=${Buffer.byteLength(text, 'utf8')}`);
 
   let data: Record<string, unknown>;
   try {
     data = JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new Error(`Device authorization failed: HTTP ${resp.status} – ${text.slice(0, 200)}`);
+    throw new Error(`Device authorization failed: HTTP ${resp.status} – response was not valid JSON`);
   }
 
   if (!resp.ok || data.error) {
@@ -189,21 +228,22 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  *
  * Pass an `AbortSignal` to cancel polling from the outside.
  */
-export async function pollDeviceToken(params: {
-  appId: string;
-  appSecret: string;
-  brand: LarkBrand;
-  deviceCode: string;
-  interval: number;
-  expiresIn: number;
-  signal?: AbortSignal;
-}): Promise<DeviceFlowResult> {
+export async function pollDeviceToken(
+  params: DeviceClientAuthentication & {
+    brand: LarkBrand;
+    deviceCode: string;
+    interval: number;
+    expiresIn: number;
+    signal?: AbortSignal;
+  },
+): Promise<DeviceFlowResult> {
   const MAX_POLL_INTERVAL = 60; // slow_down 最大间隔 60 秒
   const MAX_POLL_ATTEMPTS = 200; // 安全上限（远超设备码有效期）
 
-  const { appId, appSecret, brand, deviceCode, expiresIn, signal } = params;
+  const { appId, brand, deviceCode, expiresIn, signal } = params;
   let interval = params.interval;
   const endpoints = resolveOAuthEndpoints(brand);
+  const assertionAudience = resolveClientAssertionAudience(brand);
   const deadline = Date.now() + expiresIn * 1000;
   let attempts = 0;
 
@@ -217,15 +257,22 @@ export async function pollDeviceToken(params: {
 
     let data: Record<string, unknown>;
     try {
+      const body = new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        device_code: deviceCode,
+        client_id: appId,
+      });
+      if (usesAppSecret(params)) {
+        body.set('client_secret', params.appSecret);
+      } else {
+        const assertion = await params.clientAssertionProvider.retrieveToken(assertionAudience);
+        body.set('client_assertion_type', CLIENT_ASSERTION_TYPE);
+        body.set('client_assertion', assertion.value);
+      }
       const resp = await feishuFetch(endpoints.token, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-          device_code: deviceCode,
-          client_id: appId,
-          client_secret: appSecret,
-        }).toString(),
+        body: body.toString(),
       });
       data = (await resp.json()) as Record<string, unknown>;
     } catch (err) {

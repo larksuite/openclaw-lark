@@ -73,6 +73,12 @@ function toBrand(domain: string | undefined): LarkBrand {
   return (domain as LarkBrand) ?? 'feishu';
 }
 
+/** Whether a config fragment has a complete secret or keyless credential set. */
+function hasConfiguredCredentials(config: Partial<FeishuConfig>): boolean {
+  if (!config.appId) return false;
+  return Boolean(config.appSecret || (config.authMethod === 'private_key_jwt' && config.keyRef));
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -93,13 +99,13 @@ export function getLarkAccountIds(cfg: ClawdbotConfig): string[] {
 
   const accountIds = Object.keys(accountMap);
 
-  // 当 accounts 存在时，如果顶层也配置了 appId/appSecret（即默认机器人），
-  // 将 DEFAULT_ACCOUNT_ID 加入列表，确保顶层机器人不会被忽略。
+  // 当 accounts 存在时，如果顶层也配置了完整的 secret 或 keyless 凭证，
+  // 将 DEFAULT_ACCOUNT_ID 加入列表，确保顶层默认机器人不会被忽略。
   // 但如果 accountMap 已经包含 default，则不重复添加。
   const hasDefault = accountIds.some((id) => id.trim().toLowerCase() === DEFAULT_ACCOUNT_ID);
   if (!hasDefault) {
     const base = baseConfig(section);
-    if (base.appId && base.appSecret) {
+    if (hasConfiguredCredentials(base)) {
       return [DEFAULT_ACCOUNT_ID, ...accountIds];
     }
   }
@@ -146,21 +152,47 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
 
   const appId = merged.appId;
   const appSecret = merged.appSecret;
-  const configured = !!(appId && appSecret);
+  const authMethod = merged.authMethod;
+  const keyRef = merged.keyRef;
+  // An account is configured when it has an appId plus credentials for its auth
+  // method: an appSecret (default app_secret), or a keyRef when authMethod is
+  // private_key_jwt (keyless — the secret lives in the OS key facility).
+  const keylessConfigured = !!(appId && authMethod === 'private_key_jwt' && keyRef);
+  const secretConfigured = !!(appId && appSecret);
+  const configured = secretConfigured || keylessConfigured;
 
   // Respect explicit `enabled` when set; otherwise derive from `configured`.
   const enabled = !!(merged.enabled ?? configured);
 
   const brand: LarkBrand = toBrand(merged.domain);
 
-  if (configured) {
+  // Prefer the app-secret variant when both are present so existing secret-path
+  // behavior is unchanged; only fall to keyless when there is no appSecret.
+  if (secretConfigured) {
     return {
       accountId: requestedId,
       enabled,
       configured: true,
+      authMethod: authMethod === 'private_key_jwt' ? undefined : authMethod,
       name: merged.name ?? undefined,
       appId: appId!,
       appSecret: appSecret!,
+      encryptKey: merged.encryptKey ?? undefined,
+      verificationToken: merged.verificationToken ?? undefined,
+      brand,
+      config: merged,
+    };
+  }
+
+  if (keylessConfigured) {
+    return {
+      accountId: requestedId,
+      enabled,
+      configured: true,
+      authMethod: 'private_key_jwt',
+      name: merged.name ?? undefined,
+      appId: appId!,
+      keyRef: keyRef!,
       encryptKey: merged.encryptKey ?? undefined,
       verificationToken: merged.verificationToken ?? undefined,
       brand,
@@ -172,9 +204,11 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
     accountId: requestedId,
     enabled,
     configured: false,
+    authMethod,
     name: merged.name ?? undefined,
     appId: appId ?? undefined,
     appSecret: appSecret ?? undefined,
+    keyRef: keyRef ?? undefined,
     encryptKey: merged.encryptKey ?? undefined,
     verificationToken: merged.verificationToken ?? undefined,
     brand,

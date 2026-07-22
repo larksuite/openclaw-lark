@@ -93,18 +93,46 @@ interface LarkAccountBase {
   config: FeishuConfig;
 }
 
-/** An account with both `appId` and `appSecret` present. */
-export type ConfiguredLarkAccount = LarkAccountBase & {
+/** Authentication method for a resolved account. */
+export type LarkAuthMethod = 'app_secret' | 'private_key_jwt';
+
+/**
+ * A configured account authenticated with the long-lived app secret: both
+ * `appId` and `appSecret` are present.
+ */
+export type ConfiguredSecretLarkAccount = LarkAccountBase & {
   configured: true;
+  authMethod?: 'app_secret';
   appId: string;
   appSecret: string;
+  keyRef?: undefined;
 };
 
-/** An account that is missing `appId` and/or `appSecret`. */
+/**
+ * A configured account authenticated keyless (private_key_jwt): `appId` and a
+ * `keyRef` (device-key label) are present, and there is no `appSecret`.
+ */
+export type ConfiguredKeylessLarkAccount = LarkAccountBase & {
+  configured: true;
+  authMethod: 'private_key_jwt';
+  appId: string;
+  keyRef: string;
+  appSecret?: undefined;
+};
+
+/**
+ * A configured account: either app-secret or keyless. `configured: true`
+ * guarantees `appId`; `appSecret` is present only on the app-secret variant.
+ */
+export type ConfiguredLarkAccount = ConfiguredSecretLarkAccount | ConfiguredKeylessLarkAccount;
+
+/** An account that is not configured (missing `appId`, or credentials for its auth method). */
 export type UnconfiguredLarkAccount = LarkAccountBase & {
   configured: false;
+  authMethod?: LarkAuthMethod;
   appId?: string;
   appSecret?: string;
+  keyRef?: string;
 };
 
 /** A resolved Lark account — either fully configured or not. */

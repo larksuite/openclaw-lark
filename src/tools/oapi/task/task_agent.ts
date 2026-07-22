@@ -10,13 +10,10 @@
  *
 
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 
 import { createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
-import { rawLarkRequest } from '../../../core/raw-request';
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -76,52 +73,35 @@ export function registerFeishuTaskAgentTool(api: OpenClawPluginApi): void {
 
                     const client = toolClient();
 
-                    const tatRes = await rawLarkRequest(
-                        {
-                            brand: client.account.brand,
-                            path: '/open-apis/auth/v3/tenant_access_token/internal/',
-                            method: 'POST',
-                            body: {
-                                app_id: client.sdk.appId,
-                                app_secret: client.sdk.appSecret,
-                            },
-                        },
-                    );
-                    const token = (tatRes as any)?.tenant_access_token ?? "";
-
                     // Match openclaw-lark-task semantics:
                     // - register/update_profile use tenant identity (TAT)
-                    const as =
-                        normalizedAction === 'register' ||normalizedAction === 'update_profile'
-                            ? 'tenant'
-                            : 'user';
-
-
-
-
                     if (normalizedAction === 'update_profile') {
-                        const res = await client.invokeByPath('feishu_task_agent.update_profile', resolved.path, {
-                            method: 'POST',
-                            as,
-                            body: {
-                                profile_content: p.profile_content,
-                            },
-                            headers: {
-                                'authorization': `Bearer ${token}`,
-                            },
-                        });
+                        const res = await client.invoke(
+                            'feishu_task_agent.update_profile',
+                            (sdk) =>
+                                sdk.request({
+                                    method: 'POST',
+                                    url: resolved.path,
+                                    data: {
+                                        profile_content: p.profile_content,
+                                    },
+                                }),
+                            { as: 'tenant' },
+                        );
                         return json(res);
                     }
 
                     // register
                     if (normalizedAction === 'register') {
-                        const res = await client.invokeByPath('feishu_task_agent.register', resolved.path, {
-                            method: 'POST',
-                            as,
-                            headers: {
-                                'authorization': `Bearer ${token}`,
-                            },
-                        });
+                        const res = await client.invoke(
+                            'feishu_task_agent.register',
+                            (sdk) =>
+                                sdk.request({
+                                    method: 'POST',
+                                    url: resolved.path,
+                                }),
+                            { as: 'tenant' },
+                        );
                         return json(res);
                     }
                     return json({

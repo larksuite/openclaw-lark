@@ -10,6 +10,7 @@
  */
 
 import type { LarkBrand } from './types';
+import type { DeviceClientAuthentication } from './device-flow';
 import {
   type StoredUAToken,
   getStoredToken,
@@ -18,7 +19,7 @@ import {
   setStoredToken,
   tokenStatus,
 } from './token-store';
-import { resolveOAuthEndpoints } from './device-flow';
+import { resolveClientAssertionAudience, resolveOAuthEndpoints } from './device-flow';
 import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/uat-client');
@@ -32,12 +33,12 @@ export { NeedAuthorizationError };
 // Types
 // ---------------------------------------------------------------------------
 
-export interface UATCallOptions {
+export type UATCallOptions = DeviceClientAuthentication & {
   userOpenId: string;
-  appId: string;
-  appSecret: string;
   domain: LarkBrand;
-}
+};
+
+const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
 
 export interface UATStatus {
   authorized: boolean;
@@ -75,18 +76,25 @@ async function doRefreshToken(opts: UATCallOptions, stored: StoredUAToken): Prom
   }
 
   const endpoints = resolveOAuthEndpoints(opts.domain);
-  const requestBody = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: stored.refreshToken,
-    client_id: opts.appId,
-    client_secret: opts.appSecret,
-  }).toString();
+  const assertionAudience = resolveClientAssertionAudience(opts.domain);
 
   const callEndpoint = async () => {
+    const requestBody = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: stored.refreshToken,
+      client_id: opts.appId,
+    });
+    if (opts.clientAssertionProvider) {
+      const assertion = await opts.clientAssertionProvider.retrieveToken(assertionAudience);
+      requestBody.set('client_assertion_type', CLIENT_ASSERTION_TYPE);
+      requestBody.set('client_assertion', assertion.value);
+    } else {
+      requestBody.set('client_secret', opts.appSecret);
+    }
     const resp = await feishuFetch(endpoints.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: requestBody,
+      body: requestBody.toString(),
     });
     return (await resp.json()) as Record<string, unknown>;
   };

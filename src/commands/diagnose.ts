@@ -184,8 +184,10 @@ async function diagnoseAccount(account: LarkAccount): Promise<AccountDiagResult>
     name: '凭证完整性',
     status: account.configured ? 'pass' : 'fail',
     message: account.configured
-      ? `appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret)}`
-      : '缺少 appId 或 appSecret',
+      ? account.authMethod === 'private_key_jwt'
+        ? `appId: ${account.appId}, authMethod: private_key_jwt, keyRef: ${account.keyRef}`
+        : `appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret)}`
+      : '缺少完整的 app_secret 或 private_key_jwt 凭证',
   });
 
   // A2: Enabled
@@ -195,7 +197,7 @@ async function diagnoseAccount(account: LarkAccount): Promise<AccountDiagResult>
     message: account.enabled ? '已启用' : '已禁用',
   });
 
-  if (!account.configured || !account.appId || !account.appSecret) {
+  if (!account.configured || !account.appId) {
     checks.push({
       name: 'API 连通性',
       status: 'skip',
@@ -210,6 +212,8 @@ async function diagnoseAccount(account: LarkAccount): Promise<AccountDiagResult>
       accountId: account.accountId,
       appId: account.appId,
       appSecret: account.appSecret,
+      authMethod: account.authMethod,
+      keyRef: account.keyRef,
       brand: account.brand,
     });
 

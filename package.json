@@ -41,11 +41,18 @@
     "format:check": "prettier --check src/**/*.ts"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.64.0",
+    "@larksuiteoapi/node-sdk": "^1.71.1",
     "@sinclair/typebox": "0.34.49",
     "image-size": "^2.0.2",
     "undici-types": "^8.1.0",
     "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@larksuite/lark-keyless-signer-darwin-arm64": "^1.0.0",
+    "@larksuite/lark-keyless-signer-darwin-x64": "^1.0.0",
+    "@larksuite/lark-keyless-signer-linux-arm64": "^1.0.0",
+    "@larksuite/lark-keyless-signer-linux-x64": "^1.0.0",
+    "@larksuite/lark-keyless-signer-win32-x64": "^1.0.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.5.4"
@@ -93,7 +100,14 @@
     "install": {
       "npmSpec": "@larksuite/openclaw-lark",
       "localPath": "extensions/feishu",
-      "defaultChoice": "npm"
+      "defaultChoice": "npm",
+      "requiredPlatformPackages": [
+        "@larksuite/lark-keyless-signer-darwin-arm64",
+        "@larksuite/lark-keyless-signer-darwin-x64",
+        "@larksuite/lark-keyless-signer-linux-arm64",
+        "@larksuite/lark-keyless-signer-linux-x64",
+        "@larksuite/lark-keyless-signer-win32-x64"
+      ]
     }
   }
 }

@@ -52,7 +52,7 @@ description: |
   - 插件版本
 
 - **账号信息**：
-  - 凭证完整性（appId, appSecret 掩码）
+  - 凭证完整性（app_secret 显示 appId 与掩码；private_key_jwt 显示 appId 与 keyRef）
   - 账户启用状态
   - API 连通性测试
   - Bot 信息（名称和 openId）

@@ -20,6 +20,7 @@ import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { Type } from '@sinclair/typebox';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { getLarkAccount } from '../core/accounts';
+import { createClientAssertionProvider } from '../core/client-assertion-provider';
 import { OwnerAccessDeniedError, assertOwnerAccessStrict } from '../core/owner-policy';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
@@ -168,7 +169,7 @@ export function registerFeishuOAuthTool(api: OpenClawPluginApi): void {
         const acct = getLarkAccount(cfg, ticket.accountId);
         if (!acct.configured) {
           return json({
-            error: `账号 ${ticket.accountId} 缺少 appId 或 appSecret 配置`,
+            error: `账号 ${ticket.accountId} 缺少 appId 或所选认证方式的完整凭据`,
           });
         }
         const account = acct; // Now we know it's ConfiguredLarkAccount
@@ -273,7 +274,11 @@ export async function executeAuthorize(
     cfg,
     ticket,
   } = params;
-  const { appId, appSecret, brand, accountId } = account;
+  const { appId, brand, accountId } = account;
+  const clientAuthentication =
+    account.authMethod === 'private_key_jwt'
+      ? { appId, clientAssertionProvider: createClientAssertionProvider(account)! }
+      : { appId, appSecret: account.appSecret };
 
   // 0. Check if the user is the app owner (fail-close: 安全优先).
   const sdk = LarkClient.fromAccount(account).sdk;
@@ -431,8 +436,7 @@ export async function executeAuthorize(
 
   // 3. Request device authorisation.
   const deviceAuth = await requestDeviceAuthorization({
-    appId,
-    appSecret,
+    ...clientAuthentication,
     brand,
     scope: filteredScope,
   });
@@ -532,8 +536,7 @@ export async function executeAuthorize(
   let pendingFlowDelete = false;
   // Fire-and-forget – polling happens asynchronously.
   pollDeviceToken({
-    appId,
-    appSecret,
+    ...clientAuthentication,
     brand,
     deviceCode: deviceAuth.deviceCode,
     interval: deviceAuth.interval,

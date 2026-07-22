@@ -116,7 +116,7 @@ export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): Cl
 
     if (accounts.length === 0) {
       throw new Error(
-        'No enabled Feishu accounts configured. ' + 'Please add appId and appSecret in config under channels.feishu',
+        'No enabled Feishu accounts configured. Add appId plus appSecret, or private_key_jwt plus keyRef, under channels.feishu.',
       );
     }
 
@@ -163,7 +163,7 @@ export function getFirstAccount(config: ClawdbotConfig): LarkAccount {
 
   if (accounts.length === 0) {
     throw new Error(
-      'No enabled Feishu accounts configured. ' + 'Please add appId and appSecret in config under channels.feishu',
+      'No enabled Feishu accounts configured. Add appId plus appSecret, or private_key_jwt plus keyRef, under channels.feishu.',
     );
   }
 
