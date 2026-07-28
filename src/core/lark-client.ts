@@ -28,6 +28,14 @@ import { getUserAgent } from './version';
 
 const log = larkLogger('core/lark-client');
 
+/**
+ * Liveness watchdog for the WebSocket long connection (seconds). The Feishu
+ * server pushes a 120s ping cadence via pullConnectConfig, so 150s = one full
+ * ping interval + 30s grace margin. Detects silently half-open connections
+ * (NAT / TUN / middlebox drops) within ~2.5–4.5 minutes instead of never.
+ */
+const WS_PING_TIMEOUT_SEC = 150;
+
 // ---------------------------------------------------------------------------
 // Inject User-Agent into all Feishu SDK requests
 // ---------------------------------------------------------------------------
@@ -377,6 +385,15 @@ export class LarkClient {
       appSecret,
       domain: resolveBrand(this.account.brand),
       loggerLevel: Lark.LoggerLevel.info,
+      // Enable the SDK liveness watchdog: the server pushes a 120s ping
+      // cadence, so allow one full ping interval plus a grace margin. If no
+      // inbound frame arrives within 150s of a ping, the connection is
+      // presumed half-open (e.g. silently dropped by NAT / TUN / middlebox)
+      // and terminated, which drives the standard auto-reconnect flow.
+      // Without this the watchdog defaults to 0 (disabled): a silently dead
+      // connection is never detected and events stop arriving until the
+      // whole gateway process is restarted.
+      wsConfig: { pingTimeout: WS_PING_TIMEOUT_SEC },
     });
 
     // SDK 的 handleEventData 只处理 type="event"，card action 回调是 type="card" 会被丢弃。
