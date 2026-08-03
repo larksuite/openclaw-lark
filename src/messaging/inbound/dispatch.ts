@@ -386,8 +386,9 @@ export async function dispatchToAgent(params: {
     dc.account.config?.replyInThread;
   const routing = await resolveFeishuReplyRouting(dc, { replyInThreadConfig });
 
-  // 1b. Resolve thread session isolation (async: may query group info API)
-  if (dc.isThread && dc.ctx.threadId) {
+  // 1b. 解析普通线程会话隔离（异步，可能查询群信息 API）。ACP 已绑定的
+  // 原生线程已经在 dc.route 中有目标 session，不能再被派生线程 key 覆盖。
+  if (dc.isThread && dc.ctx.threadId && !dc.runtimeBindingId) {
     dc.threadSessionKey = await resolveThreadSessionKey({
       accountScopedCfg: dc.accountScopedCfg,
       account: dc.account,

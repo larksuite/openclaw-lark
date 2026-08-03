@@ -146,6 +146,12 @@ export const feishuPlugin: ChannelPlugin<LarkAccount> = {
     resolveToolPolicy: resolveFeishuGroupToolPolicy,
   },
 
+  // ACP 绑定当前飞书私聊、群聊或原生线程；运行时适配器由对应账号的
+  // monitor 注册。
+  conversationBindings: {
+    defaultTopLevelPlacement: 'current',
+  },
+
   // -------------------------------------------------------------------------
   // Reload
   // -------------------------------------------------------------------------

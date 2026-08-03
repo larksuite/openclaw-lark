@@ -10,7 +10,8 @@
  */
 
 import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
-import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk/routing';
+import { getSessionBindingService } from 'openclaw/plugin-sdk/conversation-runtime';
+import { deriveLastRoutePolicy, resolveAgentIdFromSessionKey, resolveThreadSessionKeys } from 'openclaw/plugin-sdk/routing';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { LarkClient } from '../../core/lark-client';
@@ -40,6 +41,8 @@ export interface DispatchContext {
   envelopeFrom: string;
   envelopeOptions: ReturnType<typeof LarkClient.runtime.channel.reply.resolveEnvelopeFormatOptions>;
   route: ReturnType<typeof LarkClient.runtime.channel.routing.resolveAgentRoute>;
+  /** 此入站会话命中的运行时 ACP/session 绑定。 */
+  runtimeBindingId?: string;
   threadSessionKey?: string;
   commandAuthorized?: boolean;
 }
@@ -102,7 +105,7 @@ export function buildDispatchContext(params: {
   // ---- Route resolution ----
   // Comment targets use the comment target as the peer ID so each
   // comment thread gets its own session key.
-  const route = core.channel.routing.resolveAgentRoute({
+  let route = core.channel.routing.resolveAgentRoute({
     cfg: accountScopedCfg,
     channel: 'feishu',
     accountId: account.accountId,
@@ -111,8 +114,41 @@ export function buildDispatchContext(params: {
       : {
           kind: isGroup ? ('group' as const) : ('direct' as const),
           id: isGroup ? ctx.chatId : ctx.senderId,
-        },
+      },
   });
+
+  // ACP 命令绑定规范化后的原生会话 ID：私聊为 `user:<open_id>`，群聊为
+  // 原始 chat ID，群线程为原生 thread ID。使用 monitor 注册适配器时的同一
+  // account ID；命中后替换普通路由。
+  const conversationId = isThread ? ctx.threadId : isGroup ? ctx.chatId : `user:${ctx.senderId}`;
+  const parentConversationId = isThread ? `chat:${ctx.chatId}` : undefined;
+  let runtimeBindingId: string | undefined;
+
+  if (conversationId) {
+    const binding = getSessionBindingService().resolveByConversation({
+      channel: 'feishu',
+      accountId: account.accountId,
+      conversationId,
+      ...(parentConversationId ? { parentConversationId } : {}),
+    });
+    const boundSessionKey = binding?.targetSessionKey.trim();
+
+    if (binding && boundSessionKey) {
+      route = {
+        ...route,
+        sessionKey: boundSessionKey,
+        agentId: resolveAgentIdFromSessionKey(boundSessionKey) || route.agentId,
+        lastRoutePolicy: deriveLastRoutePolicy({
+          sessionKey: boundSessionKey,
+          mainSessionKey: route.mainSessionKey,
+        }),
+        matchedBy: 'binding.channel',
+      };
+      runtimeBindingId = binding.bindingId;
+      getSessionBindingService().touch(binding.bindingId);
+      log(`feishu[${account.accountId}]: routed via bound conversation ${conversationId} -> ${boundSessionKey}`);
+    }
+  }
 
   // ---- System event ----
   const sender = ctx.senderName ? `${ctx.senderName} (${ctx.senderId})` : ctx.senderId;
@@ -149,6 +185,7 @@ export function buildDispatchContext(params: {
     envelopeFrom,
     envelopeOptions,
     route,
+    runtimeBindingId,
     threadSessionKey: undefined,
     commandAuthorized: params.commandAuthorized,
   };
