@@ -16,6 +16,7 @@ import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { drainShutdownHooks } from '../core/shutdown-hooks';
 import { MessageDedup } from '../messaging/inbound/dedup';
+import { createFeishuThreadBindingManager } from './thread-bindings';
 import type { MonitorContext, MonitorFeishuOpts } from './types';
 import {
   handleBotMembershipEvent,
@@ -94,33 +95,45 @@ async function monitorSingleAccount(params: {
     error,
   };
 
-  await lark.startWS({
-    handlers: {
-      'im.message.receive_v1': (data) => handleMessageEvent(ctx, data),
-      'im.message.message_read_v1': async () => {},
-      'im.message.reaction.created_v1': (data) => handleReactionEvent(ctx, data),
-      // These events are expected in normal usage but do not affect the
-      // plugin's current behavior. Register no-op handlers to avoid SDK
-      // warnings about missing handlers.
-      'im.message.reaction.deleted_v1': async () => {},
-      'im.chat.access_event.bot_p2p_chat_entered_v1': async () => {},
-      'im.chat.member.bot.added_v1': (data) => handleBotMembershipEvent(ctx, data, 'added'),
-      'im.chat.member.bot.deleted_v1': (data) => handleBotMembershipEvent(ctx, data, 'removed'),
-      'vc.bot.meeting_invited_v1': (data) => handleVcMeetingInvitedEvent(ctx, data),
-      // Drive comment event — fires when a user adds a comment or reply on a document.
-      'drive.notice.comment_add_v1': (data) => handleCommentEvent(ctx, data),
-      // 飞书 SDK EventDispatcher.register 不支持带返回值的处理器，此处 as any 是 SDK 类型限制的变通
-      'card.action.trigger': ((data: unknown) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        handleCardActionEvent(ctx, data)) as any,
-    },
-    abortSignal,
+  // 建立连接前注册，确保 WebSocket 就绪后立刻收到的 ACP 命令也能绑定此
+  // 账号的当前会话。
+  const threadBindingManager = createFeishuThreadBindingManager({
+    accountId,
+    cfg: params.cfg,
   });
+  log(`feishu[${accountId}]: ACP session binding adapter registered`);
 
-  // startWS resolves when abortSignal fires — probe result is logged inside startWS.
-  log(`feishu[${accountId}]: bot open_id resolved: ${lark.botOpenId ?? 'unknown'}`);
-  log(`feishu[${accountId}]: WebSocket client started`);
-  mlog.info(`websocket started for account ${accountId}`);
+  try {
+    await lark.startWS({
+      handlers: {
+        'im.message.receive_v1': (data) => handleMessageEvent(ctx, data),
+        'im.message.message_read_v1': async () => {},
+        'im.message.reaction.created_v1': (data) => handleReactionEvent(ctx, data),
+        // These events are expected in normal usage but do not affect the
+        // plugin's current behavior. Register no-op handlers to avoid SDK
+        // warnings about missing handlers.
+        'im.message.reaction.deleted_v1': async () => {},
+        'im.chat.access_event.bot_p2p_chat_entered_v1': async () => {},
+        'im.chat.member.bot.added_v1': (data) => handleBotMembershipEvent(ctx, data, 'added'),
+        'im.chat.member.bot.deleted_v1': (data) => handleBotMembershipEvent(ctx, data, 'removed'),
+        'vc.bot.meeting_invited_v1': (data) => handleVcMeetingInvitedEvent(ctx, data),
+        // Drive comment event — fires when a user adds a comment or reply on a document.
+        'drive.notice.comment_add_v1': (data) => handleCommentEvent(ctx, data),
+        // 飞书 SDK EventDispatcher.register 不支持带返回值的处理器，此处 as any 是 SDK 类型限制的变通
+        'card.action.trigger': ((data: unknown) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          handleCardActionEvent(ctx, data)) as any,
+      },
+      abortSignal,
+    });
+
+    // startWS resolves when abortSignal fires — probe result is logged inside startWS.
+    log(`feishu[${accountId}]: bot open_id resolved: ${lark.botOpenId ?? 'unknown'}`);
+    log(`feishu[${accountId}]: WebSocket client started`);
+    mlog.info(`websocket started for account ${accountId}`);
+  } finally {
+    threadBindingManager.stop();
+  }
 }
 
 // ---------------------------------------------------------------------------
