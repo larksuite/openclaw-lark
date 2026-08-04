@@ -13,8 +13,19 @@ import { clearPluginInteractiveHandlers, registerPluginInteractiveHandler } from
 // Module mocks (hoisted)
 // ---------------------------------------------------------------------------
 
+const mockLog = vi.hoisted(() => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 vi.mock('../src/core/lark-logger', () => ({
-  larkLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  larkLogger: () => mockLog,
+}));
+
+const mockAbortAgentHarnessRun = vi.fn();
+vi.mock('openclaw/plugin-sdk/agent-harness-runtime', () => ({
+  abortAgentHarnessRun: (...args: unknown[]) => mockAbortAgentHarnessRun(...args),
 }));
 
 const mockCreateCardEntity = vi.fn();
@@ -70,6 +81,17 @@ const TEST_CHAT_ID = 'oc_test123';
 const TEST_SENDER = 'ou_sender1';
 const TEST_MSG_ID = 'msg_test1';
 const PENDING_QUESTION_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_QUESTIONS = [
+  {
+    question: '你喜欢什么水果?',
+    header: '水果',
+    options: [
+      { label: '苹果', description: 'Apple' },
+      { label: '香蕉', description: 'Banana' },
+    ],
+    multiSelect: false,
+  },
+];
 
 function createMockCfg() {
   return {} as any;
@@ -87,6 +109,31 @@ function createMockMonitorContext(): MonitorContext {
   };
 }
 
+function createRegisteredTool(sessionId: string | undefined) {
+  let registration: any;
+  const mockApi = {
+    config: createMockCfg(),
+    registerTool: (toolOrFactory: any) => {
+      registration = toolOrFactory;
+    },
+    logger: { debug: vi.fn() },
+  };
+  registerAskUserQuestionTool(mockApi as any);
+  return typeof registration === 'function' ? registration({ sessionId }) : registration;
+}
+
+function prepareSuccessfulCardDelivery(): void {
+  mockGetTicket.mockReturnValue({
+    chatId: TEST_CHAT_ID,
+    accountId: TEST_ACCOUNT_ID,
+    senderOpenId: TEST_SENDER,
+    messageId: TEST_MSG_ID,
+    chatType: 'p2p',
+  });
+  mockCreateCardEntity.mockResolvedValue('card_test_id');
+  mockSendCardByCardId.mockResolvedValue(undefined);
+}
+
 /**
  * Seed a pending question by calling the tool's execute().
  * Returns the questionId that was generated.
@@ -101,41 +148,11 @@ async function seedPendingQuestion(opts?: {
     selectStyle?: 'dropdown' | 'checkbox';
   }>;
 }): Promise<string> {
-  const cfg = createMockCfg();
-  const questions = opts?.questions ?? [
-    {
-      question: '你喜欢什么水果?',
-      header: '水果',
-      options: [
-        { label: '苹果', description: 'Apple' },
-        { label: '香蕉', description: 'Banana' },
-      ],
-      multiSelect: false,
-    },
-  ];
+  const questions = opts?.questions ?? DEFAULT_QUESTIONS;
 
-  mockGetTicket.mockReturnValue({
-    chatId: TEST_CHAT_ID,
-    accountId: TEST_ACCOUNT_ID,
-    senderOpenId: TEST_SENDER,
-    messageId: TEST_MSG_ID,
-    chatType: 'p2p',
-  });
-  mockCreateCardEntity.mockResolvedValue('card_test_id');
-  mockSendCardByCardId.mockResolvedValue(undefined);
+  prepareSuccessfulCardDelivery();
 
-  // Register and invoke the tool
-  const registeredTools: Record<string, any> = {};
-  const mockApi = {
-    config: cfg,
-    registerTool: (def: any) => {
-      registeredTools[def.name] = def;
-    },
-    logger: { debug: vi.fn() },
-  };
-  registerAskUserQuestionTool(mockApi as any);
-
-  const tool = registeredTools['feishu_ask_user_question'];
+  const tool = createRegisteredTool('session-seed-pending-question');
   const result = await tool.execute('call-1', { questions });
   const parsed = JSON.parse(result.content[0].text);
 
@@ -164,6 +181,7 @@ function createFormSubmitEvent(questionId: string, formValue: Record<string, unk
 describe('AskUserQuestion card callback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAbortAgentHarnessRun.mockReturnValue(true);
     clearPluginInteractiveHandlers();
     vi.useFakeTimers();
   });
@@ -171,6 +189,65 @@ describe('AskUserQuestion card callback', () => {
   afterEach(() => {
     clearPluginInteractiveHandlers();
     vi.useRealTimers();
+  });
+
+  describe('tool run suspension', () => {
+    it('aborts the active run on the next event-loop turn after returning pending', async () => {
+      prepareSuccessfulCardDelivery();
+      const tool = createRegisteredTool('session-active-1');
+
+      const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
+      try {
+        expect(JSON.parse(result.content[0].text).status).toBe('pending');
+        expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockAbortAgentHarnessRun).toHaveBeenCalledOnce();
+        expect(mockAbortAgentHarnessRun).toHaveBeenCalledWith('session-active-1');
+      } finally {
+        await vi.advanceTimersByTimeAsync(PENDING_QUESTION_TTL_MS);
+      }
+    });
+
+    it('fails before creating a card when the runtime session id is absent', async () => {
+      prepareSuccessfulCardDelivery();
+      const tool = createRegisteredTool(undefined);
+
+      const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
+      try {
+        expect(result.isError).toBe(true);
+        expect(mockCreateCardEntity).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
+      } finally {
+        await vi.advanceTimersByTimeAsync(PENDING_QUESTION_TTL_MS);
+      }
+    });
+
+    it('does not abort when card creation fails', async () => {
+      prepareSuccessfulCardDelivery();
+      mockCreateCardEntity.mockRejectedValueOnce(new Error('create failed'));
+      const tool = createRegisteredTool('session-create-failure');
+
+      const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
+
+      expect(result.isError).toBe(true);
+      expect(mockSendCardByCardId).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
+    });
+
+    it('does not abort when card delivery fails', async () => {
+      prepareSuccessfulCardDelivery();
+      mockSendCardByCardId.mockRejectedValueOnce(new Error('send failed'));
+      const tool = createRegisteredTool('session-send-failure');
+
+      const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
+
+      expect(result.isError).toBe(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleAskUserAction immediate feedback', () => {

@@ -22,6 +22,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import { abortAgentHarnessRun } from 'openclaw/plugin-sdk/agent-harness-runtime';
+import type { OpenClawPluginToolContext } from 'openclaw/plugin-sdk/plugin-entry';
 import { Type } from '@sinclair/typebox';
 import { getTicket, withTicket } from '../core/lark-ticket';
 import { resolveCardCallbackOperatorId } from '../core/card-action-operator';
@@ -998,7 +1000,7 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
 
   const cfg = api.config;
 
-  api.registerTool({
+  api.registerTool((ctx: OpenClawPluginToolContext) => ({
     name: toolName,
     label: 'Ask User Question',
     description:
@@ -1011,6 +1013,11 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
     parameters: AskUserQuestionSchema,
 
     async execute(_toolCallId: string, params: unknown) {
+      const sessionId = ctx.sessionId?.trim();
+      if (!sessionId) {
+        return formatToolError('AskUserQuestion requires an active OpenClaw session');
+      }
+
       const { questions } = params as { questions: QuestionItem[] };
 
       const ticket = getTicket();
@@ -1073,7 +1080,7 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
 
       // 3. Return immediately — answers will arrive via synthetic message
       log.info(`question ${questionId} card sent, returning pending status`);
-      return formatToolResult({
+      const result = formatToolResult({
         status: 'pending',
         questionId,
         message:
@@ -1081,8 +1088,20 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
           'in this conversation. Do NOT call this tool again for the same question — just wait ' +
           'for the response message.',
       });
+
+      setImmediate(() => {
+        try {
+          if (!abortAgentHarnessRun(sessionId)) {
+            log.error(`failed to abort active Agent Run: session=${sessionId}, reason=no_active_run`);
+          }
+        } catch (err) {
+          log.error(`failed to abort active Agent Run: session=${sessionId}, error=${err}`);
+        }
+      });
+
+      return result;
     },
-  });
+  }));
 
   api.logger.debug?.(`${toolName}: registered tool`);
 }
