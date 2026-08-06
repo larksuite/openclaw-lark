@@ -1049,7 +1049,7 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
       }
 
       try {
-        await sendCardByCardId({
+        const { messageId } = await sendCardByCardId({
           cfg,
           to: chatId,
           cardId,
@@ -1057,6 +1057,9 @@ export function registerAskUserQuestionTool(api: OpenClawPluginApi): void {
           replyInThread: Boolean(threadId),
           accountId,
         });
+        if (!messageId.trim()) {
+          throw new Error('no message_id returned');
+        }
       } catch (err) {
         log.error(`failed to send card: ${err}`);
         return formatToolError(`Failed to send question card: ${err}`);

@@ -131,7 +131,10 @@ function prepareSuccessfulCardDelivery(): void {
     chatType: 'p2p',
   });
   mockCreateCardEntity.mockResolvedValue('card_test_id');
-  mockSendCardByCardId.mockResolvedValue(undefined);
+  mockSendCardByCardId.mockResolvedValue({
+    messageId: 'om_question_card',
+    chatId: TEST_CHAT_ID,
+  });
 }
 
 /**
@@ -237,10 +240,26 @@ describe('AskUserQuestion card callback', () => {
       expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
     });
 
-    it('does not abort when card delivery fails', async () => {
+    it('does not abort when card delivery rejects a business failure', async () => {
       prepareSuccessfulCardDelivery();
-      mockSendCardByCardId.mockRejectedValueOnce(new Error('send failed'));
+      mockSendCardByCardId.mockRejectedValueOnce(
+        Object.assign(new Error('[feishu-send] im.message.reply: code=230001, msg=business rejected'), {
+          code: 230001,
+        }),
+      );
       const tool = createRegisteredTool('session-send-failure');
+
+      const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
+
+      expect(result.isError).toBe(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockAbortAgentHarnessRun).not.toHaveBeenCalled();
+    });
+
+    it('does not store pending state or abort when card delivery returns no message id', async () => {
+      prepareSuccessfulCardDelivery();
+      mockSendCardByCardId.mockResolvedValueOnce({ messageId: '', chatId: TEST_CHAT_ID });
+      const tool = createRegisteredTool('session-missing-message-id');
 
       const result = await tool.execute('call-1', { questions: DEFAULT_QUESTIONS });
 

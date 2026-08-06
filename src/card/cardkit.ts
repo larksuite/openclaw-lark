@@ -31,6 +31,15 @@ interface CardKitResponse {
   [key: string]: unknown;
 }
 
+interface ImMessageResponse {
+  code?: number;
+  msg?: string;
+  data?: {
+    message_id?: string;
+    chat_id?: string;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -54,6 +63,29 @@ function logCardKitResponse(params: { resp: CardKitResponse; api: string; contex
     });
     throw new CardKitApiError({ api, code, msg: msg ?? '', context });
   }
+}
+
+function requireSentMessage(response: ImMessageResponse, api: string): FeishuSendResult {
+  const { code, msg } = response;
+  if (code !== undefined && code !== 0) {
+    const error = new Error(`[feishu-send] ${api}: code=${code}, msg=${msg ?? 'unknown error'}`) as Error & {
+      code: number;
+      msg?: string;
+    };
+    error.code = code;
+    error.msg = msg;
+    throw error;
+  }
+
+  const messageId = response.data?.message_id?.trim();
+  if (!messageId) {
+    throw new Error(`[feishu-send] ${api}: no message_id returned`);
+  }
+
+  return {
+    messageId,
+    chatId: response.data?.chat_id ?? '',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -202,23 +234,21 @@ export async function sendCardByCardId(params: {
   if (replyToMessageId) {
     // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
     const normalizedId = normalizeMessageId(replyToMessageId);
-    const response = await runWithMessageUnavailableGuard({
+    return runWithMessageUnavailableGuard({
       messageId: normalizedId,
       operation: 'im.message.reply(interactive.cardkit)',
-      fn: () =>
-        client.im.message.reply({
+      fn: async () => {
+        const response = await client.im.message.reply({
           path: { message_id: normalizedId! },
           data: {
             content: contentPayload,
             msg_type: 'interactive',
             reply_in_thread: replyInThread,
           },
-        }),
+        });
+        return requireSentMessage(response, 'im.message.reply(interactive.cardkit)');
+      },
     });
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
   }
 
   const target = normalizeFeishuTarget(to);
@@ -238,10 +268,7 @@ export async function sendCardByCardId(params: {
     },
   });
 
-  return {
-    messageId: response?.data?.message_id ?? '',
-    chatId: response?.data?.chat_id ?? '',
-  };
+  return requireSentMessage(response, 'im.message.create(interactive.cardkit)');
 }
 
 /**
