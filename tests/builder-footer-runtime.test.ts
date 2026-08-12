@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildCardContent, compactNumber, formatFooterRuntimeSegments } from '../src/card/builder';
+import { buildCardContent, buildStreamingPreAnswerCard, compactNumber, formatFooterRuntimeSegments } from '../src/card/builder';
 import type { ToolUseDisplayStep } from '../src/card/tool-use-display';
 
 // ---------------------------------------------------------------------------
@@ -19,6 +19,18 @@ describe('compactNumber', () => {
     expect(compactNumber(100_000)).toBe('100k');
     expect(compactNumber(1_000_000)).toBe('1.0m');
     expect(compactNumber(123_456_789)).toBe('123m');
+  });
+});
+
+describe('buildStreamingPreAnswerCard', () => {
+  it('renders commentary while tool execution is still in progress', () => {
+    const card = buildStreamingPreAnswerCard({
+      text: 'I am checking the repository state.',
+      showToolUse: true,
+    }) as { body: { elements: Array<Record<string, unknown>> } };
+
+    const streamingElement = card.body.elements.find((element) => element.element_id === 'streaming_content');
+    expect(streamingElement?.content).toBe('I am checking the repository state.');
   });
 });
 

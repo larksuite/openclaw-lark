@@ -8,6 +8,7 @@ const controllerSpies = {
   ensureCardCreated: vi.fn().mockResolvedValue(undefined),
   onDeliver: vi.fn().mockResolvedValue(undefined),
   onReasoningStream: vi.fn().mockResolvedValue(undefined),
+  onCommentaryProgress: vi.fn().mockResolvedValue(undefined),
   onToolPayload: vi.fn().mockResolvedValue(undefined),
   onIdle: vi.fn().mockResolvedValue(undefined),
   abortCard: vi.fn().mockResolvedValue(undefined),
@@ -102,6 +103,7 @@ vi.mock('../src/card/streaming-card-controller', () => ({
     ensureCardCreated = controllerSpies.ensureCardCreated;
     onDeliver = controllerSpies.onDeliver;
     onReasoningStream = controllerSpies.onReasoningStream;
+    onCommentaryProgress = controllerSpies.onCommentaryProgress;
     onToolPayload = controllerSpies.onToolPayload;
     onIdle = controllerSpies.onIdle;
     abortCard = controllerSpies.abortCard;
@@ -125,6 +127,41 @@ beforeEach(() => {
 });
 
 describe('reply-dispatcher tool_use mode', () => {
+  it('forwards Codex preamble commentary to the streaming card controller', async () => {
+    const result = createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'on',
+        showToolUse: true,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+
+    expect(result.replyOptions.commentaryProgressEnabled).toBe(true);
+    await (result.replyOptions.onItemEvent as (payload: {
+      itemId?: string;
+      kind?: string;
+      progressText?: string;
+    }) => Promise<void>)({
+      itemId: 'preamble-1',
+      kind: 'preamble',
+      progressText: 'I am checking the repository state.',
+    });
+
+    expect(controllerSpies.onCommentaryProgress).toHaveBeenCalledWith({
+      itemId: 'preamble-1',
+      text: 'I am checking the repository state.',
+    });
+  });
+
   it('keeps reasoning streaming callbacks alongside tool_use mode', async () => {
     const result = createFeishuReplyDispatcher({
       cfg: {} as never,

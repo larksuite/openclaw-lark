@@ -667,8 +667,9 @@ export function buildStreamingPreAnswerCard(params: {
   steps?: ToolUseDisplayStep[];
   elapsedMs?: number;
   showToolUse?: boolean;
+  text?: string;
 }): Record<string, unknown> {
-  const { steps, elapsedMs, showToolUse = true } = params;
+  const { steps, elapsedMs, showToolUse = true, text = '' } = params;
   const hasSteps = Boolean(steps?.length);
   const elements: unknown[] = [];
 
@@ -680,7 +681,7 @@ export function buildStreamingPreAnswerCard(params: {
 
   elements.push({
     tag: 'markdown',
-    content: '',
+    content: optimizeMarkdownStyle(text),
     text_align: 'left',
     text_size: 'normal_v2',
     margin: '0px 0px 0px 0px',
