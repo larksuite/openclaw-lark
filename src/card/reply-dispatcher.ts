@@ -419,6 +419,14 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       disableBlockStreaming: !enableBlockStreaming,
       ...(controller
         ? {
+            commentaryProgressEnabled: true,
+            onItemEvent: (payload: { itemId?: string; kind?: string; progressText?: string }) => {
+              if (payload.kind !== 'preamble') return;
+              return controller.onCommentaryProgress({
+                itemId: payload.itemId,
+                text: payload.progressText,
+              });
+            },
             onReasoningStream: (payload: ReplyPayload) => controller.onReasoningStream(payload),
             onPartialReply: (payload: ReplyPayload) => controller.onPartialReply(payload),
             onToolStart: (payload: { name?: string; phase?: string }) => controller.onToolStart(payload),

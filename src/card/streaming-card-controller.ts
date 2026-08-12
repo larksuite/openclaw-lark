@@ -76,6 +76,11 @@ interface TerminalCardContentInput {
   reasoningText?: string;
 }
 
+interface CommentaryState {
+  textByItem: Map<string, string>;
+  anonymousSequence: number;
+}
+
 // ---------------------------------------------------------------------------
 // StreamingCardController
 // ---------------------------------------------------------------------------
@@ -104,6 +109,11 @@ export class StreamingCardController {
     reasoningStartTime: null,
     reasoningElapsedMs: 0,
     isReasoningPhase: false,
+  };
+
+  private commentary: CommentaryState = {
+    textByItem: new Map(),
+    anonymousSequence: 0,
   };
 
   private toolUse: ToolUseState = {
@@ -479,6 +489,7 @@ export class StreamingCardController {
       this.reasoning.accumulatedReasoningText = split.reasoningText;
     }
     const answerText = split.answerText ?? text;
+    this.clearCommentary();
 
     // 累积 deliver 文本用于最终卡片
     this.text.completedText += (this.text.completedText ? '\n\n' : '') + answerText;
@@ -507,6 +518,26 @@ export class StreamingCardController {
     this.reasoning.isReasoningPhase = true;
     const split = splitReasoningText(rawText);
     this.reasoning.accumulatedReasoningText = split.reasoningText ?? rawText;
+    await this.throttledCardUpdate();
+  }
+
+  async onCommentaryProgress(payload: { itemId?: string; text?: string }): Promise<void> {
+    if (!this.shouldProceed('onCommentaryProgress')) return;
+
+    const itemId = payload.itemId?.trim();
+    const text = payload.text?.replace(/\s+/g, ' ').trim() ?? '';
+
+    if (!text) {
+      if (!itemId || !this.commentary.textByItem.delete(itemId)) return;
+    } else {
+      const key = itemId || `commentary-${++this.commentary.anonymousSequence}`;
+      if (this.commentary.textByItem.get(key) === text) return;
+      this.commentary.textByItem.set(key, text);
+    }
+
+    await this.ensureCardCreated();
+    if (!this.shouldProceed('onCommentaryProgress.postCreate')) return;
+    if (!this.cardKit.cardMessageId) return;
     await this.throttledCardUpdate();
   }
 
@@ -562,6 +593,7 @@ export class StreamingCardController {
     const text = split.answerText ?? stripReasoningTags(rawText);
     log.debug('onPartialReply', { len: text.length });
     if (!text) return;
+    this.clearCommentary();
 
     this.captureToolUseElapsed();
     if (!this.reasoning.reasoningStartTime) {
@@ -1064,7 +1096,16 @@ export class StreamingCardController {
       const reasoningDisplay = `💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`;
       return this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
     }
-    return this.text.accumulatedText;
+    if (this.text.accumulatedText) return this.text.accumulatedText;
+    return this.buildCommentaryText();
+  }
+
+  private buildCommentaryText(): string {
+    return [...this.commentary.textByItem.values()].join('\n\n');
+  }
+
+  private clearCommentary(): void {
+    this.commentary.textByItem.clear();
   }
 
   private async throttledCardUpdate(): Promise<void> {
@@ -1093,6 +1134,7 @@ export class StreamingCardController {
         steps: display?.steps,
         elapsedMs: this.visibleToolUseElapsedMs,
         showToolUse: this.shouldDisplayToolUse,
+        text: this.buildDisplayText(),
       });
       this.cardKit.cardKitSequence += 1;
       await updateCardKitCard({
