@@ -21,6 +21,8 @@ export const CARD_ERROR = {
   RATE_LIMITED: 230020,
   /** 卡片内容创建失败（通用码，需检查子错误） */
   CARD_CONTENT_FAILED: 230099,
+  /** CardKit 元素数量超限 */
+  CARDKIT_ELEMENT_LIMIT: 300305,
 } as const;
 
 /** 230099 子错误码，嵌套在 msg 的 ErrCode 字段中。 */
@@ -130,6 +132,21 @@ export function isCardTableLimitError(err: unknown): boolean {
     parsed.code === CARD_ERROR.CARD_CONTENT_FAILED &&
     parsed.subCode === CARD_CONTENT_SUB_ERROR.ELEMENT_LIMIT &&
     /table number over limit/i.test(parsed.errMsg)
+  );
+}
+
+/**
+ * 判断错误是否为卡片元素数量超限。
+ *
+ * CardKit v2 的 card.update 会直接返回 300305；旧的卡片内容 API
+ * 会将同类错误包在 230099/11310 中。终态降级需要同时覆盖两种格式。
+ */
+export function isCardElementLimitError(err: unknown): boolean {
+  const parsed = parseCardApiError(err);
+  if (!parsed) return false;
+  return (
+    parsed.code === CARD_ERROR.CARDKIT_ELEMENT_LIMIT ||
+    (parsed.code === CARD_ERROR.CARD_CONTENT_FAILED && parsed.subCode === CARD_CONTENT_SUB_ERROR.ELEMENT_LIMIT)
   );
 }
 
