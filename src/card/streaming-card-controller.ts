@@ -19,7 +19,7 @@ import { extractLarkApiCode } from '../core/api-error';
 import { larkLogger } from '../core/lark-logger';
 import { LarkClient } from '../core/lark-client';
 import { registerShutdownHook } from '../core/shutdown-hooks';
-import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';
+import { sendCardFeishu, sendMessageFeishu, updateCardFeishu } from '../messaging/outbound/send';
 import {
   STREAMING_ELEMENT_ID,
   buildCardContent,
@@ -31,8 +31,8 @@ import {
 } from './builder';
 import {
   FEISHU_CARD_TABLE_LIMIT,
+  isCardElementLimitError,
   isCardRateLimitError,
-  isCardTableLimitError,
   sanitizeTextSegmentsForCard,
 } from './card-error';
 import {
@@ -721,28 +721,14 @@ export class StreamingCardController {
           footerMetrics,
         });
 
-        if (idleEffectiveCardId) {
-          const seqBeforeUpdate = this.cardKit.cardKitSequence;
-          this.cardKit.cardKitSequence += 1;
-          log.info('onIdle: updating final card', {
-            seqBefore: seqBeforeUpdate,
-            seqAfter: this.cardKit.cardKitSequence,
-          });
-          await updateCardKitCard({
-            cfg: this.deps.cfg,
-            cardId: idleEffectiveCardId,
-            card: toCardKit2(completeCard),
-            sequence: this.cardKit.cardKitSequence,
-            accountId: this.deps.accountId,
-          });
-        } else {
-          await updateCardFeishu({
-            cfg: this.deps.cfg,
-            messageId: this.cardKit.cardMessageId,
-            card: completeCard as unknown as Record<string, unknown>,
-            accountId: this.deps.accountId,
-          });
-        }
+        await this.updateFinalCardWithElementLimitFallback({
+          cardId: idleEffectiveCardId,
+          messageId: this.cardKit.cardMessageId,
+          completeCard,
+          text: terminalContent.text,
+          elapsedMs: this.elapsed(),
+          footerMetrics,
+        });
         log.info('reply completed, card finalized', {
           elapsedMs: this.elapsed(),
           isCardKit: !!idleEffectiveCardId,
@@ -1036,10 +1022,10 @@ export class StreamingCardController {
         return;
       }
 
-      // 卡片表格数超出飞书限制（230099/11310）— 禁用 CardKit 流式，
+      // 卡片元素数超出飞书限制（300305 或 230099/11310）— 禁用 CardKit 流式，
       // 保留 originalCardKitCardId 供 onIdle 做最终 CardKit 更新
-      if (isCardTableLimitError(err)) {
-        log.warn('flushCardUpdate: card table limit exceeded (230099/11310), disabling CardKit streaming', {
+      if (isCardElementLimitError(err)) {
+        log.warn('flushCardUpdate: card element limit exceeded, disabling CardKit streaming', {
           seq: this.cardKit.cardKitSequence,
         });
         this.cardKit.cardKitCardId = null;
@@ -1103,6 +1089,13 @@ export class StreamingCardController {
         accountId: this.deps.accountId,
       });
     } catch (err) {
+      if (isCardElementLimitError(err)) {
+        log.warn('updateToolUseStatus: card element limit exceeded, disabling CardKit streaming', {
+          seq: this.cardKit.cardKitSequence,
+        });
+        this.cardKit.cardKitCardId = null;
+        return;
+      }
       log.debug('updateToolUseStatus failed', { error: String(err) });
     }
   }
@@ -1113,6 +1106,81 @@ export class StreamingCardController {
 
   private finalizeCard(source: string, reason: TerminalReason): void {
     this.transition('completed', source, reason);
+  }
+
+  /**
+   * Update the final card. If the accumulated tool/reasoning panels exceed
+   * CardKit's element budget, retry with the answer-only card. If even the
+   * compact card cannot be written, send the answer as a normal message so
+   * the user never remains on a stale streaming card.
+   */
+  private async updateFinalCardWithElementLimitFallback(params: {
+    cardId: string | null;
+    messageId: string;
+    completeCard: ReturnType<typeof buildCardContent>;
+    text: string;
+    elapsedMs: number;
+    footerMetrics: FooterSessionMetrics | undefined;
+  }): Promise<void> {
+    const update = async (card: ReturnType<typeof buildCardContent>, label: string): Promise<void> => {
+      if (params.cardId) {
+        const seqBeforeUpdate = this.cardKit.cardKitSequence;
+        this.cardKit.cardKitSequence += 1;
+        log.info(`${label}: updating final card`, {
+          seqBefore: seqBeforeUpdate,
+          seqAfter: this.cardKit.cardKitSequence,
+        });
+        await updateCardKitCard({
+          cfg: this.deps.cfg,
+          cardId: params.cardId,
+          card: toCardKit2(card),
+          sequence: this.cardKit.cardKitSequence,
+          accountId: this.deps.accountId,
+        });
+        return;
+      }
+      await updateCardFeishu({
+        cfg: this.deps.cfg,
+        messageId: params.messageId,
+        card: card as unknown as Record<string, unknown>,
+        accountId: this.deps.accountId,
+      });
+    };
+
+    try {
+      await update(params.completeCard, 'onIdle');
+      return;
+    } catch (err) {
+      if (!isCardElementLimitError(err)) throw err;
+      log.warn('onIdle: final card element limit exceeded, retrying with compact card', {
+        error: String(err),
+      });
+    }
+
+    const compactCard = buildCardContent('complete', {
+      text: params.text,
+      showToolUse: false,
+      elapsedMs: params.elapsedMs,
+      footer: this.deps.resolvedFooter,
+      footerMetrics: params.footerMetrics,
+    });
+
+    try {
+      await update(compactCard, 'onIdle.compact');
+    } catch (compactErr) {
+      log.warn('onIdle: compact final card update failed, sending text fallback', {
+        error: String(compactErr),
+      });
+      await sendMessageFeishu({
+        cfg: this.deps.cfg,
+        to: this.deps.chatId,
+        text: params.text,
+        replyToMessageId: this.deps.replyToMessageId,
+        replyInThread: this.deps.replyInThread,
+        accountId: this.deps.accountId,
+      });
+      log.info('onIdle: final answer delivered via text fallback');
+    }
   }
 
   /**
