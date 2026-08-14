@@ -26,6 +26,9 @@ vi.mock('openclaw/plugin-sdk/channel-runtime', () => ({
 vi.mock('openclaw/plugin-sdk/channel-feedback', () => ({
   logTypingFailure: vi.fn(),
 }));
+vi.mock('openclaw/plugin-sdk/agent-media-payload', () => ({
+  getAgentScopedMediaLocalRoots: () => ['/tmp/agent-roots'],
+}));
 
 vi.mock('../src/core/accounts', () => ({
   createAccountScopedConfig: vi.fn(),
@@ -75,13 +78,37 @@ vi.mock('../src/messaging/outbound/typing', () => ({
 vi.mock('../src/card/card-error', () => ({
   isCardTableLimitError: () => false,
 }));
+const { resolveReplyModeMock, controllerInstances } = vi.hoisted(() => ({
+  resolveReplyModeMock: vi.fn(() => 'static'),
+  controllerInstances: [] as Array<Record<string, unknown>>,
+}));
 vi.mock('../src/card/reply-mode', () => ({
-  resolveReplyMode: () => 'static',
+  resolveReplyMode: resolveReplyModeMock,
   expandAutoMode: ({ mode }: { mode: string }) => mode,
   shouldUseCard: () => false,
 }));
+
 vi.mock('../src/card/streaming-card-controller', () => ({
-  StreamingCardController: class {},
+  StreamingCardController: class {
+    constructor() {
+      controllerInstances.push(this as unknown as Record<string, unknown>);
+    }
+
+    shouldSkipForUnavailable() { return false; }
+    terminateIfUnavailable() { return false; }
+    isTerminated = false;
+    cardMessageId = 'om_card';
+    ensureCardCreated = vi.fn().mockResolvedValue(undefined);
+    onDeliver = vi.fn().mockResolvedValue(undefined);
+    onReasoningStream = vi.fn().mockResolvedValue(undefined);
+    onToolPayload = vi.fn().mockResolvedValue(undefined);
+    onError = vi.fn().mockResolvedValue(undefined);
+    markFullyComplete = vi.fn();
+    onIdle = vi.fn().mockResolvedValue(undefined);
+    onPartialReply = vi.fn().mockResolvedValue(undefined);
+    onToolStart = vi.fn().mockResolvedValue(undefined);
+    abortCard = vi.fn().mockResolvedValue(undefined);
+  },
 }));
 
 let terminateReturn = true;
@@ -166,6 +193,8 @@ function createDispatcher(options: {
 beforeEach(() => {
   vi.clearAllMocks();
   terminateCalls.length = 0;
+  controllerInstances.length = 0;
+  resolveReplyModeMock.mockReturnValue('static');
 });
 
 describe('reply-dispatcher media delivery', () => {
@@ -178,6 +207,17 @@ describe('reply-dispatcher media delivery', () => {
     expect(ctx.sentCards).toHaveLength(0);
     expect(ctx.sentMedia).toHaveLength(1);
     expect((ctx.sentMedia[0] as { mediaUrl: string }).mediaUrl).toBe('https://example.com/image.png');
+  });
+
+  it('passes agent-scoped mediaLocalRoots to sendMediaLark (issue #591)', async () => {
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({ text: '', mediaUrl: '/tmp/media/report.docx' });
+
+    expect(ctx.sentMedia).toHaveLength(1);
+    expect((ctx.sentMedia[0] as { mediaLocalRoots: readonly string[] }).mediaLocalRoots).toEqual([
+      '/tmp/agent-roots',
+    ]);
   });
 
   it('mixed payload delivers both text and media', async () => {
@@ -261,5 +301,46 @@ describe('reply-dispatcher media delivery', () => {
     expect(terminateCalls).toHaveLength(1);
     expect(sentMedia).toHaveLength(1);
     expect((sentMedia[0] as { mediaUrl: string }).mediaUrl).toBe('https://example.com/b.png');
+  });
+});
+
+describe('reply-dispatcher streaming media delivery (issue #591)', () => {
+  it('delivers media after card text instead of dropping attachments', async () => {
+    resolveReplyModeMock.mockReturnValue('streaming');
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({ text: 'report ready', mediaUrl: '/tmp/media/report.docx' });
+
+    const controller = controllerInstances[0] as { onDeliver: ReturnType<typeof vi.fn> };
+    expect(controller.onDeliver).toHaveBeenCalledTimes(1);
+    // Text went to the card; the attachment is sent via the static media path.
+    expect(ctx.sentMedia).toHaveLength(1);
+    expect((ctx.sentMedia[0] as { mediaUrl: string }).mediaUrl).toBe('/tmp/media/report.docx');
+    expect((ctx.sentMedia[0] as { mediaLocalRoots: readonly string[] }).mediaLocalRoots).toEqual([
+      '/tmp/agent-roots',
+    ]);
+    expect(ctx.sentText).toHaveLength(0);
+    expect(ctx.sentCards).toHaveLength(0);
+  });
+
+  it('text-only streaming payload does not trigger media sends', async () => {
+    resolveReplyModeMock.mockReturnValue('streaming');
+    const ctx = createDispatcher();
+
+    await ctx.dispatcher.deliver({ text: 'hello card' });
+
+    const controller = controllerInstances[0] as { onDeliver: ReturnType<typeof vi.fn> };
+    expect(controller.onDeliver).toHaveBeenCalledTimes(1);
+    expect(ctx.sentMedia).toHaveLength(0);
+  });
+
+  it('skips media delivery when the card was aborted', async () => {
+    resolveReplyModeMock.mockReturnValue('streaming');
+    const ctx = createDispatcher();
+    (controllerInstances[0] as { isTerminated: boolean }).isTerminated = true;
+
+    await ctx.dispatcher.deliver({ text: 'aborted', mediaUrl: '/tmp/media/report.docx' });
+
+    expect(ctx.sentMedia).toHaveLength(0);
   });
 });

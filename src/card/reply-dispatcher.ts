@@ -14,6 +14,7 @@
 import { createReplyPrefixContext, createTypingCallbacks } from 'openclaw/plugin-sdk/channel-runtime';
 import { logTypingFailure } from 'openclaw/plugin-sdk/channel-feedback';
 import type { ReplyPayload } from 'openclaw/plugin-sdk';
+import { getAgentScopedMediaLocalRoots } from 'openclaw/plugin-sdk/agent-media-payload';
 import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
@@ -44,6 +45,12 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // Resolve account so we can read per-account config (e.g. replyMode)
   const account = getLarkAccount(cfg, accountId);
   const feishuCfg = account.config;
+
+  // Agent-scoped local directory whitelist for MEDIA: attachments in
+  // auto-replies. The outbound adapter / message tool receive this from the
+  // SDK's action context; the reply dispatcher must resolve it itself or
+  // fetchMediaBuffer denies every local path (issue #591).
+  const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, agentId);
 
   const prefixContext = createReplyPrefixContext({ cfg, agentId });
 
@@ -221,6 +228,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       }
 
       // ---- Streaming card mode ----
+      let cardDelivered = false;
       if (controller) {
         if (meta?.kind === 'tool' && shouldRouteToolPayloadToCard(payload, toolUseDisplay.showToolUse)) {
           await controller.onToolPayload(payload);
@@ -238,15 +246,18 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               return;
             }
             await controller.onDeliver({ ...payload, text: controllerText });
-            return;
+            // Attachments still need delivery: fall through to the static
+            // media path below instead of returning (issue #591).
+            cardDelivered = true;
+          } else {
+            // Card creation failed — fall through to static delivery
+            log.warn('deliver: card creation failed, falling back to static delivery');
           }
-          // Card creation failed — fall through to static delivery
-          log.warn('deliver: card creation failed, falling back to static delivery');
         }
       }
 
       // ---- Static text delivery ----
-      if (text.trim()) {
+      if (!cardDelivered && text.trim()) {
         if (shouldUseCard(text)) {
           const chunks = core.channel.text.chunkTextWithMode(text, textChunkLimit, chunkMode);
           log.info('deliver: sending card chunks', {
@@ -347,6 +358,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             accountId,
             replyToMessageId,
             replyInThread,
+            mediaLocalRoots,
           });
         } catch (mediaErr) {
           if (staticGuard?.terminate('deliver.media', mediaErr)) return;
