@@ -199,6 +199,12 @@ const FeishuDriveFileSchema = Type.Union([
           '父节点 token（可选）。explorer 类型填文件夹 token，bitable 类型填 app_token。不填写或填空字符串时，上传到云空间根目录',
       }),
     ),
+    parent_type: Type.Optional(
+      StringEnum(['explorer', 'bitable_file', 'bitable_image'], {
+        description:
+          '上传点类型（可选，默认 explorer）。explorer：上传到云空间，parent_node 填文件夹 token；bitable_file / bitable_image：上传到多维表格（走素材上传接口），parent_node 填 app_token，返回的 file_token 可直接写入多维表格附件字段',
+      }),
+    ),
     file_path: Type.Optional(
       Type.String({
         description:
@@ -281,6 +287,7 @@ type FeishuDriveFileParams =
   | {
       action: 'upload';
       parent_node?: string;
+      parent_type?: 'explorer' | 'bitable_file' | 'bitable_image';
       file_path?: string;
       file_content_base64?: string;
       file_name?: string;
@@ -315,7 +322,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
         '\n- copy（复制文件）：复制文件到指定位置' +
         '\n- move（移动文件）：移动文件到指定文件夹' +
         '\n- delete（删除文件）：删除文件' +
-        '\n- upload（上传文件）：上传本地文件到云空间。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）' +
+        '\n- upload（上传文件）：上传本地文件到云空间或多维表格。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）。parent_type 可选：explorer（默认，云空间）/ bitable_file / bitable_image（多维表格附件，parent_node 填 app_token，返回的 file_token 可直接写入多维表格附件字段）' +
         '\n- download（下载文件）：下载文件到本地。提供 output_path（本地保存路径）则保存到本地，否则返回 Base64 编码' +
         '\n\n【重要】copy/move/delete 操作需要 file_token 和 type 参数。get_meta 使用 request_docs 数组参数。' +
         '\n【重要】upload 优先使用 file_path（自动读取文件、提取文件名和大小），也支持 file_content_base64（需手动提供 file_name 和 size）。' +
@@ -508,6 +515,13 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
               let fileName: string;
               let fileSize: number;
 
+              // 上传点类型：explorer（云空间）或 bitable_file / bitable_image
+              // （多维表格）。多维表格附件走素材上传接口（media.uploadAll /
+              // media.uploadPrepare...），explorer 父节点产出的 file_token 无法
+              // 写入多维表格附件字段（issue #582）。
+              const parentType = p.parent_type ?? 'explorer';
+              const isBitable = parentType === 'bitable_file' || parentType === 'bitable_image';
+
               // 优先使用 file_path
               if (p.file_path) {
                 log.info(`upload: reading from local file: ${p.file_path}`);
@@ -522,7 +536,9 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                   // 计算文件大小（如果未提供）
                   fileSize = p.size || fileBuffer.length;
 
-                  log.info(`upload: file_name=${fileName}, size=${fileSize}, parent=${p.parent_node || '(root)'}`);
+                  log.info(
+                    `upload: file_name=${fileName}, size=${fileSize}, parent=${p.parent_node || '(root)'}, parent_type=${parentType}`,
+                  );
                 } catch (err) {
                   return json({
                     error: `failed to read local file: ${err instanceof Error ? err.message : String(err)}`,
@@ -537,7 +553,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                 }
 
                 log.info(
-                  `upload: using base64 content, file_name=${p.file_name}, size=${p.size}, parent=${p.parent_node}`,
+                  `upload: using base64 content, file_name=${p.file_name}, size=${p.size}, parent=${p.parent_node}, parent_type=${parentType}`,
                 );
 
                 // Decode base64 to buffer
@@ -553,23 +569,26 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
               // 根据文件大小选择上传方式
               if (fileSize <= SMALL_FILE_THRESHOLD) {
                 // 小文件：使用一次上传
-                log.info(`upload: using upload_all (file size ${fileSize} <= 15MB)`);
+                log.info(
+                  `upload: using upload_all (file size ${fileSize} <= 15MB, parent_type=${parentType})`,
+                );
 
                 const res: any = await client.invoke(
                   'feishu_drive_file.upload',
-                  (sdk, opts) =>
-                    sdk.drive.file.uploadAll(
-                      {
-                        data: {
-                          file_name: fileName,
-                          parent_type: 'explorer' as any,
-                          parent_node: p.parent_node || '',
-                          size: fileSize,
-                          file: fileBuffer as any,
-                        },
+                  (sdk, opts) => {
+                    const payload = {
+                      data: {
+                        file_name: fileName,
+                        parent_type: parentType as any,
+                        parent_node: p.parent_node || '',
+                        size: fileSize,
+                        file: fileBuffer as any,
                       },
-                      opts,
-                    ),
+                    };
+                    return isBitable
+                      ? sdk.drive.media.uploadAll(payload, opts)
+                      : sdk.drive.file.uploadAll(payload, opts);
+                  },
                   { as: 'user' },
                 );
                 assertLarkOk(res);
@@ -580,27 +599,32 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                   file_token: res.data?.file_token,
                   file_name: fileName,
                   size: fileSize,
+                  upload_method: 'upload_all',
+                  parent_type: parentType,
                 });
               } else {
                 // 大文件：使用分片上传
-                log.info(`upload: using chunked upload (file size ${fileSize} > 15MB)`);
+                log.info(
+                  `upload: using chunked upload (file size ${fileSize} > 15MB, parent_type=${parentType})`,
+                );
 
                 // 1. 预上传
                 log.info(`upload: step 1 - prepare upload`);
                 const prepareRes: any = await client.invoke(
                   'feishu_drive_file.upload',
-                  (sdk, opts) =>
-                    sdk.drive.file.uploadPrepare(
-                      {
-                        data: {
-                          file_name: fileName,
-                          parent_type: 'explorer' as any,
-                          parent_node: p.parent_node || '',
-                          size: fileSize,
-                        },
+                  (sdk, opts) => {
+                    const payload = {
+                      data: {
+                        file_name: fileName,
+                        parent_type: parentType as any,
+                        parent_node: p.parent_node || '',
+                        size: fileSize,
                       },
-                      opts,
-                    ),
+                    };
+                    return isBitable
+                      ? sdk.drive.media.uploadPrepare(payload, opts)
+                      : sdk.drive.file.uploadPrepare(payload, opts);
+                  },
                   { as: 'user' },
                 );
 
@@ -626,18 +650,19 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
 
                   await client.invoke(
                     'feishu_drive_file.upload',
-                    (sdk, opts) =>
-                      sdk.drive.file.uploadPart(
-                        {
-                          data: {
-                            upload_id: String(upload_id),
-                            seq: Number(seq),
-                            size: Number(chunkBuffer.length),
-                            file: chunkBuffer,
-                          },
+                    (sdk, opts) => {
+                      const payload = {
+                        data: {
+                          upload_id: String(upload_id),
+                          seq: Number(seq),
+                          size: Number(chunkBuffer.length),
+                          file: chunkBuffer,
                         },
-                        opts,
-                      ),
+                      };
+                      return isBitable
+                        ? sdk.drive.media.uploadPart(payload, opts)
+                        : sdk.drive.file.uploadPart(payload, opts);
+                    },
                     { as: 'user' },
                   );
 
@@ -648,16 +673,17 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                 log.info(`upload: step 3 - finish upload`);
                 const finishRes: any = await client.invoke(
                   'feishu_drive_file.upload',
-                  (sdk, opts) =>
-                    sdk.drive.file.uploadFinish(
-                      {
-                        data: {
-                          upload_id,
-                          block_num,
-                        },
+                  (sdk, opts) => {
+                    const payload = {
+                      data: {
+                        upload_id,
+                        block_num,
                       },
-                      opts,
-                    ),
+                    };
+                    return isBitable
+                      ? sdk.drive.media.uploadFinish(payload, opts)
+                      : sdk.drive.file.uploadFinish(payload, opts);
+                  },
                   { as: 'user' },
                 );
                 assertLarkOk(finishRes);
