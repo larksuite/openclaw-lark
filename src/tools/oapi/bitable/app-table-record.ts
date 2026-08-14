@@ -25,6 +25,78 @@ import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoA
 import type { PaginatedData } from '../sdk-types';
 
 // ---------------------------------------------------------------------------
+// DateTime field normalization (#586)
+// ---------------------------------------------------------------------------
+
+// Bitable DateTime fields (5 = 日期, 1005 = 日期时间) only accept string
+// values ("毫秒级时间戳" or "yyyy-MM-dd HH:mm:ss"); numeric values are
+// rejected by the API with DatetimeFieldConvFail (1254064). The tool schema
+// tells agents to pass ms timestamps as numbers, so coerce them to strings
+// before writing.
+// See https://github.com/larksuite/openclaw-lark/issues/586
+const DATE_FIELD_TYPES = new Set([5, 1005]);
+
+const fieldTypeCache = new Map<string, { at: number; types: Map<string, number> }>();
+const FIELD_TYPE_CACHE_TTL_MS = 30_000;
+
+function normalizeDateTimeFields(
+  fields: Record<string, any>,
+  types: Map<string, number>,
+): Record<string, any> {
+  const out: Record<string, any> = { ...fields };
+  for (const [name, value] of Object.entries(fields)) {
+    const type = types.get(name);
+    if (type !== undefined && DATE_FIELD_TYPES.has(type) && typeof value === 'number' && Number.isFinite(value)) {
+      out[name] = String(value);
+    }
+  }
+  return out;
+}
+
+async function fetchFieldTypes(
+  client: { invoke: (name: string, cb: (sdk: any, opts: unknown) => unknown, opts?: unknown) => Promise<any> },
+  appToken: string,
+  tableId: string,
+  log: { warn: (...msg: unknown[]) => void },
+): Promise<Map<string, number>> {
+  const cacheKey = `${appToken}/${tableId}`;
+  const cached = fieldTypeCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < FIELD_TYPE_CACHE_TTL_MS) {
+    return cached.types;
+  }
+  const types = new Map<string, number>();
+  try {
+    const res = await client.invoke(
+      'feishu_bitable_app_table_record.field_types',
+      (sdk: any, opts: unknown) =>
+        sdk.bitable.appTableField.list(
+          {
+            path: { app_token: appToken, table_id: tableId },
+            params: { page_size: 200 },
+          },
+          opts,
+        ),
+      { as: 'user' },
+    );
+    assertLarkOk(res);
+    for (const item of res.data?.items ?? []) {
+      if (item && typeof item.field_name === 'string' && typeof item.type === 'number') {
+        types.set(item.field_name, item.type);
+      }
+    }
+  } catch (err) {
+    // never block record writes on metadata lookups; without the schema we
+    // pass values through unchanged
+    log.warn(
+      `field type lookup failed, skipping DateTime normalization: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return types;
+  }
+  fieldTypeCache.set(cacheKey, { at: Date.now(), types });
+  return types;
+}
+
+// ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
 
@@ -39,7 +111,7 @@ const FeishuBitableAppTableRecordSchema = Type.Union([
       {
         additionalProperties: true,
         description:
-          "记录字段（单条记录）。键为字段名，值根据字段类型而定：\n- 文本：string\n- 数字：number\n- 单选：string（选项名）\n- 多选：string[]（选项名数组）\n- 日期：number（毫秒时间戳，如 1740441600000）\n- 复选框：boolean\n- 人员：[{id: 'ou_xxx'}]\n- 附件：[{file_token: 'xxx'}]\n⚠️ 注意：create 只创建单条记录；批量创建请使用 batch_create",
+          "记录字段（单条记录）。键为字段名，值根据字段类型而定：\n- 文本：string\n- 数字：number\n- 单选：string（选项名）\n- 多选：string[]（选项名数组）\n- 日期：number（毫秒时间戳，如 1740441600000，插件会自动转换为 API 要求的字符串格式）\n- 复选框：boolean\n- 人员：[{id: 'ou_xxx'}]\n- 附件：[{file_token: 'xxx'}]\n⚠️ 注意：create 只创建单条记录；批量创建请使用 batch_create",
       },
     ),
   }),
@@ -303,6 +375,9 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
 
               log.info(`create: app_token=${p.app_token}, table_id=${p.table_id}`);
 
+              const fieldTypes = await fetchFieldTypes(client, p.app_token, p.table_id, log);
+              const fields = normalizeDateTimeFields(p.fields, fieldTypes);
+
               const res = await client.invoke(
                 'feishu_bitable_app_table_record.create',
                 (sdk, opts) =>
@@ -316,7 +391,7 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                         user_id_type: 'open_id' as any,
                       },
                       data: {
-                        fields: p.fields,
+                        fields,
                       },
                     },
                     opts,
@@ -355,6 +430,9 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
 
               log.info(`update: app_token=${p.app_token}, table_id=${p.table_id}, record_id=${p.record_id}`);
 
+              const fieldTypes = await fetchFieldTypes(client, p.app_token, p.table_id, log);
+              const fields = normalizeDateTimeFields(p.fields, fieldTypes);
+
               const res = await client.invoke(
                 'feishu_bitable_app_table_record.update',
                 (sdk, opts) =>
@@ -369,7 +447,7 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                         user_id_type: 'open_id' as any,
                       },
                       data: {
-                        fields: p.fields,
+                        fields,
                       },
                     },
                     opts,
@@ -453,6 +531,12 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                 `batch_create: app_token=${p.app_token}, table_id=${p.table_id}, records_count=${p.records.length}`,
               );
 
+              const fieldTypes = await fetchFieldTypes(client, p.app_token, p.table_id, log);
+              const records = p.records.map((r) => ({
+                ...r,
+                fields: normalizeDateTimeFields(r.fields, fieldTypes),
+              }));
+
               const res = await client.invoke(
                 'feishu_bitable_app_table_record.batch_create',
                 (sdk, opts) =>
@@ -466,7 +550,7 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                         user_id_type: 'open_id' as any,
                       },
                       data: {
-                        records: p.records,
+                        records,
                       },
                     },
                     opts,
@@ -520,6 +604,12 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                 `batch_update: app_token=${p.app_token}, table_id=${p.table_id}, records_count=${p.records.length}`,
               );
 
+              const fieldTypes = await fetchFieldTypes(client, p.app_token, p.table_id, log);
+              const records = p.records.map((r) => ({
+                ...r,
+                fields: normalizeDateTimeFields(r.fields, fieldTypes),
+              }));
+
               const res = await client.invoke(
                 'feishu_bitable_app_table_record.batch_update',
                 (sdk, opts) =>
@@ -533,7 +623,7 @@ export function registerFeishuBitableAppTableRecordTool(api: OpenClawPluginApi):
                         user_id_type: 'open_id' as any,
                       },
                       data: {
-                        records: p.records,
+                        records,
                       },
                     },
                     opts,
