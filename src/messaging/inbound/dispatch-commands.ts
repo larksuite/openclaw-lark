@@ -81,14 +81,19 @@ export async function dispatchPermissionNotification(
 
   dc.log(`feishu[${dc.account.accountId}]: dispatching permission error notification to agent`);
 
-  await dc.core.channel.reply.dispatchReplyFromConfig({
-    ctx: permCtx,
-    cfg: dc.accountScopedCfg,
-    dispatcher: permDispatcher,
-    replyOptions: permReplyOptions,
-  });
+  try {
+    await dc.core.channel.reply.dispatchReplyFromConfig({
+      ctx: permCtx,
+      cfg: dc.accountScopedCfg,
+      dispatcher: permDispatcher,
+      replyOptions: permReplyOptions,
+    });
 
-  await permDispatcher.waitForIdle();
+    await permDispatcher.waitForIdle();
+  } finally {
+    // Release the SDK's pending reservation (issue #583) even on failure.
+    permDispatcher.markComplete();
+  }
   markPermComplete();
   markPermIdle();
 }
