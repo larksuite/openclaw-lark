@@ -377,6 +377,12 @@ export class LarkClient {
       appSecret,
       domain: resolveBrand(this.account.brand),
       loggerLevel: Lark.LoggerLevel.info,
+      // Liveness watchdog: without pingTimeout the SDK's watchdog is disabled
+      // (pingTimeoutSec=0), so a half-open connection after machine
+      // sleep/wake is never detected and the channel stays disconnected
+      // until restart. 60s covers the ping→pong round trip (server ping
+      // interval is 120s by default). See issue #543.
+      wsConfig: { pingTimeout: 60 },
     });
 
     // SDK 的 handleEventData 只处理 type="event"，card action 回调是 type="card" 会被丢弃。
