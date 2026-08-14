@@ -23,6 +23,18 @@ import { currentBotPeerContext } from './bot-peer-context';
 const sendLog = larkLogger('outbound/send');
 
 /**
+ * 校验飞书消息接口响应码。SDK 对非 0 业务码不会抛错，若不检查，
+ * API 失败（如 230001 invalid container_id）会被当作成功，消息静默
+ * 丢失且 `delivered=true`（issue #588）。
+ */
+function assertMessageSendOk(response: unknown, operation: string): void {
+  const res = response as { code?: number; msg?: string } | null | undefined;
+  if (res && typeof res.code === 'number' && res.code !== 0) {
+    throw new Error(`[feishu-send] ${operation} failed: code=${res.code} msg=${res.msg ?? 'unknown'}`);
+  }
+}
+
+/**
  * Runs the outbound text through mention normalization. Returns the
  * input unchanged on any failure so a parser bug never blocks send.
  * Sentinels collected during normalization are returned for the caller
@@ -206,27 +218,59 @@ export async function sendMessageFeishu(params: SendFeishuMessageParams): Promis
     // Send as a threaded reply.
     // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
     const normalizedId = normalizeMessageId(replyToMessageId);
-    const response = await runWithMessageUnavailableGuard({
-      messageId: normalizedId,
-      operation: 'im.message.reply(post)',
-      fn: () =>
-        client.im.message.reply({
-          path: {
-            message_id: normalizedId!,
-          },
-          data: {
-            content: contentPayload,
-            msg_type: 'post',
-            reply_in_thread: replyInThread,
-          },
-        }),
-    });
+    try {
+      const response = await runWithMessageUnavailableGuard({
+        messageId: normalizedId,
+        operation: 'im.message.reply(post)',
+        fn: () =>
+          client.im.message.reply({
+            path: {
+              message_id: normalizedId!,
+            },
+            data: {
+              content: contentPayload,
+              msg_type: 'post',
+              reply_in_thread: replyInThread,
+            },
+          }),
+      });
+      assertMessageSendOk(response, 'im.message.reply(post)');
 
-    recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+      recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
+      return {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+    } catch (error) {
+      // 回复失败（如 230001 invalid container_id）时回退为直接发送，
+      // 避免消息静默丢失。线程回复不回退到顶层，避免破坏线程语义。
+      if (replyInThread) throw error;
+
+      const target = normalizeFeishuTarget(to);
+      if (!target) throw error;
+
+      const receiveIdType = resolveReceiveIdType(target);
+      const fallback = await client.im.message.create({
+        params: {
+          receive_id_type: receiveIdType as any,
+        },
+        data: {
+          receive_id: target,
+          msg_type: 'post',
+          content: contentPayload,
+        },
+      });
+      assertMessageSendOk(fallback, 'im.message.create(post fallback)');
+
+      sendLog.warn(
+        `[feishu-send] im.message.reply failed, fell back to direct create: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      recordFeishuSendSentinels(normalizationAccountId, to, threadId, normalizationSentinels);
+      return {
+        messageId: fallback?.data?.message_id ?? '',
+        chatId: fallback?.data?.chat_id ?? '',
+      };
+    }
   }
 
   // Send as a new message.
@@ -276,26 +320,51 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
   if (replyToMessageId) {
     // 规范化 message_id，处理合成 ID（如 "om_xxx:auth-complete"）
     const normalizedId = normalizeMessageId(replyToMessageId);
-    const response = await runWithMessageUnavailableGuard({
-      messageId: normalizedId,
-      operation: 'im.message.reply(interactive)',
-      fn: () =>
-        client.im.message.reply({
-          path: {
-            message_id: normalizedId!,
-          },
-          data: {
-            content: contentPayload,
-            msg_type: 'interactive',
-            reply_in_thread: replyInThread,
-          },
-        }),
-    });
+    try {
+      const response = await runWithMessageUnavailableGuard({
+        messageId: normalizedId,
+        operation: 'im.message.reply(interactive)',
+        fn: () =>
+          client.im.message.reply({
+            path: {
+              message_id: normalizedId!,
+            },
+            data: {
+              content: contentPayload,
+              msg_type: 'interactive',
+              reply_in_thread: replyInThread,
+            },
+          }),
+      });
+      assertMessageSendOk(response, 'im.message.reply(interactive)');
+      return {
+        messageId: response?.data?.message_id ?? '',
+        chatId: response?.data?.chat_id ?? '',
+      };
+    } catch (error) {
+      // 与 sendMessageFeishu 一致：非线程回复失败时回退为直接发送
+      if (replyInThread) throw error;
 
-    return {
-      messageId: response?.data?.message_id ?? '',
-      chatId: response?.data?.chat_id ?? '',
-    };
+      const target = normalizeFeishuTarget(to);
+      if (!target) throw error;
+
+      const receiveIdType = resolveReceiveIdType(target);
+      const fallback = await client.im.message.create({
+        params: {
+          receive_id_type: receiveIdType as any,
+        },
+        data: {
+          receive_id: target,
+          msg_type: 'interactive',
+          content: contentPayload,
+        },
+      });
+      assertMessageSendOk(fallback, 'im.message.create(interactive fallback)');
+      return {
+        messageId: fallback?.data?.message_id ?? '',
+        chatId: fallback?.data?.chat_id ?? '',
+      };
+    }
   }
 
   const target = normalizeFeishuTarget(to);
