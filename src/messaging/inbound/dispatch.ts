@@ -336,6 +336,11 @@ async function dispatchNormalMessage(
     dc.log(`feishu[${dc.account.accountId}]: dispatch complete (queuedFinal=${queuedFinal}, replies=${counts.final})`);
     log.info(`dispatch complete (replies=${counts.final}, elapsed=${ticketElapsed()}ms)`);
   } finally {
+    // The SDK reserves pending=1 when the dispatcher is created and only
+    // releases it on markComplete(). Without this every dispatched message
+    // leaks one permanently-stuck entry in the global reply-dispatcher
+    // registry (issue #583). Release on both the success and error paths.
+    dispatcher.markComplete();
     unregisterActiveDispatcher(queueKey);
   }
 }

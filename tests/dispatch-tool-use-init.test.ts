@@ -174,6 +174,7 @@ function createDispatchContext() {
 function createDispatcher() {
   return {
     waitForIdle: vi.fn().mockResolvedValue(undefined),
+    markComplete: vi.fn(),
   };
 }
 
