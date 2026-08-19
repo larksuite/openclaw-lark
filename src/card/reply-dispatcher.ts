@@ -183,6 +183,17 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     onReplyStart: async () => {
       if (shouldSkip('onReplyStart')) return;
       await typingCallbacks.onReplyStart?.();
+      // Eager card creation: embedded (non-CLI) providers never fire
+      // onToolStart, so without this the card only appears at the first
+      // text delta — after all tool calls finish. Create the thinking
+      // card as soon as the reply starts instead.
+      if (controller) {
+        try {
+          await controller.ensureCardCreated();
+        } catch (err) {
+          log.warn('onReplyStart: eager card creation failed', { error: String(err) });
+        }
+      }
     },
 
     deliver: async (payload: ReplyPayload, meta?: { kind?: string }) => {
