@@ -80,6 +80,28 @@ interface TerminalCardContentInput {
 // StreamingCardController
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Active-controller registry: lets the global before/after_tool_call hooks
+// (index.ts) push tool-step updates into the live card. Embedded (non-CLI)
+// providers never fire the core onToolStart callback, so without this the
+// step panel only renders at the first text delta.
+// ---------------------------------------------------------------------------
+const activeControllersBySession = new Map<string, StreamingCardController>();
+
+/**
+ * Notify the active streaming card (if any) for a session that a tool call
+ * started or finished, so it can refresh its tool-step panel. Called from the
+ * plugin-level before/after_tool_call hooks. Fire-and-forget.
+ */
+export function notifyToolUseActivity(sessionKey: string | undefined): void {
+  if (!sessionKey) return;
+  const controller = activeControllersBySession.get(sessionKey);
+  if (!controller) return;
+  void controller.onToolPayload({} as ReplyPayload).catch((err) => {
+    log.debug('notifyToolUseActivity failed', { error: String(err) });
+  });
+}
+
 export class StreamingCardController {
   // ---- Explicit state machine ----
   private phase: CardPhase = 'idle';
@@ -295,6 +317,11 @@ export class StreamingCardController {
         }
       },
     });
+
+    // Register for tool-call hook notifications (see notifyToolUseActivity)
+    if (deps.sessionKey) {
+      activeControllersBySession.set(deps.sessionKey, this);
+    }
   }
 
   // ------------------------------------------------------------------
@@ -419,6 +446,11 @@ export class StreamingCardController {
     this.flush.complete();
     this.disposeShutdownHook?.();
     this.disposeShutdownHook = null;
+    // Unregister from the tool-call hook registry (only if still ours —
+    // a newer controller for the same session may have replaced us)
+    if (this.deps.sessionKey && activeControllersBySession.get(this.deps.sessionKey) === this) {
+      activeControllersBySession.delete(this.deps.sessionKey);
+    }
     if (this.phase === 'terminated' || this.phase === 'creation_failed') {
       clearToolUseTraceRun(this.deps.sessionKey);
     }

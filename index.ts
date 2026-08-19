@@ -28,6 +28,7 @@ import { registerCommands } from './src/commands/index';
 import { larkLogger } from './src/core/lark-logger';
 import { emitSecurityWarnings } from './src/core/security-check';
 import { recordToolUseEnd, recordToolUseStart } from './src/card/tool-use-trace-store';
+import { notifyToolUseActivity } from './src/card/streaming-card-controller';
 import { sanitizeParamsForLog } from './src/card/reasoning-utils';
 
 const log = larkLogger('plugin');
@@ -135,6 +136,9 @@ const plugin = {
         toolCallId: event.toolCallId ?? ctx.toolCallId,
         runId: event.runId ?? ctx.runId,
       });
+      // Refresh the live streaming card's step panel (embedded providers
+      // never fire the core onToolStart callback)
+      notifyToolUseActivity(ctx.sessionKey);
       if (!event.toolName.startsWith('feishu_')) return;
       const paramsPreview = sanitizeParamsForLog(event.params);
       log.info(`tool call: ${event.toolName} session=${ctx.sessionKey ?? '-'} params=${paramsPreview}`);
@@ -151,6 +155,7 @@ const plugin = {
         error: event.error,
         durationMs: event.durationMs,
       });
+      notifyToolUseActivity(ctx.sessionKey);
       if (!event.toolName.startsWith('feishu_')) return;
       if (event.error) {
         log.error(
