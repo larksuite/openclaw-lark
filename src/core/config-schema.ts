@@ -118,6 +118,13 @@ const DedupSchema = z
 
 const AllowBotsSchema = z.union([z.boolean(), z.literal('mentions')]).optional();
 
+// Reaction reply policy:
+//   "off" — reactions never trigger a reply (ignored entirely).
+//   "own" — only reactions on the bot's own messages are dispatched (default).
+//   "all" — reactions on any message in the chat are dispatched.
+// In every mode the policy gate still enforces group admission, sender
+// allowlists, and DM pairing; only the @-mention requirement is waived
+// (reaction events can never carry a mention — the mode is the policy).
 const ReactionNotificationModeSchema = z.enum(['off', 'own', 'all']).optional();
 
 export const UATConfigSchema = z

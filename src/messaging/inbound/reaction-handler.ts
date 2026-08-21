@@ -6,12 +6,22 @@
  *
  * Handles `im.message.reaction.created_v1` events by building a
  * {@link MessageContext} directly and dispatching to the agent via
- * {@link dispatchToAgent}, bypassing the full 7-stage message pipeline.
+ * {@link dispatchToAgent}. The full 7-stage message pipeline is bypassed,
+ * but the policy gate (group admission, sender allowlists, DM pairing)
+ * is still enforced before dispatch.
  *
- * Controlled by `reactionNotifications` (default: "own"):
- *   - `"off"`  — reaction events are silently ignored.
+ * `reactionNotifications` acts as the reaction *reply policy*:
+ *   - `"off"`  — reactions are ignored entirely and never trigger a reply.
  *   - `"own"`  — only reactions on the bot's own messages are dispatched.
- *   - `"all"`  — reactions on any message in the chat are dispatched.
+ *                Reaction events can never carry an @-mention, and a
+ *                reaction targeting the bot itself is inherently about the
+ *                bot, so the mention requirement is treated as satisfied.
+ *   - `"all"`  — reactions on any message in the chat are dispatched
+ *                (reply to everything; reactions on other bots' messages
+ *                are still skipped for multi-agent groups).
+ *
+ * In every mode, group admission, sender allowlists, and the DM pairing
+ * gate still apply — a reaction is never exempt from access control.
  */
 
 import * as crypto from 'node:crypto';
@@ -25,6 +35,7 @@ import { getChatTypeFeishu, isThreadCapableGroup } from '../../core/chat-info-ca
 import { larkLogger } from '../../core/lark-logger';
 import { resolveUserName } from './user-name-cache';
 import { dispatchToAgent } from './dispatch';
+import { checkMessageGate } from './gate';
 import { resolveFeishuGroupConfig } from './policy';
 
 const logger = larkLogger('inbound/reaction-handler');
@@ -255,8 +266,39 @@ export async function handleFeishuReaction(params: {
   }
 
   log(
-    `feishu[${accountId}]: reaction "${emojiType}" by ${operatorOpenId} on ${messageId} (chatId=${preResolved.chatId}, chatType=${preResolved.chatType}${preResolved.threadId ? `, thread=${preResolved.threadId}` : ''}), dispatching to AI`,
+    `feishu[${accountId}]: reaction "${emojiType}" by ${operatorOpenId} on ${messageId} (chatId=${preResolved.chatId}, chatType=${preResolved.chatType}${preResolved.threadId ? `, thread=${preResolved.threadId}` : ''})`,
   );
+
+  // ---- Step C2: Policy gate ----
+  // Reactions used to bypass the gate entirely: the synthetic context went
+  // straight to dispatchToAgent, so reactions were exempt from access
+  // control. Route them through the same gate as normal messages so group
+  // admission, sender allowlists, and the DM pairing gate all apply.
+  //
+  // The @-mention requirement never applies to reactions: the
+  // `reactionNotifications` mode (off / own / all) IS the reply policy —
+  // scope filtering already happened in resolveReactionContext — and a
+  // reaction event can never carry an @-mention anyway. `mentionSatisfied`
+  // waives only that requirement, not access control.
+  const gate = await checkMessageGate({
+    ctx,
+    accountFeishuCfg,
+    account,
+    accountScopedCfg,
+    log,
+    mentionSatisfied: true,
+  });
+  if (!gate.allowed) {
+    // Deliberately NOT recording gate.historyEntry (the no_mention entry)
+    // into chat history: synthetic "[reacted with …]" lines are low-signal
+    // noise that would pollute the agent's context window.
+    log(
+      `feishu[${accountId}]: reaction "${emojiType}" by ${operatorOpenId} on ${messageId} rejected by gate (${gate.reason}), skipping`,
+    );
+    return;
+  }
+
+  log(`feishu[${accountId}]: reaction "${emojiType}" by ${operatorOpenId} on ${messageId}, dispatching to AI`);
   logger.info(`reaction "${emojiType}" by ${operatorOpenId} on ${messageId} (chatType=${preResolved.chatType})`);
 
   // ---- Step D: Group config resolution ----
