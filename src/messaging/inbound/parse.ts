@@ -13,7 +13,7 @@
  * can make API calls during parsing.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { FeishuMessageEvent, MentionInfo, MessageContext } from '../types';
 import { type ConvertContext, convertMessageContent } from '../converters/content-converter';
 import { getLarkAccount } from '../../core/accounts';

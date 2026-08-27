@@ -7,7 +7,7 @@
  * 提供 OAPI 工具特有的功能（如时间转换），并复用通用辅助函数。
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { Client as LarkClient } from '@larksuiteoapi/node-sdk';
 
 // ---------------------------------------------------------------------------

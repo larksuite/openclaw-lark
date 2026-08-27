@@ -6,7 +6,7 @@
  * 更新云文档（overwrite/append/replace_range/replace_all/insert_before/insert_after/delete_range，支持异步 task_id 查询）
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { type Static, Type } from '@sinclair/typebox';
 import { registerMcpTool } from '../shared';
 

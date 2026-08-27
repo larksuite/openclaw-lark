@@ -6,7 +6,7 @@
  * 统一导出所有知识库相关工具的注册函数
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { getEnabledLarkAccounts } from '../../../core/accounts';
 import { resolveAnyEnabledToolsConfig } from '../../../core/tools-config';
 import { registerFeishuWikiSpaceTool } from './space';

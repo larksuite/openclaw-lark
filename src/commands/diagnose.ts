@@ -14,7 +14,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../types/plugin-sdk-types';
 
 interface DiagLogger {
   info: (message: string) => void;

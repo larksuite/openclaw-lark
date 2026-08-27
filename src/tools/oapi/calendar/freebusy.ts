@@ -10,7 +10,7 @@
  *   - list: POST /open-apis/calendar/v4/freebusy/batch (批量查询接口)
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { Type } from '@sinclair/typebox';
 import { assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, parseTimeToRFC3339 , registerTool } from '../helpers';
 import type { FreebusyData } from '../sdk-types';

@@ -6,7 +6,7 @@
  * 统一导出所有即时通讯相关工具的注册函数
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { registerFeishuImBotImageTool } from './resource';
 
 /**

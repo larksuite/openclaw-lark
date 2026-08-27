@@ -9,7 +9,7 @@
  * without proper isolation via agents + bindings.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { getEnabledLarkAccounts } from './accounts';
 import type { LarkAccount } from './types';
 

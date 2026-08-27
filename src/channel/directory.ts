@@ -8,7 +8,7 @@
  * lookups so the outbound subsystem and UI can resolve targets.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { normalizeFeishuTarget } from '../core/targets';

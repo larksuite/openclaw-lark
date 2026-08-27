@@ -18,7 +18,7 @@ import type {
   SecretDefaults,
   SecretTargetRegistryEntry,
 } from 'openclaw/plugin-sdk/channel-secret-basic-runtime';
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from './src/types/plugin-sdk-types';
 
 const SECRET_FIELDS = ['appSecret', 'encryptKey', 'verificationToken'] as const;
 

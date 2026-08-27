@@ -17,7 +17,7 @@ import type {
   ChannelMessageActionAdapter,
   ChannelMessageActionName,
   OpenClawConfig,
-} from 'openclaw/plugin-sdk';
+} from '../../types/plugin-sdk-types';
 import type { ChannelMessageToolSchemaContribution, ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
 import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';

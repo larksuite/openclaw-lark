@@ -10,7 +10,7 @@
  * (nested under `accounts`).
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import type { FeishuConfig } from '../core/types';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';

@@ -13,7 +13,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { larkLogger } from './lark-logger';
 
 // ---------------------------------------------------------------------------

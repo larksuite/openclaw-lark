@@ -9,7 +9,7 @@
  * Feishu channel config only retains UI-level detail (`showFullPaths`).
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { resolveDefaultAgentId } from 'openclaw/plugin-sdk/agent-runtime';
 import { loadSessionStore, resolveSessionStoreEntry, resolveStorePath } from 'openclaw/plugin-sdk/config-runtime';
 import type { FeishuConfig } from '../core/types';

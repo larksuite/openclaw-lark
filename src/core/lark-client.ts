@@ -16,7 +16,7 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 
-import type { ClawdbotConfig, PluginRuntime } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, PluginRuntime } from '../types/plugin-sdk-types';
 import type { MessageDedup } from '../messaging/inbound/dedup';
 import { clearUserNameCache } from '../messaging/inbound/user-name-cache-store';
 import type { FeishuProbeResult, LarkAccount, LarkBrand } from './types';

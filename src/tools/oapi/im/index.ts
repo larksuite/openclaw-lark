@@ -7,7 +7,7 @@
  * 即时通讯相关工具
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { registerFeishuImUserMessageTool } from './message';
 import { registerFeishuImUserFetchResourceTool } from './resource';
 import { registerMessageReadTools } from './message-read';

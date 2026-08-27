@@ -16,7 +16,7 @@
  *     them).
  */
 
-import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, OpenClawPluginApi } from '../types/plugin-sdk-types';
 import { Type } from '@sinclair/typebox';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { getLarkAccount } from '../core/accounts';

@@ -16,7 +16,7 @@ const normalizeAccountId: (id: string) => string | undefined =
     ? _sdkNormalizeAccountId
     : (id: string) => id?.trim().toLowerCase() || undefined;
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 
 import type { ConfiguredLarkAccount, FeishuConfig, LarkAccount, LarkBrand, LarkCredentials } from './types';
 

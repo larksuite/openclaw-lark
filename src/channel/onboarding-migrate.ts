@@ -9,7 +9,7 @@
  * semantic of "allow this group for any sender".
  */
 
-import type { ClawdbotConfig, WizardPrompter } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, WizardPrompter } from '../types/plugin-sdk-types';
 import type { FeishuConfig, FeishuGroupConfig } from '../core/types';
 import { setFeishuGroupAllowFrom, setFeishuGroups } from './onboarding-config';
 

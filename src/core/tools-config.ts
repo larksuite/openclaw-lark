@@ -9,7 +9,7 @@
  * enabled for a given account.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import type { FeishuToolsConfig, LarkAccount } from './types';
 
 // ---------------------------------------------------------------------------

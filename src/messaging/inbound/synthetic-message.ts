@@ -8,7 +8,7 @@
  * card actions or OAuth flows complete.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import { enqueueFeishuChatTask } from '../../channel/chat-queue';
 import { withTicket } from '../../core/lark-ticket';
 import { getInboundHandler } from './handler-registry';

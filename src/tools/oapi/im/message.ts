@@ -13,7 +13,7 @@
  * 全部以用户身份（user_access_token）调用，scope 来自 real-scope.json。
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { Type } from '@sinclair/typebox';
 import {
   StringEnum,

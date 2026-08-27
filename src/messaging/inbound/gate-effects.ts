@@ -8,7 +8,7 @@
  * operations (pairing request creation, message sending).
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import { LarkClient } from '../../core/lark-client';
 import { sendMessageFeishu } from '../outbound/send';
 

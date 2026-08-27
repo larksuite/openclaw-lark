@@ -9,7 +9,7 @@
  * into the agent envelope.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { FeishuMediaInfo, ResourceDescriptor } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { downloadMessageResourceFeishu } from '../outbound/media';

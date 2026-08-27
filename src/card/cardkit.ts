@@ -5,7 +5,7 @@
  * CardKit streaming APIs for Lark/Feishu.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { runWithMessageUnavailableGuard } from '../core/message-unavailable';

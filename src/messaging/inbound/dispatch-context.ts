@@ -9,7 +9,7 @@
  * event emission.
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, RuntimeEnv } from '../../types/plugin-sdk-types';
 import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk/routing';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';

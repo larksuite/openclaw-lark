@@ -8,7 +8,7 @@
  * or user using the IM Message Forward API.
  */
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../../types/plugin-sdk-types';
 import type { FeishuSendResult } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';

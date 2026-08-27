@@ -11,7 +11,7 @@
  * parameters and delegates to standalone sending functions.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';

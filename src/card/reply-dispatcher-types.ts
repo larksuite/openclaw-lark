@@ -9,7 +9,7 @@
  * and unavailable-guard.ts.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import type { ReplyDispatcher } from 'openclaw/plugin-sdk/reply-runtime';
 import type { FeishuFooterConfig } from '../core/types';
 import type { ToolUseDisplayConfig } from './tool-use-config';

@@ -8,7 +8,7 @@
  * plugin's dispatch/reply layers.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 
 // ---------------------------------------------------------------------------
 // Internal types (mirroring SDK agent config shape without importing internals)

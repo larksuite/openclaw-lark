@@ -8,7 +8,7 @@
  * document title, comment quoted text, and reply chain.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { FeishuDriveCommentEvent } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';

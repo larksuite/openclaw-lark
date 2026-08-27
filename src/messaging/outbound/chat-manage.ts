@@ -9,7 +9,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../../types/plugin-sdk-types';
 import { LarkClient } from '../../core/lark-client';
 
 // ---------------------------------------------------------------------------

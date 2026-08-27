@@ -8,7 +8,7 @@
  * messages using the IM Message Reaction API.
  */
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../../types/plugin-sdk-types';
 import { LarkClient } from '../../core/lark-client';
 
 // ---------------------------------------------------------------------------

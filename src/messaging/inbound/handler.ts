@@ -16,7 +16,7 @@
  *   9. Agent dispatch        → dispatch.ts
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, RuntimeEnv } from '../../types/plugin-sdk-types';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import {
   DEFAULT_GROUP_HISTORY_LIMIT,

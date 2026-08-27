@@ -22,7 +22,7 @@
  * messages are still expanded here via {@link resolveQuotedContent}.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { FeishuMediaInfo, MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { getMessageFeishu } from '../outbound/fetch';

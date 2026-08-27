@@ -6,7 +6,7 @@
  * 注册飞书电子表格工具
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { getEnabledLarkAccounts } from '../../../core/accounts';
 import { resolveAnyEnabledToolsConfig } from '../../../core/tools-config';
 import { registerFeishuSheetTool } from './sheet';

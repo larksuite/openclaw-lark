@@ -8,7 +8,7 @@
  * 注意：此命令仅限应用 owner 执行（与 onboarding 逻辑一致）
  */
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../types/plugin-sdk-types';
 import { triggerOnboarding } from '../tools/onboarding-auth';
 import { getTicket } from '../core/lark-ticket';
 import { getLarkAccount } from '../core/accounts';

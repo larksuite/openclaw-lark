@@ -29,7 +29,7 @@
  */
 
 import * as Lark from '@larksuiteoapi/node-sdk';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import type { ConfiguredLarkAccount } from './types';
 import { getEnabledLarkAccounts, getLarkAccount } from './accounts';
 import { LarkClient, getResolvedConfig } from './lark-client';

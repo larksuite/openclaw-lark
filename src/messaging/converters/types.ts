@@ -5,7 +5,7 @@
  * Shared types for the content converter system.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import type { LarkAccount } from '../../core/types';
 import type { MentionInfo, ResourceDescriptor } from '../types';
 

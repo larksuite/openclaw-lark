@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../src/types/plugin-sdk-types';
 import { Type } from '@sinclair/typebox';
 import { feishuMessageActions } from '../src/messaging/outbound/actions';
 

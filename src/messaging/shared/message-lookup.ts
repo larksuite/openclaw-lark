@@ -9,7 +9,7 @@
  * dependency inversion.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../../types/plugin-sdk-types';
 import { buildConvertContextFromItem, convertMessageContent } from '../converters/content-converter';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';

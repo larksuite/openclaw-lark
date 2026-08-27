@@ -7,7 +7,7 @@
  * 群组相关工具
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { registerChatSearchTool } from './chat';
 import { registerChatMembersTool } from './members';
 

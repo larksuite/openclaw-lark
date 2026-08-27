@@ -14,7 +14,7 @@
  * the message and is working on a reply.
  */
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../../types/plugin-sdk-types';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeMessageId } from '../../core/targets';
 import { isMessageUnavailableError, runWithMessageUnavailableGuard } from '../../core/message-unavailable';

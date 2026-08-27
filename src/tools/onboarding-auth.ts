@@ -11,7 +11,7 @@
  * 超过 50 个时自动分批处理，每批授权完成后自动发起下一批（链式触发）。
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';

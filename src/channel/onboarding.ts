@@ -9,7 +9,7 @@
  * policies, and DM allowlists interactively.
  */
 
-import type { ClawdbotConfig, WizardPrompter } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig, WizardPrompter } from '../types/plugin-sdk-types';
 import type { ChannelSetupDmPolicy, ChannelSetupWizardAdapter } from 'openclaw/plugin-sdk/setup';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import { formatDocsLink } from 'openclaw/plugin-sdk/setup';

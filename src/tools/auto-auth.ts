@@ -29,7 +29,7 @@
  * - 任何步骤抛出异常
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import type { ConfiguredLarkAccount, LarkBrand } from '../core/types';
 import type { LarkTicket } from '../core/lark-ticket';
 import { getTicket } from '../core/lark-ticket';

@@ -13,7 +13,7 @@
  *   log.info("created entity", { cardId, sequence });
  */
 
-import type { RuntimeLogger } from 'openclaw/plugin-sdk';
+import type { RuntimeLogger } from '../types/plugin-sdk-types';
 import { getTicket } from './lark-ticket';
 import { tryGetLarkRuntime } from './runtime-store';
 

@@ -17,7 +17,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from '../../types/plugin-sdk-types';
 import { LarkClient } from '../../core/lark-client';
 import { normalizeFeishuTarget, resolveReceiveIdType } from '../../core/targets';
 import { larkLogger } from '../../core/lark-logger';

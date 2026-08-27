@@ -9,7 +9,7 @@
  * replacing them with `![alt](img_xxx)` that Feishu cards can render.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../types/plugin-sdk-types';
 import { fetchRemoteImageBuffer, uploadImageLark } from '../messaging/outbound/media';
 import { larkLogger } from '../core/lark-logger';
 

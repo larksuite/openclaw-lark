@@ -8,7 +8,7 @@
  * 使用 sdk.im.v1.chatMembers.get 接口
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from '../../../types/plugin-sdk-types';
 import { Type } from '@sinclair/typebox';
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
 import type { ChatMemberListData } from '../sdk-types';

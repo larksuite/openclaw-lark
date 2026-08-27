@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ClawdbotConfig } from '../src/types/plugin-sdk-types';
 import { getLarkAccount, getLarkAccountIds } from '../src/core/accounts';
 
 function makeCfg(feishu: Record<string, unknown>): ClawdbotConfig {
