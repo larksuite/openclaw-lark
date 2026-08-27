@@ -119,7 +119,7 @@ function getTokenType(token: string): string | null {
  * 如果检测到 wiki token，自动通过 wiki API 获取真实的 spreadsheet_token。
  */
 async function resolveToken(
-  p: { url?: string; spreadsheet_token?: string },
+  p: { url?: string; spreadsheet_id?: string; spreadsheet_token?: string },
   client: any,
   log: any,
 ): Promise<{
@@ -129,8 +129,9 @@ async function resolveToken(
   let token: string;
   let urlSheetId: string | undefined;
 
-  if (p.spreadsheet_token) {
-    token = p.spreadsheet_token;
+  const rawToken = p.spreadsheet_id ?? p.spreadsheet_token;
+  if (rawToken) {
+    token = rawToken;
   } else if (p.url) {
     const parsed = parseSheetUrl(p.url);
     if (!parsed) {

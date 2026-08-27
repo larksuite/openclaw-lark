@@ -319,6 +319,82 @@ export function registerTool(
  * return formatToolResult(data, { indent: 4 });
  * ```
  */
+
+/**
+ * Recursively sanitizes response payloads from Feishu APIs so that `token` and `*_token`
+ * fields are converted into safe `_id` fields (e.g. `file_id`, `folder_id`, `spreadsheet_id`, `app_id`, `node_id`, `doc_id`).
+ *
+ * This prevents OpenClaw's security redaction layer (which automatically masks any JSON key
+ * ending in `_token` or named `token` with `***` or ellipses `…`) from corrupting resource IDs
+ * in transcripts, chat context, or SQLite persistence.
+ */
+export function sanitizeLarkResultPayload<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeLarkResultPayload(item)) as unknown as T;
+  }
+  if (typeof data !== 'object') {
+    return data;
+  }
+
+  const source = data as Record<string, any>;
+  const result: Record<string, any> = {};
+
+  for (const [key, val] of Object.entries(source)) {
+    const sanitizedVal = sanitizeLarkResultPayload(val);
+
+    // Keep page_token as-is because OpenClaw core explicitly whitelists page_token
+    if (key === 'page_token' || key === 'next_page_token' || key === 'page_cursor') {
+      result[key] = sanitizedVal;
+      continue;
+    }
+
+    if (key === 'file_token') {
+      result['file_id'] = sanitizedVal;
+    } else if (key === 'folder_token') {
+      result['folder_id'] = sanitizedVal;
+    } else if (key === 'spreadsheet_token') {
+      result['spreadsheet_id'] = sanitizedVal;
+    } else if (key === 'app_token') {
+      result['app_id'] = sanitizedVal;
+    } else if (key === 'doc_token') {
+      result['doc_id'] = sanitizedVal;
+    } else if (key === 'node_token') {
+      result['node_id'] = sanitizedVal;
+    } else if (key === 'parent_token') {
+      result['parent_id'] = sanitizedVal;
+    } else if (key === 'parent_node_token' || key === 'parent_node') {
+      result['parent_id'] = sanitizedVal;
+    } else if (key === 'origin_node_token') {
+      result['origin_node_id'] = sanitizedVal;
+    } else if (key === 'target_parent_token') {
+      result['target_parent_id'] = sanitizedVal;
+    } else if (key === 'obj_token') {
+      result['obj_id'] = sanitizedVal;
+    } else if (key === 'token') {
+      if (source.type === 'folder' || source.doc_types === 'FOLDER') {
+        result['folder_id'] = sanitizedVal;
+      } else if (source.type === 'file' || source.doc_types === 'FILE') {
+        result['file_id'] = sanitizedVal;
+      } else if (source.type === 'sheet' || source.doc_types === 'SHEET') {
+        result['spreadsheet_id'] = sanitizedVal;
+      } else if (source.type === 'bitable' || source.doc_types === 'BITABLE') {
+        result['app_id'] = sanitizedVal;
+      } else if (source.doc_type || source.doc_types) {
+        result['doc_id'] = sanitizedVal;
+      } else {
+        result['file_id'] = sanitizedVal;
+      }
+    } else {
+      result[key] = sanitizedVal;
+    }
+  }
+
+  return result as T;
+}
+
 export function formatToolResult(
   data: unknown,
   options: {
@@ -327,15 +403,16 @@ export function formatToolResult(
   } = {},
 ): ToolResult {
   const { indent = 2 } = options;
+  const sanitized = sanitizeLarkResultPayload(data);
 
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify(data, null, indent),
+        text: JSON.stringify(sanitized, null, indent),
       },
     ],
-    details: data, // 始终包含 details
+    details: sanitized, // 始终包含 sanitized details
   };
 }
 

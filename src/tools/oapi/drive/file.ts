@@ -42,10 +42,15 @@ const FeishuDriveFileSchema = Type.Union([
   // LIST FILES
   Type.Object({
     action: Type.Literal('list'),
-    folder_token: Type.Optional(
+    folder_id: Type.Optional(
       Type.String({
         description:
-          '文件夹 token（可选）。不填写或填空字符串时，获取用户云空间根目录下的清单（注意：根目录模式不支持分页和返回快捷方式）',
+          '文件夹 ID（可选）。不填写或填空字符串时，获取用户云空间根目录下的清单（注意：根目录模式不支持分页和返回快捷方式）',
+      }),
+    ),
+    folder_token: Type.Optional(
+      Type.String({
+        description: '【folder_id 的别名】文件夹 ID',
       }),
     ),
     page_size: Type.Optional(
@@ -77,9 +82,16 @@ const FeishuDriveFileSchema = Type.Union([
     action: Type.Literal('get_meta'),
     request_docs: Type.Array(
       Type.Object({
-        doc_token: Type.String({
-          description: '文档 token（从浏览器 URL 中获取，如 spreadsheet_token、doc_token 等）',
-        }),
+        doc_id: Type.Optional(
+          Type.String({
+            description: '文档 ID / token（从浏览器 URL 中获取，如 spreadsheet_id、doc_id 等）',
+          }),
+        ),
+        doc_token: Type.Optional(
+          Type.String({
+            description: '【doc_id 的别名】文档 token',
+          }),
+        ),
         doc_type: Type.Union(
           [
             Type.Literal('doc'),
@@ -108,9 +120,16 @@ const FeishuDriveFileSchema = Type.Union([
   // COPY FILE
   Type.Object({
     action: Type.Literal('copy'),
-    file_token: Type.String({
-      description: '文件 token（必填）',
-    }),
+    file_id: Type.Optional(
+      Type.String({
+        description: '文件 ID（必填，与 file_token 二选一）',
+      }),
+    ),
+    file_token: Type.Optional(
+      Type.String({
+        description: '【file_id 的别名】文件 token',
+      }),
+    ),
     name: Type.String({
       description: '目标文件名（必填）',
     }),
@@ -129,14 +148,24 @@ const FeishuDriveFileSchema = Type.Union([
         description: '文档类型（必填）',
       },
     ),
+    folder_id: Type.Optional(
+      Type.String({
+        description: '目标文件夹 ID。不传则复制到「我的空间」根目录',
+      }),
+    ),
     folder_token: Type.Optional(
       Type.String({
-        description: '目标文件夹 token。不传则复制到「我的空间」根目录',
+        description: '【folder_id 的别名】目标文件夹 token',
+      }),
+    ),
+    parent_id: Type.Optional(
+      Type.String({
+        description: '【folder_id 的别名】目标文件夹 ID',
       }),
     ),
     parent_node: Type.Optional(
       Type.String({
-        description: '【folder_token 的别名】目标文件夹 token（为兼容性保留，建议使用 folder_token）',
+        description: '【folder_id 的别名】目标文件夹 token（为兼容性保留）',
       }),
     ),
   }),
@@ -144,9 +173,16 @@ const FeishuDriveFileSchema = Type.Union([
   // MOVE FILE
   Type.Object({
     action: Type.Literal('move'),
-    file_token: Type.String({
-      description: '文件 token（必填）',
-    }),
+    file_id: Type.Optional(
+      Type.String({
+        description: '文件 ID（必填，与 file_token 二选一）',
+      }),
+    ),
+    file_token: Type.Optional(
+      Type.String({
+        description: '【file_id 的别名】文件 token',
+      }),
+    ),
     type: Type.Union(
       [
         Type.Literal('doc'),
@@ -162,17 +198,36 @@ const FeishuDriveFileSchema = Type.Union([
         description: '文档类型（必填）',
       },
     ),
-    folder_token: Type.String({
-      description: '目标文件夹 token（必填）',
-    }),
+    folder_id: Type.Optional(
+      Type.String({
+        description: '目标文件夹 ID（必填，与 folder_token 二选一）',
+      }),
+    ),
+    folder_token: Type.Optional(
+      Type.String({
+        description: '【folder_id 的别名】目标文件夹 token',
+      }),
+    ),
+    parent_id: Type.Optional(
+      Type.String({
+        description: '【folder_id 的别名】目标文件夹 ID',
+      }),
+    ),
   }),
 
   // DELETE FILE
   Type.Object({
     action: Type.Literal('delete'),
-    file_token: Type.String({
-      description: '文件 token（必填）',
-    }),
+    file_id: Type.Optional(
+      Type.String({
+        description: '文件 ID（必填，与 file_token 二选一）',
+      }),
+    ),
+    file_token: Type.Optional(
+      Type.String({
+        description: '【file_id 的别名】文件 token',
+      }),
+    ),
     type: Type.Union(
       [
         Type.Literal('doc'),
@@ -193,10 +248,26 @@ const FeishuDriveFileSchema = Type.Union([
   // UPLOAD FILE
   Type.Object({
     action: Type.Literal('upload'),
+    parent_id: Type.Optional(
+      Type.String({
+        description:
+          '父节点 ID / 目标文件夹 ID（可选）。不填写或填空字符串时，上传到云空间根目录',
+      }),
+    ),
+    folder_id: Type.Optional(
+      Type.String({
+        description: '【parent_id 的别名】目标文件夹 ID',
+      }),
+    ),
+    folder_token: Type.Optional(
+      Type.String({
+        description: '【parent_id 的别名】目标文件夹 token',
+      }),
+    ),
     parent_node: Type.Optional(
       Type.String({
         description:
-          '父节点 token（可选）。explorer 类型填文件夹 token，bitable 类型填 app_token。不填写或填空字符串时，上传到云空间根目录',
+          '【parent_id 的别名】父节点 token（为兼容性保留）',
       }),
     ),
     file_path: Type.Optional(
@@ -227,9 +298,16 @@ const FeishuDriveFileSchema = Type.Union([
   // DOWNLOAD FILE
   Type.Object({
     action: Type.Literal('download'),
-    file_token: Type.String({
-      description: '文件 token（必填）',
-    }),
+    file_id: Type.Optional(
+      Type.String({
+        description: '文件 ID（必填，与 file_token 二选一）',
+      }),
+    ),
+    file_token: Type.Optional(
+      Type.String({
+        description: '【file_id 的别名】文件 token',
+      }),
+    ),
     output_path: Type.Optional(
       Type.String({
         description:
@@ -246,6 +324,7 @@ const FeishuDriveFileSchema = Type.Union([
 type FeishuDriveFileParams =
   | {
       action: 'list';
+      folder_id?: string;
       folder_token?: string;
       page_size?: number;
       page_token?: string;
@@ -255,31 +334,42 @@ type FeishuDriveFileParams =
   | {
       action: 'get_meta';
       request_docs: Array<{
-        doc_token: string;
+        doc_id?: string;
+        doc_token?: string;
         doc_type: string;
       }>;
     }
   | {
       action: 'copy';
-      file_token: string;
+      file_id?: string;
+      file_token?: string;
       name: string;
       type: string;
+      folder_id?: string;
       folder_token?: string;
+      parent_id?: string;
       parent_node?: string;
     }
   | {
       action: 'move';
-      file_token: string;
+      file_id?: string;
+      file_token?: string;
       type: string;
-      folder_token: string;
+      folder_id?: string;
+      folder_token?: string;
+      parent_id?: string;
     }
   | {
       action: 'delete';
-      file_token: string;
+      file_id?: string;
+      file_token?: string;
       type: string;
     }
   | {
       action: 'upload';
+      parent_id?: string;
+      folder_id?: string;
+      folder_token?: string;
       parent_node?: string;
       file_path?: string;
       file_content_base64?: string;
@@ -288,7 +378,8 @@ type FeishuDriveFileParams =
     }
   | {
       action: 'download';
-      file_token: string;
+      file_id?: string;
+      file_token?: string;
       output_path?: string;
     };
 
@@ -311,13 +402,13 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
         '【以用户身份】飞书云空间文件管理工具。当用户要求查看云空间(云盘)中的文件列表、获取文件信息、复制/移动/删除文件、上传/下载文件时使用。消息中的文件读写**禁止**使用该工具!' +
         '\n\nActions:' +
         '\n- list（列出文件）：列出文件夹下的文件。不提供 folder_token 时获取根目录清单' +
-        "\n- get_meta（批量获取元数据）：批量查询文档元信息，使用 request_docs 数组参数，格式：[{doc_token: '...', doc_type: 'sheet'}]" +
+        "\n- get_meta（批量获取元数据）：批量查询文档元信息，使用 request_docs 数组参数，格式：[{doc_id: '...', doc_type: 'sheet'}]" +
         '\n- copy（复制文件）：复制文件到指定位置' +
         '\n- move（移动文件）：移动文件到指定文件夹' +
         '\n- delete（删除文件）：删除文件' +
         '\n- upload（上传文件）：上传本地文件到云空间。提供 file_path（本地文件路径）或 file_content_base64（Base64 编码）' +
         '\n- download（下载文件）：下载文件到本地。提供 output_path（本地保存路径）则保存到本地，否则返回 Base64 编码' +
-        '\n\n【重要】copy/move/delete 操作需要 file_token 和 type 参数。get_meta 使用 request_docs 数组参数。' +
+        '\n\n【重要】copy/move/delete 操作需要 file_id 和 type 参数。get_meta 使用 request_docs 数组参数。' +
         '\n【重要】upload 优先使用 file_path（自动读取文件、提取文件名和大小），也支持 file_content_base64（需手动提供 file_name 和 size）。' +
         '\n【重要】download 提供 output_path 时保存到本地（可以是文件路径或文件夹路径+file_name），不提供则返回 Base64。',
       parameters: FeishuDriveFileSchema,
@@ -331,7 +422,8 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
             // LIST FILES
             // -----------------------------------------------------------------
             case 'list': {
-              log.info(`list: folder_token=${p.folder_token || '(root)'}, page_size=${p.page_size ?? 200}`);
+              const targetFolder = p.folder_id ?? p.folder_token;
+              log.info(`list: folder_id=${targetFolder || '(root)'}, page_size=${p.page_size ?? 200}`);
 
               const res = await client.invoke(
                 'feishu_drive_file.list',
@@ -339,7 +431,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                   sdk.drive.file.list(
                     {
                       params: {
-                        folder_token: p.folder_token as any,
+                        folder_token: targetFolder as any,
                         page_size: p.page_size as any,
                         page_token: p.page_token,
                         order_by: p.order_by as any,
@@ -369,11 +461,16 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
               if (!p.request_docs || !Array.isArray(p.request_docs) || p.request_docs.length === 0) {
                 return json({
                   error:
-                    "request_docs must be a non-empty array. Correct format: {action: 'get_meta', request_docs: [{doc_token: '...', doc_type: 'sheet'}]}",
+                    "request_docs must be a non-empty array. Correct format: {action: 'get_meta', request_docs: [{doc_id: '...', doc_type: 'sheet'}]}",
                 });
               }
 
-              log.info(`get_meta: querying ${p.request_docs.length} documents`);
+              const normalizedDocs = p.request_docs.map((doc) => ({
+                doc_token: doc.doc_id ?? doc.doc_token,
+                doc_type: doc.doc_type,
+              }));
+
+              log.info(`get_meta: querying ${normalizedDocs.length} documents`);
 
               const res = await client.invoke(
                 'feishu_drive_file.get_meta',
@@ -381,7 +478,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                   sdk.drive.meta.batchQuery(
                     {
                       data: {
-                        request_docs: p.request_docs as any,
+                        request_docs: normalizedDocs as any,
                       },
                     },
                     opts,
@@ -401,11 +498,14 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
             // COPY FILE
             // -----------------------------------------------------------------
             case 'copy': {
-              // 兼容处理：parent_node 作为 folder_token 的别名
-              const targetFolderToken = p.folder_token || p.parent_node;
+              const fileToken = p.file_id ?? p.file_token;
+              if (!fileToken) {
+                return json({ error: 'file_id or file_token is required' });
+              }
+              const targetFolderToken = p.folder_id ?? p.folder_token ?? p.parent_id ?? p.parent_node;
 
               log.info(
-                `copy: file_token=${p.file_token}, name=${p.name}, type=${p.type}, folder_token=${targetFolderToken ?? '(root)'}`,
+                `copy: file_id=${fileToken}, name=${p.name}, type=${p.type}, folder_id=${targetFolderToken ?? '(root)'}`,
               );
 
               const res = await client.invoke(
@@ -413,7 +513,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                 (sdk, opts) =>
                   sdk.drive.file.copy(
                     {
-                      path: { file_token: p.file_token },
+                      path: { file_token: fileToken },
                       data: {
                         name: p.name,
                         type: p.type as any,
@@ -438,17 +538,26 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
             // MOVE FILE
             // -----------------------------------------------------------------
             case 'move': {
-              log.info(`move: file_token=${p.file_token}, type=${p.type}, folder_token=${p.folder_token}`);
+              const fileToken = p.file_id ?? p.file_token;
+              const targetFolderToken = p.folder_id ?? p.folder_token ?? p.parent_id;
+              if (!fileToken) {
+                return json({ error: 'file_id or file_token is required' });
+              }
+              if (!targetFolderToken) {
+                return json({ error: 'folder_id or folder_token is required' });
+              }
+
+              log.info(`move: file_id=${fileToken}, type=${p.type}, folder_id=${targetFolderToken}`);
 
               const res = await client.invoke(
                 'feishu_drive_file.move',
                 (sdk, opts) =>
                   sdk.drive.file.move(
                     {
-                      path: { file_token: p.file_token },
+                      path: { file_token: fileToken },
                       data: {
                         type: p.type as any,
-                        folder_token: p.folder_token,
+                        folder_token: targetFolderToken,
                       },
                     },
                     opts,
@@ -472,14 +581,18 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
             // DELETE FILE
             // -----------------------------------------------------------------
             case 'delete': {
-              log.info(`delete: file_token=${p.file_token}, type=${p.type}`);
+              const fileToken = p.file_id ?? p.file_token;
+              if (!fileToken) {
+                return json({ error: 'file_id or file_token is required' });
+              }
+              log.info(`delete: file_id=${fileToken}, type=${p.type}`);
 
               const res = await client.invoke(
                 'feishu_drive_file.delete',
                 (sdk, opts) =>
                   sdk.drive.file.delete(
                     {
-                      path: { file_token: p.file_token },
+                      path: { file_token: fileToken },
                       params: {
                         type: p.type as any,
                       },
@@ -555,6 +668,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                 // 小文件：使用一次上传
                 log.info(`upload: using upload_all (file size ${fileSize} <= 15MB)`);
 
+                const targetParentNode = p.parent_id ?? p.parent_node ?? p.folder_id ?? p.folder_token ?? '';
                 const res: any = await client.invoke(
                   'feishu_drive_file.upload',
                   (sdk, opts) =>
@@ -563,7 +677,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                         data: {
                           file_name: fileName,
                           parent_type: 'explorer' as any,
-                          parent_node: p.parent_node || '',
+                          parent_node: targetParentNode,
                           size: fileSize,
                           file: fileBuffer as any,
                         },
@@ -587,6 +701,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
 
                 // 1. 预上传
                 log.info(`upload: step 1 - prepare upload`);
+                const targetParentNode = p.parent_id ?? p.parent_node ?? p.folder_id ?? p.folder_token ?? '';
                 const prepareRes: any = await client.invoke(
                   'feishu_drive_file.upload',
                   (sdk, opts) =>
@@ -595,7 +710,7 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
                         data: {
                           file_name: fileName,
                           parent_type: 'explorer' as any,
-                          parent_node: p.parent_node || '',
+                          parent_node: targetParentNode,
                           size: fileSize,
                         },
                       },
@@ -678,14 +793,18 @@ export function registerFeishuDriveFileTool(api: OpenClawPluginApi): boolean {
             // DOWNLOAD FILE
             // -----------------------------------------------------------------
             case 'download': {
-              log.info(`download: file_token=${p.file_token}`);
+              const fileToken = p.file_id ?? p.file_token;
+              if (!fileToken) {
+                return json({ error: 'file_id or file_token is required' });
+              }
+              log.info(`download: file_id=${fileToken}`);
 
               const res: any = await client.invoke(
                 'feishu_drive_file.download',
                 (sdk, opts) =>
                   sdk.drive.file.download(
                     {
-                      path: { file_token: p.file_token },
+                      path: { file_token: fileToken },
                     },
                     opts,
                   ),

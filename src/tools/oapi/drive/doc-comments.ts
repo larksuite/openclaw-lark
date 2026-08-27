@@ -38,9 +38,16 @@ const ReplyElementSchema = Type.Object({
 
 const DocCommentsSchema = Type.Object({
   action: StringEnum(['list', 'list_replies', 'create', 'reply', 'patch']),
-  file_token: Type.String({
-    description: '云文档token或wiki节点token(可从文档URL获取)。如果是wiki token，会自动转换为实际文档的obj_token',
-  }),
+  file_id: Type.Optional(
+    Type.String({
+      description: '云文档 ID 或 wiki 节点 ID(可从文档URL获取)。如果是wiki ID，会自动转换为实际文档的obj_id',
+    }),
+  ),
+  file_token: Type.Optional(
+    Type.String({
+      description: '【file_id 的别名】云文档token或wiki节点token',
+    }),
+  ),
   file_type: StringEnum(
     ['doc', 'docx', 'sheet', 'file', 'slides', 'wiki'],
     {
@@ -94,7 +101,8 @@ interface ReplyElement {
 
 interface DocCommentsParams {
   action: 'list' | 'list_replies' | 'create' | 'reply' | 'patch';
-  file_token: string;
+  file_id?: string;
+  file_token?: string;
   file_type: 'doc' | 'docx' | 'sheet' | 'file' | 'slides' | 'wiki';
   is_whole?: boolean;
   is_solved?: boolean;
@@ -234,11 +242,11 @@ export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
           const userIdType = p.user_id_type || 'open_id';
 
           // 如果是 wiki token，先转换为实际的 obj_token 和 obj_type
-          let actualFileToken = p.file_token;
+          let actualFileToken = p.file_id ?? p.file_token;
           let actualFileType = p.file_type;
 
           if (p.file_type === 'wiki') {
-            log.info(`doc_comments: detected wiki token="${p.file_token}", converting to obj_token...`);
+            log.info(`doc_comments: detected wiki token="${actualFileToken}", converting to obj_token...`);
 
             try {
               const wikiNodeRes = await client.invoke(
@@ -247,7 +255,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
                   sdk.wiki.space.getNode(
                     {
                       params: {
-                        token: p.file_token,
+                        token: actualFileToken,
                         obj_type: 'wiki',
                       },
                     },
@@ -260,7 +268,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
               const node = (wikiNodeRes as any).data?.node;
               if (!node || !node.obj_token || !node.obj_type) {
                 return json({
-                  error: `failed to resolve wiki token "${p.file_token}" to document object (may be a folder node rather than a document)`,
+                  error: `failed to resolve wiki token "${actualFileToken}" to document object (may be a folder node rather than a document)`,
                   wiki_node: node,
                 });
               }
@@ -274,7 +282,7 @@ export function registerDocCommentsTool(api: OpenClawPluginApi): boolean {
             } catch (err) {
               log.error(`doc_comments: failed to convert wiki token: ${err}`);
               return json({
-                error: `failed to resolve wiki token "${p.file_token}": ${err}`,
+                error: `failed to resolve wiki token "${actualFileToken}": ${err}`,
               });
             }
           }
