@@ -68,9 +68,135 @@ function createDispatchContext(content: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sendMessageFeishuMock.mockReset().mockResolvedValue({});
 });
 
 describe('dispatchSystemCommand', () => {
+  it('redacts email addresses and retries once when Feishu rejects a system reply with code 230028', async () => {
+    const auditError = Object.assign(new Error('Request failed with status code 400'), {
+      response: {
+        data: {
+          code: 230028,
+          msg: 'The messages do NOT pass the audit, ext=contain sensitive data: EMAIL_ADDRESS',
+        },
+      },
+    });
+
+    sendMessageFeishuMock.mockRejectedValueOnce(auditError).mockResolvedValueOnce({});
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
+      async (params: {
+        dispatcherOptions: {
+          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+        };
+      }) => {
+        await params.dispatcherOptions.deliver(
+          {
+            text: 'oauth (User.Name+OAuth@Sub.Example.COM)\nbackup@example.co.uk',
+          },
+          { kind: 'final' },
+        );
+      },
+    );
+
+    await dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1');
+
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(2);
+    expect(sendMessageFeishuMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        text: 'oauth (User.Name+OAuth@Sub.Example.COM)\nbackup@example.co.uk',
+      }),
+    );
+    expect(sendMessageFeishuMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        text: 'oauth (User.Name+OAuth [at] Sub.Example.COM)\nbackup [at] example.co.uk',
+      }),
+    );
+  });
+
+  it('keeps an email address unchanged when Feishu accepts the first system reply', async () => {
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
+      async (params: {
+        dispatcherOptions: {
+          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+        };
+      }) => {
+        await params.dispatcherOptions.deliver({ text: 'Contact user@example.com for help' }, { kind: 'final' });
+      },
+    );
+
+    await dispatchSystemCommand(createDispatchContext('/help'), {} as never, 'om_reply_1');
+
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageFeishuMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Contact user@example.com for help',
+      }),
+    );
+  });
+
+  it('does not retry an audit rejection when the system reply contains no email address', async () => {
+    const auditError = Object.assign(new Error('audit rejected'), {
+      code: 230028,
+      msg: 'The messages do NOT pass the audit',
+    });
+    sendMessageFeishuMock.mockRejectedValueOnce(auditError);
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
+      async (params: {
+        dispatcherOptions: {
+          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+        };
+      }) => {
+        await params.dispatcherOptions.deliver({ text: 'System status is healthy' }, { kind: 'final' });
+      },
+    );
+
+    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
+      auditError,
+    );
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry email-containing system replies for unrelated Feishu errors', async () => {
+    const unrelatedError = Object.assign(new Error('rate limited'), { code: 230020 });
+    sendMessageFeishuMock.mockRejectedValueOnce(unrelatedError);
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
+      async (params: {
+        dispatcherOptions: {
+          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+        };
+      }) => {
+        await params.dispatcherOptions.deliver({ text: 'oauth (user@example.com)' }, { kind: 'final' });
+      },
+    );
+
+    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
+      unrelatedError,
+    );
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries at most once when the redacted system reply is also rejected', async () => {
+    const firstAuditError = Object.assign(new Error('first audit rejection'), { code: 230028 });
+    const secondAuditError = Object.assign(new Error('second audit rejection'), { code: 230028 });
+    sendMessageFeishuMock.mockRejectedValueOnce(firstAuditError).mockRejectedValueOnce(secondAuditError);
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
+      async (params: {
+        dispatcherOptions: {
+          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+        };
+      }) => {
+        await params.dispatcherOptions.deliver({ text: 'oauth (user@example.com)' }, { kind: 'final' });
+      },
+    );
+
+    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
+      secondAuditError,
+    );
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['/new', '/reset'])(
     'suppresses tool detail deliveries for %s session lifecycle commands',
     async (command) => {
