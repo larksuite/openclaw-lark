@@ -9,6 +9,7 @@
  */
 
 import type { LarkClient } from '../../core/lark-client';
+import { extractLarkApiCode } from '../../core/api-error';
 import { larkLogger } from '../../core/lark-logger';
 import { ticketElapsed } from '../../core/lark-ticket';
 import { createFeishuReplyDispatcher } from '../../card/reply-dispatcher';
@@ -19,6 +20,7 @@ import type { DispatchContext } from './dispatch-context';
 import { buildInboundPayload } from './dispatch-builders';
 
 const log = larkLogger('inbound/dispatch-commands');
+const MESSAGE_AUDIT_FAILED_CODE = 230028;
 
 // ---------------------------------------------------------------------------
 // Permission error notification
@@ -109,9 +111,7 @@ export async function dispatchSystemCommand(
   let delivered = false;
   const suppressToolDetails = isLifecycleSessionCommand(dc.ctx.content);
 
-  dc.log(
-    `feishu[${dc.account.accountId}]: detected system command, using plain-text dispatch`,
-  );
+  dc.log(`feishu[${dc.account.accountId}]: detected system command, using plain-text dispatch`);
   log.info('system command detected, plain-text dispatch');
 
   await dc.core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
@@ -125,14 +125,31 @@ export async function dispatchSystemCommand(
 
         const text = payload.text?.trim() ?? '';
         if (!text) return;
-        await sendMessageFeishu({
-          cfg: dc.accountScopedCfg,
-          to: dc.ctx.chatId,
-          text,
-          replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
-          accountId: dc.account.accountId,
-          replyInThread: dc.isThread,
-        });
+
+        const sendText = (outboundText: string) =>
+          sendMessageFeishu({
+            cfg: dc.accountScopedCfg,
+            to: dc.ctx.chatId,
+            text: outboundText,
+            replyToMessageId: replyToMessageId ?? dc.ctx.messageId,
+            accountId: dc.account.accountId,
+            replyInThread: dc.isThread,
+          });
+
+        try {
+          await sendText(text);
+        } catch (err) {
+          const redactedText = redactEmailAddresses(text);
+          if (extractLarkApiCode(err) !== MESSAGE_AUDIT_FAILED_CODE || redactedText === text) {
+            throw err;
+          }
+
+          dc.log(
+            `feishu[${dc.account.accountId}]: command reply rejected by message audit; retrying with email addresses redacted`,
+          );
+          log.warn('command reply rejected by message audit; retrying with email addresses redacted');
+          await sendText(redactedText);
+        }
         delivered = true;
       },
       onSkip: (_payload, info) => {
@@ -157,4 +174,8 @@ function isLifecycleSessionCommand(text: string | undefined): boolean {
   if (!match) return false;
   const command = match[1]?.toLowerCase();
   return command === 'new' || command === 'reset';
+}
+
+function redactEmailAddresses(text: string): string {
+  return text.replace(/\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi, '$1 [at] $2');
 }
