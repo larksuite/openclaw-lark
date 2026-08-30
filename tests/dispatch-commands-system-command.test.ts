@@ -42,6 +42,27 @@ vi.mock('../src/messaging/inbound/dispatch-builders', () => ({
 }));
 
 import { dispatchSystemCommand } from '../src/messaging/inbound/dispatch-commands';
+import type { DispatchContext } from '../src/messaging/inbound/dispatch-context';
+
+type TestDispatchContext = DispatchContext & {
+  log: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+};
+
+interface BufferedFinalReplyParams {
+  dispatcherOptions: {
+    deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
+    onError?: (err: unknown, info: { kind: 'final' }) => void;
+  };
+}
+
+async function dispatchBufferedFinalReply(params: BufferedFinalReplyParams, text: string): Promise<void> {
+  try {
+    await params.dispatcherOptions.deliver({ text }, { kind: 'final' });
+  } catch (err) {
+    params.dispatcherOptions.onError?.(err, { kind: 'final' });
+  }
+}
 
 function createDispatchContext(content: string) {
   return {
@@ -63,7 +84,7 @@ function createDispatchContext(content: string) {
       },
     },
     isThread: false,
-  } as never;
+  } as unknown as TestDispatchContext;
 }
 
 beforeEach(() => {
@@ -83,22 +104,12 @@ describe('dispatchSystemCommand', () => {
     });
 
     sendMessageFeishuMock.mockRejectedValueOnce(auditError).mockResolvedValueOnce({});
-    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
-      async (params: {
-        dispatcherOptions: {
-          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
-        };
-      }) => {
-        await params.dispatcherOptions.deliver(
-          {
-            text: 'oauth (User.Name+OAuth@Sub.Example.COM)\nbackup@example.co.uk',
-          },
-          { kind: 'final' },
-        );
-      },
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async (params: BufferedFinalReplyParams) =>
+      dispatchBufferedFinalReply(params, 'oauth (User.Name+OAuth@Sub.Example.COM)\nbackup@example.co.uk'),
     );
 
-    await dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1');
+    const dc = createDispatchContext('/status');
+    await dispatchSystemCommand(dc, {} as never, 'om_reply_1');
 
     expect(sendMessageFeishuMock).toHaveBeenCalledTimes(2);
     expect(sendMessageFeishuMock).toHaveBeenNthCalledWith(
@@ -107,6 +118,10 @@ describe('dispatchSystemCommand', () => {
         text: 'oauth (User.Name+OAuth@Sub.Example.COM)\nbackup@example.co.uk',
       }),
     );
+    expect(dc.log).toHaveBeenCalledWith(expect.stringContaining('retrying with email addresses redacted'));
+    expect(dc.log).toHaveBeenCalledWith(expect.stringContaining('system command dispatched (delivered=true)'));
+    expect(dc.log.mock.calls.flat().join('\n')).not.toContain('User.Name+OAuth@Sub.Example.COM');
+    expect(dc.log.mock.calls.flat().join('\n')).not.toContain('backup@example.co.uk');
     expect(sendMessageFeishuMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -142,59 +157,49 @@ describe('dispatchSystemCommand', () => {
       msg: 'The messages do NOT pass the audit',
     });
     sendMessageFeishuMock.mockRejectedValueOnce(auditError);
-    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
-      async (params: {
-        dispatcherOptions: {
-          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
-        };
-      }) => {
-        await params.dispatcherOptions.deliver({ text: 'System status is healthy' }, { kind: 'final' });
-      },
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async (params: BufferedFinalReplyParams) =>
+      dispatchBufferedFinalReply(params, 'System status is healthy'),
     );
 
-    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
-      auditError,
-    );
+    const dc = createDispatchContext('/status');
+    await dispatchSystemCommand(dc, {} as never, 'om_reply_1');
+
+    expect(dc.error).toHaveBeenCalledWith(expect.stringContaining('command final reply failed: Error: audit rejected'));
     expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+    expect(dc.log).toHaveBeenCalledWith(expect.stringContaining('system command dispatched (delivered=false)'));
   });
 
   it('does not retry email-containing system replies for unrelated Feishu errors', async () => {
     const unrelatedError = Object.assign(new Error('rate limited'), { code: 230020 });
     sendMessageFeishuMock.mockRejectedValueOnce(unrelatedError);
-    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
-      async (params: {
-        dispatcherOptions: {
-          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
-        };
-      }) => {
-        await params.dispatcherOptions.deliver({ text: 'oauth (user@example.com)' }, { kind: 'final' });
-      },
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async (params: BufferedFinalReplyParams) =>
+      dispatchBufferedFinalReply(params, 'oauth (user@example.com)'),
     );
 
-    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
-      unrelatedError,
-    );
+    const dc = createDispatchContext('/status');
+    await dispatchSystemCommand(dc, {} as never, 'om_reply_1');
+
+    expect(dc.error).toHaveBeenCalledWith(expect.stringContaining('command final reply failed: Error: rate limited'));
     expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+    expect(dc.log).toHaveBeenCalledWith(expect.stringContaining('system command dispatched (delivered=false)'));
   });
 
   it('retries at most once when the redacted system reply is also rejected', async () => {
     const firstAuditError = Object.assign(new Error('first audit rejection'), { code: 230028 });
     const secondAuditError = Object.assign(new Error('second audit rejection'), { code: 230028 });
     sendMessageFeishuMock.mockRejectedValueOnce(firstAuditError).mockRejectedValueOnce(secondAuditError);
-    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(
-      async (params: {
-        dispatcherOptions: {
-          deliver: (payload: { text?: string }, info: { kind: 'final' }) => Promise<void>;
-        };
-      }) => {
-        await params.dispatcherOptions.deliver({ text: 'oauth (user@example.com)' }, { kind: 'final' });
-      },
+    dispatchReplyWithBufferedBlockDispatcherMock.mockImplementationOnce(async (params: BufferedFinalReplyParams) =>
+      dispatchBufferedFinalReply(params, 'oauth (user@example.com)'),
     );
 
-    await expect(dispatchSystemCommand(createDispatchContext('/status'), {} as never, 'om_reply_1')).rejects.toBe(
-      secondAuditError,
+    const dc = createDispatchContext('/status');
+    await dispatchSystemCommand(dc, {} as never, 'om_reply_1');
+
+    expect(dc.error).toHaveBeenCalledWith(
+      expect.stringContaining('command final reply failed: Error: second audit rejection'),
     );
     expect(sendMessageFeishuMock).toHaveBeenCalledTimes(2);
+    expect(dc.log).toHaveBeenCalledWith(expect.stringContaining('system command dispatched (delivered=false)'));
   });
 
   it.each(['/new', '/reset'])(
