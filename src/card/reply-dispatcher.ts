@@ -185,7 +185,10 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       await typingCallbacks.onReplyStart?.();
     },
 
-    deliver: async (payload: ReplyPayload, meta?: { kind?: string }) => {
+    deliver: async (
+      payload: ReplyPayload,
+      meta?: { kind?: 'tool' | 'block' | 'final'; assistantMessageIndex?: number },
+    ) => {
       log.debug('deliver called', {
         textPreview: payload.text?.slice(0, 100),
         kind: meta?.kind,
@@ -222,9 +225,16 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
 
       // ---- Streaming card mode ----
       if (controller) {
-        if (meta?.kind === 'tool' && shouldRouteToolPayloadToCard(payload, toolUseDisplay.showToolUse)) {
-          await controller.onToolPayload(payload);
-          return;
+        if (meta?.kind === 'tool') {
+          if (shouldRouteToolPayloadToCard(payload, toolUseDisplay.showToolUse)) {
+            await controller.onToolPayload(payload);
+            return;
+          }
+
+          // Respect hidden tool-progress mode without changing the existing
+          // fallback behavior for media, interactive, BTW, voice, or approval
+          // payloads, which may carry independently visible channel semantics.
+          if (!hasSpecialToolFallback(payload)) return;
         }
 
         const controllerText = reasoningText.trim() ? reasoningText : text;
@@ -237,7 +247,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
               await controller.onReasoningStream({ ...payload, text: controllerText });
               return;
             }
-            await controller.onDeliver({ ...payload, text: controllerText });
+            await controller.onDeliver({ ...payload, text: controllerText }, meta);
             return;
           }
           // Card creation failed — fall through to static delivery
@@ -420,7 +430,9 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
       ...(controller
         ? {
             onReasoningStream: (payload: ReplyPayload) => controller.onReasoningStream(payload),
-            onPartialReply: (payload: ReplyPayload) => controller.onPartialReply(payload),
+            onAssistantMessageStart: () => controller.onAssistantMessageStart(),
+            onPartialReply: (payload: ReplyPayload & { delta?: string; replace?: true }) =>
+              controller.onPartialReply(payload),
             onToolStart: (payload: { name?: string; phase?: string }) => controller.onToolStart(payload),
           }
         : {}),
@@ -455,13 +467,26 @@ function shouldRouteToolPayloadToCard(payload: ReplyPayload, showToolUse: boolea
   if (payload.audioAsVoice) return false;
   if (payload.mediaUrl || (payload.mediaUrls?.length ?? 0) > 0) return false;
 
+  if (hasExecApprovalPayload(payload)) return false;
+
+  return true;
+}
+
+function hasSpecialToolFallback(payload: ReplyPayload): boolean {
+  return Boolean(
+    payload.interactive ||
+    payload.btw ||
+    payload.audioAsVoice ||
+    payload.mediaUrl ||
+    (payload.mediaUrls?.length ?? 0) > 0 ||
+    hasExecApprovalPayload(payload),
+  );
+}
+
+function hasExecApprovalPayload(payload: ReplyPayload): boolean {
   const execApproval =
     payload.channelData && typeof payload.channelData === 'object' && !Array.isArray(payload.channelData)
       ? payload.channelData.execApproval
       : undefined;
-  if (execApproval && typeof execApproval === 'object' && !Array.isArray(execApproval)) {
-    return false;
-  }
-
-  return true;
+  return Boolean(execApproval && typeof execApproval === 'object' && !Array.isArray(execApproval));
 }

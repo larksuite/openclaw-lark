@@ -75,14 +75,6 @@ export interface ToolUseState {
   isActive: boolean;
 }
 
-export interface StreamingTextState {
-  accumulatedText: string;
-  completedText: string;
-  streamingPrefix: string;
-  lastPartialText: string;
-  lastFlushedText: string;
-}
-
 export interface CardKitState {
   cardKitCardId: string | null;
   originalCardKitCardId: string | null;

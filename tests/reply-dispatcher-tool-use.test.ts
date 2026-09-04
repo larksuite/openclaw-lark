@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { replyModeState } = vi.hoisted(() => ({
+const { dispatcherHarness, outboundMocks, replyModeState } = vi.hoisted(() => ({
+  dispatcherHarness: {
+    deliver: undefined as
+      | ((payload: unknown, context?: { kind?: string; assistantMessageIndex?: number }) => Promise<void>)
+      | undefined,
+  },
+  outboundMocks: {
+    sendMediaLark: vi.fn().mockResolvedValue(undefined),
+    sendMarkdownCardFeishu: vi.fn().mockResolvedValue(undefined),
+    sendMessageFeishu: vi.fn().mockResolvedValue(undefined),
+  },
   replyModeState: { mode: 'streaming' as 'streaming' | 'static' },
 }));
 
@@ -8,6 +18,8 @@ const controllerSpies = {
   ensureCardCreated: vi.fn().mockResolvedValue(undefined),
   onDeliver: vi.fn().mockResolvedValue(undefined),
   onReasoningStream: vi.fn().mockResolvedValue(undefined),
+  onAssistantMessageStart: vi.fn(),
+  onToolStart: vi.fn().mockResolvedValue(undefined),
   onToolPayload: vi.fn().mockResolvedValue(undefined),
   onIdle: vi.fn().mockResolvedValue(undefined),
   abortCard: vi.fn().mockResolvedValue(undefined),
@@ -48,24 +60,29 @@ vi.mock('../src/core/lark-client', () => ({
           chunkTextWithMode: (text: string) => (text ? [text] : []),
         },
         reply: {
-          createReplyDispatcherWithTyping: (hooks: { deliver: (payload: unknown, ctx?: { kind?: string }) => Promise<void> }) => ({
-            dispatcher: {
-              sendToolResult: (payload: unknown) => {
-                void hooks.deliver(payload, { kind: 'tool' });
-                return true;
+          createReplyDispatcherWithTyping: (hooks: {
+            deliver: (payload: unknown, ctx?: { kind?: string; assistantMessageIndex?: number }) => Promise<void>;
+          }) => {
+            dispatcherHarness.deliver = hooks.deliver;
+            return {
+              dispatcher: {
+                sendToolResult: (payload: unknown) => {
+                  void hooks.deliver(payload, { kind: 'tool' });
+                  return true;
+                },
+                sendBlockReply: () => true,
+                sendFinalReply: (payload: unknown) => {
+                  void hooks.deliver(payload, { kind: 'final' });
+                  return true;
+                },
+                waitForIdle: async () => {},
+                getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+                markComplete: () => {},
               },
-              sendBlockReply: () => true,
-              sendFinalReply: (payload: unknown) => {
-                void hooks.deliver(payload, { kind: 'final' });
-                return true;
-              },
-              waitForIdle: async () => {},
-              getQueuedCounts: () => ({ tool: 0, block: 0, final: 0 }),
-              markComplete: () => {},
-            },
-            replyOptions: {},
-            markDispatchIdle: () => {},
-          }),
+              replyOptions: {},
+              markDispatchIdle: () => {},
+            };
+          },
           resolveHumanDelayConfig: () => null,
         },
       },
@@ -76,11 +93,11 @@ vi.mock('../src/core/lark-logger', () => ({
   larkLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 vi.mock('../src/messaging/outbound/send', () => ({
-  sendMessageFeishu: vi.fn(),
-  sendMarkdownCardFeishu: vi.fn(),
+  sendMessageFeishu: outboundMocks.sendMessageFeishu,
+  sendMarkdownCardFeishu: outboundMocks.sendMarkdownCardFeishu,
 }));
 vi.mock('../src/messaging/outbound/deliver', () => ({
-  sendMediaLark: vi.fn(),
+  sendMediaLark: outboundMocks.sendMediaLark,
 }));
 vi.mock('../src/messaging/outbound/typing', () => ({
   addTypingIndicator: vi.fn().mockResolvedValue(null),
@@ -102,18 +119,28 @@ vi.mock('../src/card/streaming-card-controller', () => ({
     ensureCardCreated = controllerSpies.ensureCardCreated;
     onDeliver = controllerSpies.onDeliver;
     onReasoningStream = controllerSpies.onReasoningStream;
+    onAssistantMessageStart = controllerSpies.onAssistantMessageStart;
+    onToolStart = controllerSpies.onToolStart;
     onToolPayload = controllerSpies.onToolPayload;
     onIdle = controllerSpies.onIdle;
     abortCard = controllerSpies.abortCard;
     shouldSkipForUnavailable = controllerSpies.shouldSkipForUnavailable;
-    terminateIfUnavailable() { return false; }
+    terminateIfUnavailable() {
+      return false;
+    }
   },
 }));
 vi.mock('../src/card/unavailable-guard', () => ({
   UnavailableGuard: class {
-    shouldSkip() { return false; }
-    terminate() { return false; }
-    get isTerminated() { return false; }
+    shouldSkip() {
+      return false;
+    }
+    terminate() {
+      return false;
+    }
+    get isTerminated() {
+      return false;
+    }
   },
 }));
 
@@ -122,6 +149,7 @@ import { createFeishuReplyDispatcher } from '../src/card/reply-dispatcher';
 beforeEach(() => {
   vi.clearAllMocks();
   replyModeState.mode = 'streaming';
+  dispatcherHarness.deliver = undefined;
 });
 
 describe('reply-dispatcher tool_use mode', () => {
@@ -145,10 +173,10 @@ describe('reply-dispatcher tool_use mode', () => {
 
     expect(result.replyOptions).toHaveProperty('onReasoningStream');
     expect(result.replyOptions).not.toHaveProperty('onReasoningEnd');
-    expect(result.replyOptions).not.toHaveProperty('onAssistantMessageStart');
+    expect(result.replyOptions).toHaveProperty('onAssistantMessageStart');
     expect(result.replyOptions).toHaveProperty('onToolStart');
-    expect((result.replyOptions.shouldEmitToolResult as (() => boolean))()).toBe(false);
-    expect((result.replyOptions.shouldEmitToolOutput as (() => boolean))()).toBe(false);
+    expect((result.replyOptions.shouldEmitToolResult as () => boolean)()).toBe(false);
+    expect((result.replyOptions.shouldEmitToolOutput as () => boolean)()).toBe(false);
 
     await (result.replyOptions.onReasoningStream as (payload: { text: string }) => Promise<void>)({
       text: 'Reasoning:\n_first pass_',
@@ -157,6 +185,15 @@ describe('reply-dispatcher tool_use mode', () => {
     expect(controllerSpies.onReasoningStream).toHaveBeenCalledWith({
       text: 'Reasoning:\n_first pass_',
     });
+
+    (result.replyOptions.onAssistantMessageStart as () => void)();
+    expect(controllerSpies.onAssistantMessageStart).toHaveBeenCalledOnce();
+
+    await (result.replyOptions.onToolStart as (payload: { name?: string; phase?: string }) => Promise<void>)({
+      name: 'search',
+      phase: 'start',
+    });
+    expect(controllerSpies.onToolStart).toHaveBeenCalledWith({ name: 'search', phase: 'start' });
   });
 
   it('routes tool payloads to the controller instead of the answer text path', async () => {
@@ -182,6 +219,68 @@ describe('reply-dispatcher tool_use mode', () => {
 
     expect(controllerSpies.onToolPayload).toHaveBeenCalledWith({ text: 'Read main.ts' });
     expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
+  });
+
+  it('does not leak hidden tool text into the assistant answer path', async () => {
+    const result = createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'off',
+        showToolUse: false,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+
+    result.dispatcher.sendToolResult({ text: 'Internal tool output' });
+    await Promise.resolve();
+
+    expect(controllerSpies.onToolPayload).not.toHaveBeenCalled();
+    expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
+    expect(outboundMocks.sendMessageFeishu).not.toHaveBeenCalled();
+  });
+
+  it('preserves the existing card fallback for tool payloads with media metadata', async () => {
+    const result = createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'on',
+        showToolUse: true,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+
+    result.dispatcher.sendToolResult({
+      text: 'Generated chart',
+      mediaUrl: 'https://example.com/chart.png',
+    });
+
+    await vi.waitFor(() => expect(controllerSpies.onDeliver).toHaveBeenCalledOnce());
+    expect(controllerSpies.onToolPayload).not.toHaveBeenCalled();
+    expect(controllerSpies.onDeliver).toHaveBeenCalledWith(
+      {
+        text: 'Generated chart',
+        mediaUrl: 'https://example.com/chart.png',
+      },
+      { kind: 'tool' },
+    );
+    expect(outboundMocks.sendMessageFeishu).not.toHaveBeenCalled();
+    expect(outboundMocks.sendMediaLark).not.toHaveBeenCalled();
   });
 
   it('routes reasoning payload text through the streaming card reasoning lane', async () => {
@@ -240,6 +339,56 @@ describe('reply-dispatcher tool_use mode', () => {
       isReasoning: true,
     });
     expect(controllerSpies.onDeliver).not.toHaveBeenCalled();
+  });
+
+  it('passes final delivery identity to the streaming text ledger', async () => {
+    const result = createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'on',
+        showToolUse: true,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+
+    result.dispatcher.sendFinalReply({ text: 'Final answer' });
+    await Promise.resolve();
+
+    expect(controllerSpies.onDeliver).toHaveBeenCalledWith({ text: 'Final answer' }, { kind: 'final' });
+  });
+
+  it('forwards newer-runtime assistant message identity without relying on copied payload metadata', async () => {
+    createFeishuReplyDispatcher({
+      cfg: {} as never,
+      agentId: 'main',
+      sessionKey: 'agent:main:feishu:dm:user-1',
+      chatId: 'chat-1',
+      accountId: 'default',
+      chatType: 'p2p',
+      replyInThread: false,
+      skipTyping: true,
+      toolUseDisplay: {
+        mode: 'on',
+        showToolUse: true,
+        showToolResultDetails: false,
+        showFullPaths: false,
+      },
+    });
+
+    await dispatcherHarness.deliver?.({ text: 'Indexed final answer' }, { kind: 'final', assistantMessageIndex: 7 });
+
+    expect(controllerSpies.onDeliver).toHaveBeenCalledWith(
+      { text: 'Indexed final answer' },
+      { kind: 'final', assistantMessageIndex: 7 },
+    );
   });
 
   it('preserves SDK tool-result emission in static mode', () => {
