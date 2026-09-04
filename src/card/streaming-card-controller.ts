@@ -53,7 +53,6 @@ import type {
   FooterSessionMetrics,
   ReasoningState,
   StreamingCardDeps,
-  StreamingTextState,
   TerminalReason,
   ToolUseState,
 } from './reply-dispatcher-types';
@@ -64,6 +63,7 @@ import {
   THROTTLE_CONSTANTS,
 } from './reply-dispatcher-types';
 import { UnavailableGuard } from './unavailable-guard';
+import { type VisibleTextDeliveryKind, VisibleTextLedger } from './visible-text-ledger';
 
 const log = larkLogger('card/streaming');
 
@@ -74,6 +74,16 @@ interface TerminalCardTextImageResolver {
 interface TerminalCardContentInput {
   text: string;
   reasoningText?: string;
+}
+
+type PartialReplyPayload = ReplyPayload & {
+  delta?: string;
+  replace?: true;
+};
+
+interface ReplyDeliveryMeta {
+  kind?: 'tool' | VisibleTextDeliveryKind;
+  assistantMessageIndex?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,13 +101,8 @@ export class StreamingCardController {
     cardKitSequence: 0,
     cardMessageId: null,
   };
-  private text: StreamingTextState = {
-    accumulatedText: '',
-    completedText: '',
-    streamingPrefix: '',
-    lastPartialText: '',
-    lastFlushedText: '',
-  };
+  private readonly visibleText = new VisibleTextLedger();
+  private lastFlushedText = '';
 
   private reasoning: ReasoningState = {
     accumulatedReasoningText: '',
@@ -445,10 +450,9 @@ export class StreamingCardController {
   /**
    * Handle a deliver() call in streaming card mode.
    *
-   * Accumulates text from the SDK's deliver callbacks to build the
-   * authoritative "completedText" for the final card.
+   * Reconciles authoritative SDK deliveries with the streamed message ledger.
    */
-  async onDeliver(payload: ReplyPayload): Promise<void> {
+  async onDeliver(payload: ReplyPayload, meta?: ReplyDeliveryMeta): Promise<void> {
     if (!this.shouldProceed('onDeliver')) return;
 
     const text = payload.text ?? '';
@@ -479,16 +483,23 @@ export class StreamingCardController {
       this.reasoning.accumulatedReasoningText = split.reasoningText;
     }
     const answerText = split.answerText ?? text;
-
-    // 累积 deliver 文本用于最终卡片
-    this.text.completedText += (this.text.completedText ? '\n\n' : '') + answerText;
-
-    // 没有流式数据时，用 deliver 文本显示在卡片上
-    if (!this.text.lastPartialText && !this.text.streamingPrefix) {
-      this.text.accumulatedText += (this.text.accumulatedText ? '\n\n' : '') + answerText;
-      this.text.streamingPrefix = this.text.accumulatedText;
-      await this.throttledCardUpdate();
+    if (answerText.trim() === SILENT_REPLY_TOKEN) {
+      log.debug('onDeliver: suppressing NO_REPLY');
+      return;
     }
+
+    this.visibleText.appendDelivery(
+      answerText,
+      meta?.kind === 'final' ? 'final' : 'block',
+      meta?.assistantMessageIndex,
+    );
+    await this.throttledCardUpdate();
+  }
+
+  /** Preserve the current partial before the SDK starts a new assistant message. */
+  onAssistantMessageStart(): void {
+    if (!this.shouldProceed('onAssistantMessageStart')) return;
+    this.visibleText.beginAssistantMessage();
   }
 
   async onReasoningStream(payload: ReplyPayload): Promise<void> {
@@ -512,15 +523,20 @@ export class StreamingCardController {
 
   async onToolStart(payload: { name?: string; phase?: string }): Promise<void> {
     if (!this.shouldProceed('onToolStart')) return;
-    if (!this.shouldDisplayToolUse) return;
     if (payload.phase && payload.phase !== 'start') return;
 
+    // A tool call terminates the current assistant message. Commit its latest
+    // snapshot synchronously so the next message cannot overwrite it even if
+    // an async onAssistantMessageStart notification is delayed.
+    this.visibleText.beginToolBoundary();
+
+    if (!this.shouldDisplayToolUse) return;
     this.markToolUseActivity();
 
     await this.ensureCardCreated();
     if (!this.shouldProceed('onToolStart.postCreate')) return;
     if (!this.cardKit.cardMessageId) return;
-    if (!this.text.accumulatedText && this.cardKit.cardKitCardId) {
+    if (!this.visibleText.hasVisibleText() && this.cardKit.cardKitCardId) {
       await this.throttledToolUseStatusUpdate();
       return;
     }
@@ -536,21 +552,24 @@ export class StreamingCardController {
     await this.ensureCardCreated();
     if (!this.shouldProceed('onToolPayload.postCreate')) return;
     if (!this.cardKit.cardMessageId) return;
-    if (!this.text.accumulatedText && this.cardKit.cardKitCardId) {
+    if (!this.visibleText.hasVisibleText() && this.cardKit.cardKitCardId) {
       await this.throttledToolUseStatusUpdate();
       return;
     }
     await this.throttledCardUpdate();
   }
 
-  async onPartialReply(payload: ReplyPayload): Promise<void> {
+  async onPartialReply(payload: PartialReplyPayload): Promise<void> {
     if (!this.shouldProceed('onPartialReply')) return;
 
     // Use splitReasoningText (consistent with onDeliver/onReasoningStream)
     // to extract <think> tag content before stripping it from the answer.
     // Previously only stripReasoningTags was called, silently discarding
     // any thinking content that the LLM wrapped in <think> tags.
-    const rawText = payload.text ?? '';
+    const hasSnapshot = payload.text !== undefined;
+    const rawText = hasSnapshot ? payload.text : payload.delta;
+    if (rawText === undefined) return;
+
     const split = splitReasoningText(rawText);
     if (split.reasoningText) {
       if (!this.reasoning.reasoningStartTime) {
@@ -560,8 +579,10 @@ export class StreamingCardController {
       this.reasoning.isReasoningPhase = true;
     }
     const text = split.answerText ?? stripReasoningTags(rawText);
-    log.debug('onPartialReply', { len: text.length });
-    if (!text) return;
+    log.debug('onPartialReply', {
+      len: text.length,
+      mode: hasSnapshot ? 'snapshot' : payload.replace === true ? 'replace' : 'delta',
+    });
 
     this.captureToolUseElapsed();
     if (!this.reasoning.reasoningStartTime) {
@@ -574,15 +595,15 @@ export class StreamingCardController {
         : 0;
     }
 
-    // 检测回复边界：文本长度缩短 → 新回复开始
-    if (this.text.lastPartialText && text.length < this.text.lastPartialText.length) {
-      this.text.streamingPrefix += (this.text.streamingPrefix ? '\n\n' : '') + this.text.lastPartialText;
-    }
-    this.text.lastPartialText = text;
-    this.text.accumulatedText = this.text.streamingPrefix ? this.text.streamingPrefix + '\n\n' + text : text;
-
-    // NO_REPLY 缓冲
-    if (!this.text.streamingPrefix && SILENT_REPLY_TOKEN.startsWith(this.text.accumulatedText.trim())) {
+    const currentText = this.visibleText.applyPartial({
+      ...(hasSnapshot ? { text } : { delta: text }),
+      ...(payload.replace === true ? { replace: true as const } : {}),
+    });
+    const trimmedText = currentText.trim();
+    if (trimmedText && SILENT_REPLY_TOKEN.startsWith(trimmedText)) {
+      if (trimmedText === SILENT_REPLY_TOKEN) {
+        this.visibleText.clearPartial();
+      }
       log.debug('onPartialReply: buffering NO_REPLY prefix');
       return;
     }
@@ -610,8 +631,9 @@ export class StreamingCardController {
     const toolUseDisplay = this.computeToolUseDisplay();
     try {
       if (this.cardKit.cardMessageId) {
-        const rawErrorText = this.text.accumulatedText
-          ? `${this.text.accumulatedText}\n\n---\n**Error**: An error occurred while generating the response.`
+        const visibleText = this.visibleText.render();
+        const rawErrorText = visibleText
+          ? `${visibleText}\n\n---\n**Error**: An error occurred while generating the response.`
           : '**Error**: An error occurred while generating the response.';
         const terminalContent = prepareTerminalCardContent(
           {
@@ -687,11 +709,9 @@ export class StreamingCardController {
           });
         }
 
-        const isNoReplyLeak =
-          !this.text.completedText && SILENT_REPLY_TOKEN.startsWith(this.text.accumulatedText.trim());
-        const displayText =
-          this.text.completedText || (isNoReplyLeak ? '' : this.text.accumulatedText) || EMPTY_REPLY_FALLBACK_TEXT;
-        if (!this.text.completedText && !this.text.accumulatedText) {
+        const visibleText = this.visibleText.render();
+        const displayText = visibleText || EMPTY_REPLY_FALLBACK_TEXT;
+        if (!visibleText) {
           log.warn('reply completed without visible text, using empty-reply fallback');
         }
 
@@ -761,8 +781,7 @@ export class StreamingCardController {
 
   markFullyComplete(): void {
     log.debug('markFullyComplete', {
-      completedTextLen: this.text.completedText.length,
-      accumulatedTextLen: this.text.accumulatedText.length,
+      visibleTextLen: this.visibleText.render().length,
     });
     this.dispatchFullyComplete = true;
   }
@@ -783,7 +802,7 @@ export class StreamingCardController {
       const abortToolUseDisplay = this.computeToolUseDisplay();
       const terminalContent = prepareTerminalCardContent(
         {
-          text: this.text.accumulatedText || 'Aborted.',
+          text: this.visibleText.render() || 'Aborted.',
           reasoningText: this.reasoning.accumulatedReasoningText || undefined,
         },
         this.imageResolver,
@@ -989,7 +1008,7 @@ export class StreamingCardController {
       const resolvedText = this.imageResolver.resolveImages(displayText);
 
       if (this.cardKit.cardKitCardId) {
-        if (resolvedText !== this.text.lastFlushedText) {
+        if (resolvedText !== this.lastFlushedText) {
           const prevSeq = this.cardKit.cardKitSequence;
           this.cardKit.cardKitSequence += 1;
           log.debug('flushCardUpdate: answer seq bump', {
@@ -1004,7 +1023,7 @@ export class StreamingCardController {
             sequence: this.cardKit.cardKitSequence,
             accountId: this.deps.accountId,
           });
-          this.text.lastFlushedText = resolvedText;
+          this.lastFlushedText = resolvedText;
         }
       } else {
         log.debug('flushCardUpdate: IM patch fallback');
@@ -1060,11 +1079,12 @@ export class StreamingCardController {
   }
 
   private buildDisplayText(): string {
+    const visibleText = this.visibleText.render();
     if (this.reasoning.isReasoningPhase && this.reasoning.accumulatedReasoningText) {
       const reasoningDisplay = `💭 **Thinking...**\n\n${this.reasoning.accumulatedReasoningText}`;
-      return this.text.accumulatedText ? this.text.accumulatedText + '\n\n' + reasoningDisplay : reasoningDisplay;
+      return visibleText ? visibleText + '\n\n' + reasoningDisplay : reasoningDisplay;
     }
-    return this.text.accumulatedText;
+    return visibleText;
   }
 
   private async throttledCardUpdate(): Promise<void> {
