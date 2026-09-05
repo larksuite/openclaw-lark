@@ -59,6 +59,8 @@
 ## 使用说明
 [OpenClaw  Lark/飞书官方插件使用指南](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+升级后连接正常但没有回复？请参阅 [OpenClaw 2.0 多 Agent 路由排查](./TROUBLESHOOTING.zh.md)。
+
 ## 贡献
 
 我们欢迎社区的贡献！如果你发现 Bug 或有功能建议，请随时提交 [Issue](https://github.com/larksuite/openclaw-larksuite/issues) 或 [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls)。
