@@ -37,6 +37,7 @@ function resolveGlobalConfig(config: OpenClawConfig): OpenClawConfig {
 import { assertLarkOk, formatLarkError } from '../core/api-error';
 import { resolveAnyEnabledToolsConfig } from '../core/tools-config';
 import type { LarkAccount } from '../core/types';
+import { checkAccountRouting } from './routing-diagnostic';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -273,6 +274,9 @@ export async function runDiagnosis(params: { config: OpenClawConfig; logger?: Di
   // Use the global config to enumerate all accounts — the passed-in
   // config may be account-scoped (accounts map stripped).
   const globalCfg = resolveGlobalConfig(config);
+  // The monitor snapshot restores the accounts map for scoped chat commands,
+  // but routing fields must come from the active config after a hot reload.
+  const routingCfg = { ...config, channels: globalCfg.channels };
   const globalChecks: DiagCheckResult[] = [];
 
   // -- Environment --
@@ -312,6 +316,9 @@ export async function runDiagnosis(params: { config: OpenClawConfig; logger?: Di
   for (const id of accountIds) {
     const account = getLarkAccount(globalCfg, id);
     const result = await diagnoseAccount(account);
+    if (account.enabled && account.configured) {
+      result.checks.push(checkAccountRouting(routingCfg, account.accountId));
+    }
     accountResults.push(result);
   }
 

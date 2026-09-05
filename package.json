@@ -23,6 +23,7 @@
     "secret-contract-api.js",
     "openclaw.plugin.json",
     "README.md",
+    "TROUBLESHOOTING.zh.md",
     "LICENSE"
   ],
   "packageManager": "pnpm@10.32.1",

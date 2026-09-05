@@ -65,6 +65,8 @@ Before you start, make sure you have the following:
 
 [How to Use the Official Lark/Feishu Plugin for OpenClaw](https://bytedance.larkoffice.com/docx/MFK7dDFLFoVlOGxWCv5cTXKmnMh)
 
+For upgrade-related routing failures, see [OpenClaw 2.0 multi-agent routing troubleshooting (中文)](./TROUBLESHOOTING.zh.md).
+
 ## Contributing
 
 Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/larksuite/openclaw-larksuite/issues) or a [Pull Request](https://github.com/larksuite/openclaw-larksuite/pulls).
