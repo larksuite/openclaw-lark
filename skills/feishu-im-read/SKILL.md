@@ -16,9 +16,12 @@ description: |
 
 ## 执行前必读
 
-- 该 Skill 中的所有消息读取工具均以用户身份调用，只能读取用户有权限的会话
+- `feishu_im_user_*` 以用户身份调用；`feishu_im_bot_*` 使用 tenant_access_token，无需用户 OAuth 授权。要求应用身份或无用户授权时，使用 bot 工具
+- bot 工具只能读取应用可见且机器人有权访问的会话；群消息需机器人在群内，并开通应用权限 `im:message.group_msg`，单聊需 `im:message.p2p_msg:readonly`；搜索另需 `search:message`
+- bot 历史消息工具必须提供 `chat_id`，不支持 `open_id`；单聊仅指用户与机器人的单聊
+- 读取 bot 消息后，话题上下文使用 `feishu_im_bot_get_thread_messages`，资源下载使用 `feishu_im_bot_image`，保持应用身份
 - `feishu_im_user_get_messages` 中 `open_id` 和 `chat_id` 必须二选一
-- 消息中出现 `thread_id` 时，根据用户意图判断是否用 `feishu_im_user_get_thread_messages` 读取话题内回复
+- 消息中出现 `thread_id` 时，根据用户意图使用同身份的话题工具读取回复
 - 以用户身份读取后，如果消息内容中出现资源标记时，用 `feishu_im_user_fetch_resource` 下载，需要 `message_id` + `file_key` + `type`
 
 ---
@@ -27,6 +30,9 @@ description: |
 
 | 用户意图 | 工具 | 必填参数 | 常用可选 |
 |---------|------|---------|---------|
+| 以应用身份获取会话历史消息 | feishu_im_bot_get_messages | chat_id | relative_time, start_time/end_time, page_size, page_token, sort_rule |
+| 以应用身份获取话题消息 | feishu_im_bot_get_thread_messages | thread_id（omt_xxx） | page_size, page_token, sort_rule |
+| 以应用身份跨会话搜索 | feishu_im_bot_search_messages | 至少一个有效过滤条件 | query, chat_id, sender_ids, mention_ids, message_type, sender_type, chat_type, relative_time, page_size, page_token |
 | 获取群聊/单聊历史消息 | feishu_im_user_get_messages | chat_id 或 open_id（二选一） | relative_time, start_time/end_time, page_size, sort_rule |
 | 获取话题内回复消息 | feishu_im_user_get_thread_messages | thread_id（omt_xxx） | page_size, sort_rule |
 | 跨会话搜索消息 | feishu_im_user_search_messages | 至少一个过滤条件 | query, sender_ids, chat_id, relative_time, start_time/end_time, page_size |
@@ -34,6 +40,18 @@ description: |
 | 下载消息中的文件/音频/视频 | feishu_im_user_fetch_resource | message_id, file_key（file_xxx）, type="file" | - |
 
 ---
+
+## 应用身份工具的差异
+
+- 搜索使用 `POST /open-apis/im/v1/messages/search`，按机器人可访问范围搜索，不代表可以读取租户内所有聊天。
+- `sender_type` 默认 `all`；`message_type` 是附件过滤，支持 `file/image/video/link`，兼容 `media` 作为 `video` 的别名。
+- 时间参数沿用用户工具，`relative_time` 与 `start_time/end_time` 互斥；话题工具不支持时间过滤。
+- 消息格式与用户工具一致，但不查询用户通讯录或用户姓名缓存，姓名不可用时保留 ID。
+- 会话名称补充需要应用权限 `im:chat:read`；补充失败返回 `warning`，仍返回消息。详情缺失会列出 `missing_message_ids`。
+- 搜索返回服务端 `notice` 时应保留并向用户说明，不能把受限结果当作完整历史；`has_more=true` 时用原过滤条件和新 `page_token` 继续。
+- 应用权限不足时由管理员开通权限，不应转为用户 OAuth 授权。
+
+接口契约参考：[飞书官方 CLI 搜索实现](https://github.com/larksuite/cli/blob/39aaf9fca0e08825b51f6d8c6c617bf781db761b/shortcuts/im/im_messages_search.go)。
 
 ## 核心约束
 
@@ -53,7 +71,7 @@ description: |
 
 | 场景 | 行为 |
 |------|------|
-| 获取历史消息并需要理解上下文（默认） | 对发现的 thread_id 调用 `feishu_im_user_get_thread_messages` 获取最新 10 条回复 |
+| 获取历史消息并需要理解上下文（默认） | 对发现的 thread_id 调用同身份的 `feishu_im_user_get_thread_messages` 或 `feishu_im_bot_get_thread_messages` 获取最新 10 条回复 |
 | 用户要求"完整对话"、"详细讨论"、"看看回复" | 获取话题全部回复（`page_size: 50, sort_rule: "create_time_asc"`），需要时翻页 |
 | 用户只浏览消息概览 / 用户明确说不看回复 | 跳过话题展开 |
 
@@ -77,7 +95,7 @@ description: |
 
 ### 5. 图片/文件/媒体资源的提取
 
-消息内容中可能出现以下资源标记，用 `feishu_im_user_fetch_resource` 下载：
+消息内容中可能出现以下资源标记；用户身份使用 `feishu_im_user_fetch_resource`，应用身份使用 `feishu_im_bot_image` 下载：
 
 | 资源类型 | 内容中的标记格式 | fetch_resource 参数 |
 |---------|-----------------|-------------------|

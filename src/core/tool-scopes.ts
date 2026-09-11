@@ -118,6 +118,10 @@ export type ToolActionKey =
   | 'feishu_get_user.basic_batch'
   | 'feishu_get_user.default'
   | 'feishu_im_user_fetch_resource.default'
+  | 'feishu_im_bot_get_messages.default'
+  | 'feishu_im_bot_get_thread_messages.default'
+  | 'feishu_im_bot_search_messages.default'
+  | 'feishu_im_bot_search_messages.chat_context'
   | 'feishu_im_user_get_messages.default'
   | 'feishu_im_user_message.reply'
   | 'feishu_im_user_message.send'
@@ -291,6 +295,12 @@ export const TOOL_SCOPES: ToolScopeMapping = {
     'im:message.p2p_msg:get_as_user',
     'im:message:readonly',
   ],
+  // Bot 消息权限取决于目标会话（group_msg / p2p_msg:readonly），由服务端校验。
+  // 此映射为 AND 预检，不能把不同会话的条件权限全部强制要求。
+  'feishu_im_bot_get_messages.default': [],
+  'feishu_im_bot_get_thread_messages.default': [],
+  'feishu_im_bot_search_messages.default': ['search:message'],
+  'feishu_im_bot_search_messages.chat_context': ['im:chat:read'],
   'feishu_im_user_get_messages.default': [
     'im:chat:read',
     'im:message:readonly',

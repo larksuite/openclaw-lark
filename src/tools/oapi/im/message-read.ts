@@ -92,7 +92,7 @@ async function formatAndReturn(res: any, config: any, log: { info: (msg: string)
 // feishu_im_user_get_messages
 // ===========================================================================
 
-const GetMessagesSchema = Type.Object({
+export const GetMessagesSchema = Type.Object({
   open_id: Type.Optional(
     Type.String({
       description: '用户 open_id（ou_xxx），获取与该用户的单聊消息。与 chat_id 互斥',
@@ -226,7 +226,7 @@ function registerGetMessages(api: OpenClawPluginApi): boolean {
 // feishu_im_user_get_thread_messages
 // ===========================================================================
 
-const GetThreadMessagesSchema = Type.Object({
+export const GetThreadMessagesSchema = Type.Object({
   thread_id: Type.String({ description: '话题 ID（omt_xxx 格式）' }),
   sort_rule: Type.Optional(
     StringEnum(['create_time_asc', 'create_time_desc'], {
@@ -306,7 +306,7 @@ function registerGetThreadMessages(api: OpenClawPluginApi): boolean {
 // feishu_im_user_search_messages
 // ===========================================================================
 
-const SearchMessagesSchema = Type.Object({
+export const SearchMessagesSchema = Type.Object({
   query: Type.Optional(Type.String({ description: '搜索关键词，匹配消息内容。可为空字符串表示不按内容过滤' })),
   sender_ids: Type.Optional(
     Type.Array(Type.String({ description: '发送者的 open_id（ou_xxx）' }), {
