@@ -8,6 +8,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { registerFeishuImBotImageTool } from './resource';
+import { registerBotMessageReadTools } from './message-read';
 
 /**
  * 注册所有 IM 工具
@@ -16,6 +17,8 @@ import { registerFeishuImBotImageTool } from './resource';
  * 其功能由 ChannelMessageActionAdapter (actions.ts) 的 react/delete action 统一覆盖。
  */
 export function registerFeishuImTools(api: OpenClawPluginApi): void {
+  const registered = registerBotMessageReadTools(api);
+  if (registered.length > 0) api.logger.debug?.(`feishu_im: Registered ${registered.join(', ')}`);
   if (registerFeishuImBotImageTool(api)) {
     api.logger.debug?.('feishu_im: Registered feishu_im_bot_image');
   }
