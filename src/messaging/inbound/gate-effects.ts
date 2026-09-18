@@ -8,7 +8,7 @@
  * operations (pairing request creation, message sending).
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { LarkClient } from '../../core/lark-client';
 import { sendMessageFeishu } from '../outbound/send';
 
@@ -27,7 +27,7 @@ export async function sendPairingReply(params: {
   senderId: string;
   chatId: string;
   accountId: string;
-  accountScopedCfg?: ClawdbotConfig;
+  accountScopedCfg?: OpenClawConfig;
 }): Promise<void> {
   const { senderId, chatId, accountId, accountScopedCfg } = params;
   const core = LarkClient.runtime;

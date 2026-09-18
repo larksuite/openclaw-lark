@@ -16,7 +16,7 @@ const normalizeAccountId: (id: string) => string | undefined =
     ? _sdkNormalizeAccountId
     : (id: string) => id?.trim().toLowerCase() || undefined;
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 
 import type { ConfiguredLarkAccount, FeishuConfig, LarkAccount, LarkBrand, LarkCredentials } from './types';
 
@@ -25,7 +25,7 @@ import type { ConfiguredLarkAccount, FeishuConfig, LarkAccount, LarkBrand, LarkC
 // ---------------------------------------------------------------------------
 
 /** Extract the `channels.feishu` section from the top-level config. */
-function getLarkConfig(cfg: ClawdbotConfig): FeishuConfig | undefined {
+function getLarkConfig(cfg: OpenClawConfig): FeishuConfig | undefined {
   return cfg?.channels?.feishu as FeishuConfig | undefined;
 }
 
@@ -82,7 +82,7 @@ function toBrand(domain: string | undefined): LarkBrand {
  *
  * Returns `[DEFAULT_ACCOUNT_ID]` when no explicit accounts exist.
  */
-export function getLarkAccountIds(cfg: ClawdbotConfig): string[] {
+export function getLarkAccountIds(cfg: OpenClawConfig): string[] {
   const section = getLarkConfig(cfg);
   if (!section) return [DEFAULT_ACCOUNT_ID];
 
@@ -108,7 +108,7 @@ export function getLarkAccountIds(cfg: ClawdbotConfig): string[] {
 }
 
 /** Return the first (default) account ID. */
-export function getDefaultLarkAccountId(cfg: ClawdbotConfig): string {
+export function getDefaultLarkAccountId(cfg: OpenClawConfig): string {
   return getLarkAccountIds(cfg)[0];
 }
 
@@ -118,7 +118,7 @@ export function getDefaultLarkAccountId(cfg: ClawdbotConfig): string {
  *
  * Falls back to the default account when `accountId` is omitted or `null`.
  */
-export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): LarkAccount {
+export function getLarkAccount(cfg: OpenClawConfig, accountId?: string | null): LarkAccount {
   const requestedId = accountId ? (normalizeAccountId(accountId) ?? DEFAULT_ACCOUNT_ID) : DEFAULT_ACCOUNT_ID;
 
   const section = getLarkConfig(cfg);
@@ -195,7 +195,7 @@ export function getLarkAccount(cfg: ClawdbotConfig, accountId?: string | null): 
  * @param accountId - Optional target account ID
  * @returns Config with `channels.feishu` replaced by the merged account config
  */
-export function createAccountScopedConfig(cfg: ClawdbotConfig, accountId?: string | null): ClawdbotConfig {
+export function createAccountScopedConfig(cfg: OpenClawConfig, accountId?: string | null): OpenClawConfig {
   const account = getLarkAccount(cfg, accountId);
 
   return {
@@ -208,7 +208,7 @@ export function createAccountScopedConfig(cfg: ClawdbotConfig, accountId?: strin
 }
 
 /** Return all accounts that are both configured and enabled. */
-export function getEnabledLarkAccounts(cfg: ClawdbotConfig): LarkAccount[] {
+export function getEnabledLarkAccounts(cfg: OpenClawConfig): LarkAccount[] {
   const ids = getLarkAccountIds(cfg);
   const results: LarkAccount[] = [];
 

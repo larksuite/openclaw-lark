@@ -12,7 +12,7 @@
  * We intentionally do NOT maintain any channel-local global registry here.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 // NOTE: This is the SDK-standard interactive pipeline.
 import { dispatchPluginInteractiveHandler } from 'openclaw/plugin-sdk/plugin-runtime';
 import { resolveCardCallbackOperatorId } from '../core/card-action-operator';
@@ -108,7 +108,7 @@ function buildMarkdownCard(text: string): Record<string, unknown> {
  * @param params.data - Raw `card.action.trigger` event payload.
  */
 export async function dispatchFeishuPluginInteractiveHandler(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   accountId: string;
   data: unknown;
 }): Promise<unknown | undefined> {

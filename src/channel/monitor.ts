@@ -9,7 +9,8 @@
  * appropriate handlers.
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { getEnabledLarkAccounts, getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
@@ -43,7 +44,7 @@ export type { MonitorFeishuOpts } from './types';
  * when the abort signal fires (or immediately if already aborted).
  */
 async function monitorSingleAccount(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   account: ReturnType<typeof getLarkAccount>;
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
@@ -83,7 +84,7 @@ async function monitorSingleAccount(params: {
 
   const ctx: MonitorContext = {
     get cfg() {
-      return LarkClient.runtime.config.loadConfig();
+      return LarkClient.runtime.config.current() as OpenClawConfig;
     },
     lark,
     accountId,

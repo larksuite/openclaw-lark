@@ -8,13 +8,13 @@
  * card actions or OAuth flows complete.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { enqueueFeishuChatTask } from '../../channel/chat-queue';
 import { withTicket } from '../../core/lark-ticket';
 import { getInboundHandler } from './handler-registry';
 
 export async function dispatchSyntheticTextMessage(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   accountId: string;
   chatId: string;
   senderOpenId: string;

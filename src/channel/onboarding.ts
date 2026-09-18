@@ -9,7 +9,7 @@
  * policies, and DM allowlists interactively.
  */
 
-import type { ClawdbotConfig, WizardPrompter } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, WizardPrompter } from 'openclaw/plugin-sdk/core';
 import type { ChannelSetupDmPolicy, ChannelSetupWizardAdapter } from 'openclaw/plugin-sdk/setup';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import { formatDocsLink } from 'openclaw/plugin-sdk/setup';
@@ -51,10 +51,10 @@ async function noteFeishuCredentialHelp(prompter: WizardPrompter): Promise<void>
 }
 
 async function promptFeishuAllowFrom(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   prompter: WizardPrompter;
   accountId?: string;
-}): Promise<ClawdbotConfig> {
+}): Promise<OpenClawConfig> {
   const existing = params.cfg.channels?.feishu?.allowFrom ?? [];
 
   await params.prompter.note(
@@ -92,10 +92,10 @@ async function promptFeishuAllowFrom(params: {
 // ---------------------------------------------------------------------------
 
 async function acquireCredentials(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   prompter: WizardPrompter;
   feishuCfg: FeishuConfig | undefined;
-}): Promise<{ cfg: ClawdbotConfig; appId: string | null; appSecret: string | null }> {
+}): Promise<{ cfg: OpenClawConfig; appId: string | null; appSecret: string | null }> {
   const { prompter, feishuCfg } = params;
   let next = params.cfg;
 

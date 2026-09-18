@@ -5,12 +5,12 @@
  * Configuration merge helpers for Feishu account management.
  *
  * Centralises the pattern of merging a partial configuration patch
- * into the Feishu section of the top-level ClawdbotConfig, handling
+ * into the Feishu section of the top-level OpenClawConfig, handling
  * both the default account (top-level fields) and named accounts
  * (nested under `accounts`).
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import type { FeishuConfig } from '../core/types';
 import { getLarkAccount, getLarkAccountIds } from '../core/accounts';
@@ -18,10 +18,10 @@ import { collectIsolationWarnings } from '../core/security-check';
 
 /** Generic Feishu account config merge. */
 function mergeFeishuAccountConfig(
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
   accountId: string,
   patch: Record<string, unknown>,
-): ClawdbotConfig {
+): OpenClawConfig {
   const isDefault = !accountId || accountId === DEFAULT_ACCOUNT_ID;
   if (isDefault) {
     return {
@@ -49,26 +49,26 @@ function mergeFeishuAccountConfig(
 }
 
 /** Set the `enabled` flag on a Feishu account. */
-export function setAccountEnabled(cfg: ClawdbotConfig, accountId: string, enabled: boolean): ClawdbotConfig {
+export function setAccountEnabled(cfg: OpenClawConfig, accountId: string, enabled: boolean): OpenClawConfig {
   return mergeFeishuAccountConfig(cfg, accountId, { enabled });
 }
 
 /** Apply an arbitrary config patch to a Feishu account. */
 export function applyAccountConfig(
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
   accountId: string,
   patch: Record<string, unknown>,
-): ClawdbotConfig {
+): OpenClawConfig {
   return mergeFeishuAccountConfig(cfg, accountId, patch);
 }
 
 /** Delete a Feishu account entry from the config. */
-export function deleteAccount(cfg: ClawdbotConfig, accountId: string): ClawdbotConfig {
+export function deleteAccount(cfg: OpenClawConfig, accountId: string): OpenClawConfig {
   const isDefault = !accountId || accountId === DEFAULT_ACCOUNT_ID;
 
   if (isDefault) {
     // Delete entire feishu config
-    const next = { ...cfg } as ClawdbotConfig;
+    const next = { ...cfg } as OpenClawConfig;
     const nextChannels = { ...cfg.channels };
     delete (nextChannels as Record<string, unknown>).feishu;
     if (Object.keys(nextChannels).length > 0) {
@@ -97,7 +97,7 @@ export function deleteAccount(cfg: ClawdbotConfig, accountId: string): ClawdbotC
 }
 
 /** Collect security warnings for a Feishu account. */
-export function collectFeishuSecurityWarnings(params: { cfg: ClawdbotConfig; accountId: string }): string[] {
+export function collectFeishuSecurityWarnings(params: { cfg: OpenClawConfig; accountId: string }): string[] {
   const { cfg, accountId } = params;
   const warnings: string[] = [];
 

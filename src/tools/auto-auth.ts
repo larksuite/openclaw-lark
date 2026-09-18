@@ -29,7 +29,7 @@
  * - 任何步骤抛出异常
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ConfiguredLarkAccount, LarkBrand } from '../core/types';
 import type { LarkTicket } from '../core/lark-ticket';
 import { getTicket } from '../core/lark-ticket';
@@ -84,7 +84,7 @@ interface AuthBatchEntry {
   flushFn: ((mergedScopes: string[]) => Promise<JsonResult>) | null;
   /** 以下字段来自第一个入队的请求，后续请求复用 */
   account: ConfiguredLarkAccount;
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   ticket: LarkTicket;
 }
 
@@ -132,7 +132,7 @@ const AUTH_COOLDOWN_MS = 30_000;
 function enqueueAuthRequest(
   bufferKey: string,
   scopes: string[],
-  ctx: { account: ConfiguredLarkAccount; cfg: ClawdbotConfig; ticket: LarkTicket },
+  ctx: { account: ConfiguredLarkAccount; cfg: OpenClawConfig; ticket: LarkTicket },
   flushFn: (mergedScopes: string[]) => Promise<JsonResult>,
   debounceMs: number = AUTH_DEBOUNCE_MS,
 ): Promise<JsonResult> {
@@ -259,7 +259,7 @@ interface PendingAppAuthFlow {
   scopeNeedType?: 'one' | 'all';
   /** 与触发 AppScopeMissingError 时的 tokenType 一致。 */
   tokenType?: 'user' | 'tenant';
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   ticket: LarkTicket;
 }
 
@@ -396,7 +396,7 @@ const appAuthFlows = new AppAuthFlowManager();
 interface DeferredUserAuthEntry {
   scopes: Set<string>;
   account: ConfiguredLarkAccount;
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   ticket: LarkTicket;
 }
 
@@ -427,7 +427,7 @@ function addToDeferredUserAuth(
   ticket: LarkTicket,
   scopes: string[],
   account: ConfiguredLarkAccount,
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
 ): void {
   const key = `${ticket.accountId}:${ticket.senderOpenId}:${ticket.messageId}`;
   const existing = deferredUserAuth.get(key);
@@ -590,7 +590,7 @@ async function sendAppScopeCard(params: {
   appId?: string;
   scopeNeedType?: 'one' | 'all';
   tokenType?: 'user' | 'tenant';
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   ticket: LarkTicket;
 }): Promise<ReturnType<typeof json>> {
   const { account, missingScopes, appId, scopeNeedType, tokenType, cfg, ticket } = params;
@@ -743,7 +743,7 @@ async function sendAppScopeCard(params: {
  * 注意：函数体内的主要逻辑通过 setImmediate + fire-and-forget 异步执行，
  * 确保 Feishu card.action.trigger 回调在 3 秒内返回。
  */
-export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accountId: string): Promise<unknown> {
+export async function handleCardAction(data: unknown, cfg: OpenClawConfig, accountId: string): Promise<unknown> {
   let action: string | undefined;
   let operationId: string | undefined;
   let senderOpenId: string | undefined;
@@ -929,7 +929,7 @@ export async function handleCardAction(data: unknown, cfg: ClawdbotConfig, accou
  * @param err - invoke() 或其他逻辑抛出的错误
  * @param cfg - OpenClaw 配置对象（从工具注册函数的闭包中获取）
  */
-export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: ClawdbotConfig): Promise<ToolResult> {
+export async function handleInvokeErrorWithAutoAuth(err: unknown, cfg: OpenClawConfig): Promise<ToolResult> {
   // `cfg` is the closure-captured snapshot from plugin registration and may be
   // stale after a hot-reload.  Use getResolvedConfig() to always get the live config.
   cfg = getResolvedConfig(cfg);

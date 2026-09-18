@@ -8,11 +8,12 @@
  * `handler.ts` directly, which keeps the static import graph acyclic.
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { FeishuMessageEvent } from '../types';
 
 export interface InboundHandlerParams {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuMessageEvent;
   botOpenId?: string;
   runtime?: RuntimeEnv;

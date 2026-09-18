@@ -29,7 +29,7 @@
  */
 
 import * as Lark from '@larksuiteoapi/node-sdk';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ConfiguredLarkAccount } from './types';
 import { getEnabledLarkAccounts, getLarkAccount } from './accounts';
 import { LarkClient, getResolvedConfig } from './lark-client';
@@ -110,7 +110,7 @@ export type InvokeByPathOptions = InvokeOptions & {
 // ---------------------------------------------------------------------------
 
 export class ToolClient {
-  readonly config: ClawdbotConfig;
+  readonly config: OpenClawConfig;
   /** 当前解析的账号信息（appId、appSecret 保证存在）。 */
   readonly account: ConfiguredLarkAccount;
 
@@ -124,7 +124,7 @@ export class ToolClient {
     account: ConfiguredLarkAccount;
     senderOpenId: string | undefined;
     sdk: Lark.Client;
-    config: ClawdbotConfig;
+    config: OpenClawConfig;
   }) {
     this.account = params.account;
     this.senderOpenId = params.senderOpenId;
@@ -471,7 +471,7 @@ export class ToolClient {
  * @param config - OpenClaw 配置对象
  * @param accountIndex - 回退账号索引（默认 0）
  */
-export function createToolClient(config: ClawdbotConfig, accountIndex = 0): ToolClient {
+export function createToolClient(config: OpenClawConfig, accountIndex = 0): ToolClient {
   const ticket = getTicket();
 
   // 1. 解析账号

@@ -9,7 +9,7 @@
  * replacing them with `![alt](img_xxx)` that Feishu cards can render.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { fetchRemoteImageBuffer, uploadImageLark } from '../messaging/outbound/media';
 import { larkLogger } from '../core/lark-logger';
 
@@ -19,7 +19,7 @@ const log = larkLogger('card/image-resolver');
 const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
 
 export interface ImageResolverOptions {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   accountId: string | undefined;
   /** Called when a previously-pending image upload completes. */
   onImageResolved: () => void;
@@ -33,7 +33,7 @@ export class ImageResolver {
   /** URLs that have already failed — skip retries. */
   private readonly failed = new Set<string>();
 
-  private readonly cfg: ClawdbotConfig;
+  private readonly cfg: OpenClawConfig;
   private readonly accountId: string | undefined;
   private readonly onImageResolved: () => void;
 

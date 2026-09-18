@@ -8,7 +8,7 @@
  * document title, comment quoted text, and reply chain.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuDriveCommentEvent } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
@@ -101,7 +101,7 @@ export function inferIsWholeComment(params: {
  * Fetch document title via Drive file meta API.
  */
 async function fetchDocTitle(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   fileToken: string;
   fileType: string;
   accountId?: string;
@@ -127,7 +127,7 @@ async function fetchDocTitle(params: {
  * Fetch a single comment with its replies.
  */
 async function fetchComment(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   fileToken: string;
   fileType: string;
   commentId: string;
@@ -282,7 +282,7 @@ function buildDriveCommentSurfacePrompt(params: {
  * Fetches document metadata, comment content, and reply chain.
  */
 export async function resolveDriveCommentEventTurn(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuDriveCommentEvent;
   accountId?: string;
 }): Promise<CommentEventTurn | null> {

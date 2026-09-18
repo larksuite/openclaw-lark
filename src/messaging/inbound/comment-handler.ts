@@ -13,7 +13,8 @@
  */
 
 import * as crypto from 'node:crypto';
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { DEFAULT_GROUP_HISTORY_LIMIT } from 'openclaw/plugin-sdk/reply-history';
 import type { FeishuDriveCommentEvent, MessageContext } from '../types';
@@ -42,7 +43,7 @@ const logger = larkLogger('inbound/comment-handler');
  * synthetic MessageContext, and dispatches to the agent.
  */
 export async function handleFeishuCommentEvent(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuDriveCommentEvent;
   botOpenId?: string;
   runtime?: RuntimeEnv;
@@ -77,7 +78,7 @@ export async function handleFeishuCommentEvent(params: {
   // ---- Account resolution ----
   const account = getLarkAccount(cfg, accountId);
   const accountFeishuCfg = account.config;
-  const accountScopedCfg: ClawdbotConfig = {
+  const accountScopedCfg: OpenClawConfig = {
     ...cfg,
     channels: { ...cfg.channels, feishu: accountFeishuCfg },
   };
