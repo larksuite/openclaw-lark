@@ -14,7 +14,8 @@
  * - dispatch-commands.ts — system command & permission notification
  */
 
-import type { ClawdbotConfig, RuntimeEnv  } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
@@ -352,8 +353,8 @@ export async function dispatchToAgent(params: {
   extraInboundFields?: Record<string, unknown>;
   quotedContent?: string;
   account: LarkAccount;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: OpenClawConfig;
   runtime?: RuntimeEnv;
   chatHistories?: Map<string, HistoryEntry[]>;
   historyLimit: number;

@@ -9,7 +9,7 @@
  * and unavailable-guard.ts.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ReplyDispatcher } from 'openclaw/plugin-sdk/reply-runtime';
 import type { FeishuFooterConfig } from '../core/types';
 import type { ToolUseDisplayConfig } from './tool-use-config';
@@ -119,7 +119,7 @@ export const EMPTY_REPLY_FALLBACK_TEXT = 'Done.';
 // ---------------------------------------------------------------------------
 
 export interface CreateFeishuReplyDispatcherParams {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   agentId: string;
   sessionKey: string;
   chatId: string;
@@ -169,7 +169,7 @@ export interface FooterSessionMetrics {
 }
 
 export interface StreamingCardDeps {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   agentId: string;
   sessionKey: string;
   accountId: string | undefined;

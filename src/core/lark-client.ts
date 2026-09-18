@@ -16,7 +16,7 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 
-import type { ClawdbotConfig, PluginRuntime } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, PluginRuntime } from 'openclaw/plugin-sdk/core';
 import type { MessageDedup } from '../messaging/inbound/dedup';
 import { clearUserNameCache } from '../messaging/inbound/user-name-cache-store';
 import type { FeishuProbeResult, LarkAccount, LarkBrand } from './types';
@@ -152,15 +152,15 @@ export class LarkClient {
   // that need cross-account visibility (e.g. doctor, diagnose) read the
   // original global config from here.
 
-  private static _globalConfig: ClawdbotConfig | null = null;
+  private static _globalConfig: OpenClawConfig | null = null;
 
   /** Store the original global config (called during monitor startup). */
-  static setGlobalConfig(cfg: ClawdbotConfig): void {
+  static setGlobalConfig(cfg: OpenClawConfig): void {
     LarkClient._globalConfig = cfg;
   }
 
   /** Retrieve the stored global config, or `null` if not yet set. */
-  static get globalConfig(): ClawdbotConfig | null {
+  static get globalConfig(): OpenClawConfig | null {
     return LarkClient._globalConfig;
   }
 
@@ -178,7 +178,7 @@ export class LarkClient {
   // ---- Static factory / cache ------------------------------------------------
 
   /** Resolve account from config and return a cached `LarkClient`. */
-  static fromCfg(cfg: ClawdbotConfig, accountId?: string): LarkClient {
+  static fromCfg(cfg: OpenClawConfig, accountId?: string): LarkClient {
     return LarkClient.fromAccount(getLarkAccount(cfg, accountId));
   }
 
@@ -494,9 +494,9 @@ injectLarkClient(LarkClient);
  * @param fallback - Config to use when the runtime is not yet initialised
  *   or when `loadConfig()` returns an incomplete config.
  */
-export function getResolvedConfig(fallback: ClawdbotConfig): ClawdbotConfig {
+export function getResolvedConfig(fallback: OpenClawConfig): OpenClawConfig {
   try {
-    const live = LarkClient.runtime.config.loadConfig() as ClawdbotConfig;
+    const live = LarkClient.runtime.config.current() as OpenClawConfig;
     // loadConfig() may return {} (empty config) when runtimeConfigSnapshot
     // has been cleared (e.g. after writeConfigFile, secrets teardown, or
     // concurrent cron race conditions in isolated sessions).  In that case

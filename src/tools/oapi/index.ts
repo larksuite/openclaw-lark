@@ -8,7 +8,7 @@
  * These tools are placed here to distinguish them from MCP-based tools.
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { registerFeishuImTools as registerFeishuImBotTools } from '../tat/im/index';
 import {
   registerFeishuCalendarCalendarTool,

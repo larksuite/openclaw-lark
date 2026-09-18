@@ -8,7 +8,7 @@
  * lookups so the outbound subsystem and UI can resolve targets.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { normalizeFeishuTarget } from '../core/targets';
@@ -43,7 +43,7 @@ function applyLimitSlice<T>(items: T[], limit?: number): T[] {
  * connected or when credentials are unavailable.
  */
 export async function listFeishuDirectoryPeers(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   query?: string;
   limit?: number;
   accountId?: string;
@@ -83,7 +83,7 @@ export async function listFeishuDirectoryPeers(params: {
  * List groups known from the channel config (groups + groupAllowFrom).
  */
 export async function listFeishuDirectoryGroups(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   query?: string;
   limit?: number;
   accountId?: string;
@@ -129,7 +129,7 @@ export async function listFeishuDirectoryGroups(params: {
  * the API call fails.
  */
 export async function listFeishuDirectoryPeersLive(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   query?: string;
   limit?: number;
   accountId?: string;
@@ -186,7 +186,7 @@ export async function listFeishuDirectoryPeersLive(params: {
  * the API call fails.
  */
 export async function listFeishuDirectoryGroupsLive(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   query?: string;
   limit?: number;
   accountId?: string;

@@ -48,7 +48,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.5.4"
+    "openclaw": ">=2026.9.4"
   },
   "peerDependenciesMeta": {
     "openclaw": {
@@ -66,7 +66,7 @@
     "fs-extra": "^11.3.2",
     "globals": "^16.2.0",
     "minimist": "^1.2.8",
-    "openclaw": "^2026.4.9",
+    "openclaw": "^2026.9.4",
     "prettier": "^3.8.1",
     "tsdown": "^0.21.4",
     "typescript": "^5.9.3",

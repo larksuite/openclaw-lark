@@ -3,11 +3,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { getLarkAccount, getLarkAccountIds } from '../src/core/accounts';
 
-function makeCfg(feishu: Record<string, unknown>): ClawdbotConfig {
-  return { channels: { feishu } } as unknown as ClawdbotConfig;
+function makeCfg(feishu: Record<string, unknown>): OpenClawConfig {
+  return { channels: { feishu } } as unknown as OpenClawConfig;
 }
 
 describe('getLarkAccount – footer inheritance', () => {
