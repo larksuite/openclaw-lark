@@ -11,7 +11,8 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { resolveDefaultAgentId } from 'openclaw/plugin-sdk/agent-runtime';
-import { loadSessionStore, resolveSessionStoreEntry, resolveStorePath } from 'openclaw/plugin-sdk/config-runtime';
+import { resolveStorePath } from 'openclaw/plugin-sdk/config-runtime';
+import { loadSessionStore, resolveSessionStoreEntry } from 'openclaw/plugin-sdk/session-store-runtime';
 import type { FeishuConfig } from '../core/types';
 
 export type ToolUseMode = 'off' | 'on' | 'full';
