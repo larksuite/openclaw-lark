@@ -11,7 +11,7 @@
 
 import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
 import { resolveDefaultAgentId } from 'openclaw/plugin-sdk/agent-runtime';
-import { loadSessionStore, resolveSessionStoreEntry, resolveStorePath } from 'openclaw/plugin-sdk/config-runtime';
+import { readDisplaySessionEntry } from '../core/session-compat';
 import type { FeishuConfig } from '../core/types';
 
 export type ToolUseMode = 'off' | 'on' | 'full';
@@ -57,15 +57,13 @@ function resolveSessionVerboseMode(cfg: ClawdbotConfig, sessionKey: string, agen
   try {
     const cfgWithSession = cfg as { session?: { store?: string }; sessions?: { store?: string } };
     const sessionStorePath = cfgWithSession.session?.store ?? cfgWithSession.sessions?.store;
-    const storePath = resolveStorePath(sessionStorePath, { agentId });
-    const store = loadSessionStore(storePath);
     const candidateKeys = resolveCandidateSessionKeys(cfg, sessionKey);
 
     for (const candidateKey of candidateKeys) {
-      const resolved = resolveSessionStoreEntry({ store, sessionKey: candidateKey });
-      const mode = normalizeToolUseMode(resolved.existing?.verboseLevel);
+      const existing = readDisplaySessionEntry({ store: sessionStorePath, sessionKey: candidateKey, agentId });
+      const mode = normalizeToolUseMode(existing?.verboseLevel);
       if (mode) return mode;
-      if (resolved.existing) return undefined;
+      if (existing) return undefined;
     }
     return undefined;
   } catch {
