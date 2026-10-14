@@ -1,36 +1,24 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
-import { resolveToolUseDisplayConfig } from '../src/card/tool-use-config';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-function createStorePath(testName: string): string {
-  const dir = join(tmpdir(), `openclaw-lark-tool-use-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, `${testName}.json`);
-  writeFileSync(path, '{}');
-  return path;
-}
+// OpenClaw >=2026.8 keeps sessions in SQLite; mock the row-level reader.
+const sessions = new Map<string, Record<string, unknown>>();
+vi.mock('openclaw/plugin-sdk/session-store-runtime', () => ({
+  resolveStorePath: (store?: string) => store ?? '/tmp/sessions',
+  getSessionEntry: ({ sessionKey }: { sessionKey: string }) => sessions.get(sessionKey),
+}));
 
-afterEach(() => {
-  rmSync(join(tmpdir(), `openclaw-lark-tool-use-${process.pid}`), { recursive: true, force: true });
+const { resolveToolUseDisplayConfig } = await import('../src/card/tool-use-config');
+
+beforeEach(() => {
+  sessions.clear();
 });
 
 describe('resolveToolUseDisplayConfig', () => {
   it('uses session verbose override from the session store', () => {
-    const storePath = createStorePath('session-override');
-    writeFileSync(
-      storePath,
-      JSON.stringify({
-        'agent:main:feishu:dm:user-1': { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' },
-      }),
-    );
+    sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' });
 
     const config = resolveToolUseDisplayConfig({
-      cfg: {
-        session: { store: storePath },
-        agents: { defaults: { verboseDefault: 'off' } },
-      } as never,
+      cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: { toolUseDisplay: { showFullPaths: true } } as never,
       agentId: 'main',
       sessionKey: 'agent:main:feishu:dm:user-1',
@@ -44,19 +32,10 @@ describe('resolveToolUseDisplayConfig', () => {
   });
 
   it('lets inline /verbose override the stored session level for this message', () => {
-    const storePath = createStorePath('inline-override');
-    writeFileSync(
-      storePath,
-      JSON.stringify({
-        'agent:main:feishu:dm:user-1': { sessionId: 's1', updatedAt: 1, verboseLevel: 'off' },
-      }),
-    );
+    sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'off' });
 
     const config = resolveToolUseDisplayConfig({
-      cfg: {
-        session: { store: storePath },
-        agents: { defaults: { verboseDefault: 'off' } },
-      } as never,
+      cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: {} as never,
       agentId: 'main',
       sessionKey: 'agent:main:feishu:dm:user-1',
@@ -68,13 +47,8 @@ describe('resolveToolUseDisplayConfig', () => {
   });
 
   it('falls back to agents.defaults.verboseDefault when no override exists', () => {
-    const storePath = createStorePath('default-fallback');
-
     const config = resolveToolUseDisplayConfig({
-      cfg: {
-        session: { store: storePath },
-        agents: { defaults: { verboseDefault: 'on' } },
-      } as never,
+      cfg: { agents: { defaults: { verboseDefault: 'on' } } } as never,
       feishuCfg: {} as never,
       agentId: 'main',
       sessionKey: 'agent:main:feishu:dm:user-1',
@@ -87,10 +61,8 @@ describe('resolveToolUseDisplayConfig', () => {
   });
 
   it('defaults to off when no inline, session, or config value is present', () => {
-    const storePath = createStorePath('hard-off');
-
     const config = resolveToolUseDisplayConfig({
-      cfg: { session: { store: storePath } } as never,
+      cfg: {} as never,
       feishuCfg: {} as never,
       agentId: 'main',
       sessionKey: 'agent:main:feishu:dm:user-1',
@@ -102,19 +74,10 @@ describe('resolveToolUseDisplayConfig', () => {
   });
 
   it('falls back to the default-agent session key for non-default agents', () => {
-    const storePath = createStorePath('non-default-agent-fallback');
-    writeFileSync(
-      storePath,
-      JSON.stringify({
-        'agent:main:feishu:dm:user-1': { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' },
-      }),
-    );
+    sessions.set('agent:main:feishu:dm:user-1', { sessionId: 's1', updatedAt: 1, verboseLevel: 'full' });
 
     const config = resolveToolUseDisplayConfig({
-      cfg: {
-        session: { store: storePath },
-        agents: { defaults: { verboseDefault: 'off' } },
-      } as never,
+      cfg: { agents: { defaults: { verboseDefault: 'off' } } } as never,
       feishuCfg: {} as never,
       agentId: 'hr',
       sessionKey: 'agent:hr:feishu:dm:user-1',

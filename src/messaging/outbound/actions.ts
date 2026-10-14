@@ -13,12 +13,12 @@
  * where a single action handles all outbound message types.
  */
 
+import type { ChannelMessageActionName, OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type {
   ChannelMessageActionAdapter,
-  ChannelMessageActionName,
-  OpenClawConfig,
-} from 'openclaw/plugin-sdk';
-import type { ChannelMessageToolSchemaContribution, ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
+  ChannelMessageToolSchemaContribution,
+  ChannelThreadingToolContext,
+} from 'openclaw/plugin-sdk/channel-contract';
 import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';
 import { Type } from '@sinclair/typebox';
@@ -40,6 +40,14 @@ const FEISHU_MESSAGE_TOOL_SCHEMA = {
   properties: {
     message: Type.Optional(Type.String({ description: FEISHU_SEND_TEXT_DESCRIPTION })),
     text: Type.Optional(Type.String({ description: FEISHU_SEND_TEXT_DESCRIPTION })),
+    // OpenClaw >=2026.8 dropped the core `cards` capability (and its `card`
+    // param); keep raw Feishu interactive-card sends as a plugin-owned param.
+    card: Type.Optional(
+      Type.Unknown({
+        description:
+          'Raw Feishu interactive card JSON (object or JSON string) for action=send. Set message to "" when sending only a card.',
+      }),
+    ),
   },
   visibility: 'current-channel' as const,
 } satisfies ChannelMessageToolSchemaContribution;
@@ -181,7 +189,7 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
     }
     return {
       actions: Array.from(SUPPORTED_ACTIONS),
-      capabilities: ['cards'],
+      capabilities: ['presentation'],
       schema: FEISHU_MESSAGE_TOOL_SCHEMA,
     };
   },

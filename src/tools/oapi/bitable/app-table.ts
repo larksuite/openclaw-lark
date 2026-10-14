@@ -14,7 +14,7 @@
  *   - batch_create: POST /open-apis/bitable/v1/apps/:app_token/tables/batch_create
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import { assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json , registerTool } from '../helpers';
@@ -52,7 +52,7 @@ const FeishuBitableAppTableSchema = Type.Union([
   Type.Object({
     action: Type.Literal('list'),
     app_token: Type.String({ description: '多维表格 token' }),
-    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
+    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
 

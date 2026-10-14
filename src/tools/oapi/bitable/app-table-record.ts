@@ -18,7 +18,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
@@ -155,7 +155,7 @@ const FeishuBitableAppTableRecordSchema = Type.Union([
         description: '是否返回自动字段（created_time, last_modified_time, created_by, last_modified_by），默认 false',
       }),
     ),
-    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 500' })),
+    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 500', minimum: 1, maximum: 500 })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
 ]);

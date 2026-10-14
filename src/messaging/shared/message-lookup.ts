@@ -9,7 +9,7 @@
  * dependency inversion.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { buildConvertContextFromItem, convertMessageContent } from '../converters/content-converter';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
@@ -64,7 +64,7 @@ export interface FeishuMessageInfo {
  * @param params.accountId - Optional account identifier for multi-account setups.
  */
 export async function getMessageFeishu(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   messageId: string;
   accountId?: string;
   /** When true, merge_forward content is recursively expanded via API. */
@@ -138,7 +138,7 @@ async function parseMessageItem(
   msg: any,
   fallbackMessageId: string,
   expandCtx?: {
-    cfg: ClawdbotConfig;
+    cfg: OpenClawConfig;
     accountId?: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     fetchSubMessages?: (messageId: string) => Promise<any[]>;

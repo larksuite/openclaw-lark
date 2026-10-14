@@ -23,14 +23,22 @@ export function getPluginVersion(): string {
   if (cachedVersion) return cachedVersion;
 
   try {
-    // 当前文件: src/core/version.ts → 向上两级到达项目根目录
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const packageJsonPath = join(__dirname, '..', '..', 'package.json');
-
-    const raw = readFileSync(packageJsonPath, 'utf8');
-    const pkg = JSON.parse(raw) as { version?: string };
-    cachedVersion = pkg.version ?? 'unknown';
+    // Source: src/core/version.ts → ../../package.json; tsdown bundle: dist/*.mjs → ../package.json
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (const rel of [['..'], ['..', '..']]) {
+      try {
+        const pkg = JSON.parse(readFileSync(join(here, ...rel, 'package.json'), 'utf8')) as {
+          name?: string;
+          version?: string;
+        };
+        if (pkg.name !== '@larksuite/openclaw-lark' || !pkg.version) continue;
+        cachedVersion = pkg.version;
+        return cachedVersion;
+      } catch {
+        // try next candidate
+      }
+    }
+    cachedVersion = 'unknown';
     return cachedVersion;
   } catch {
     cachedVersion = 'unknown';

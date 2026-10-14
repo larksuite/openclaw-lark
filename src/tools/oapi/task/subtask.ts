@@ -11,7 +11,7 @@
  *   - list:   GET  /open-apis/task/v2/tasks/:task_guid/subtasks
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import {
@@ -76,7 +76,7 @@ const FeishuTaskSubtaskSchema = Type.Union([
     action: Type.Literal('list'),
     auth_type: FeishuTaskSubtaskAuthType,
     task_guid: Type.String({ description: '父任务 GUID' }),
-    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
+    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
 ]);

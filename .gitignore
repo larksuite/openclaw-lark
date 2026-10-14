@@ -1,26 +1,7 @@
 node_modules/
-.DS_Store
-
-# feishu plugin build artifacts
 dist/
-release/
-src/tools/docs/
-
-*.log
-
-# IDE / AI config
-.idea/
-.vscode/
-.claude/
-.cursor/
-.windsurf/
-
-
-# Internal documentation directories
-/doc/
-/docs/
-
-/**/package-lock.json
-/**/.DS_Store
-
-.eslintcache
+*.tgz
+*.zip
+.DS_Store
+# clawhub validate 临时校验报告（auth-consistency/ 与 hot-reload/ 为有价值产物，保留提交）
+reports/plugin-inspector-*

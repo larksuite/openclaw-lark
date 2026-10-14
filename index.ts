@@ -8,8 +8,8 @@
  * doc, wiki, drive, perm, bitable, task, calendar.
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
-import { emptyPluginConfigSchema } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
+import { emptyPluginConfigSchema } from 'openclaw/plugin-sdk/core';
 import { feishuPlugin } from './src/channel/plugin';
 import { LarkClient } from './src/core/lark-client';
 import { registerOapiTools } from './src/tools/oapi/index';

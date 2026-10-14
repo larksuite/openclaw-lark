@@ -12,7 +12,7 @@
  *   - primary: POST /open-apis/calendar/v4/calendars/primary
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json , registerTool } from '../helpers';
 import type { CalendarGetData, CalendarListData, CalendarPrimaryData } from '../sdk-types';
@@ -27,7 +27,11 @@ const FeishuCalendarCalendarSchema = Type.Union([
     action: Type.Literal('list'),
     page_size: Type.Optional(
       Type.Number({
-        description: 'Number of calendars to return per page (default: 50, max: 1000)',
+        // v10：飞书 calendar.list 服务端实测要求 page_size ∈ [50,1000]，
+        // 官方 schema 只写了 max 1000 未设 minimum，<50 的值（如 10）透传必然 400。
+        description: 'Number of calendars per page (default: 50, allowed: 50–1000)',
+        minimum: 50,
+        maximum: 1000,
       }),
     ),
     page_token: Type.Optional(
@@ -88,7 +92,12 @@ export function registerFeishuCalendarCalendarTool(api: OpenClawPluginApi): void
             // LIST CALENDARS
             // -----------------------------------------------------------------
             case 'list': {
-              log.info(`list: page_size=${p.page_size ?? 50}, page_token=${p.page_token ?? 'none'}`);
+              // v10：防御模型忽略 schema 约束——再钳制一次到 [50,1000]。
+              // 服务端对 <50 的 page_size 返回 400 field validation failed（已实测）。
+              let ps = p.page_size;
+              if (ps === undefined || ps === null) ps = 50;
+              ps = Math.min(1000, Math.max(50, ps)); // 钳到 [50,1000]
+              log.info(`list: page_size=${ps}, page_token=${p.page_token ?? 'none'}`);
 
               const res = await client.invoke(
                 'feishu_calendar_calendar.list',
@@ -96,7 +105,7 @@ export function registerFeishuCalendarCalendarTool(api: OpenClawPluginApi): void
                   sdk.calendar.calendar.list(
                     {
                       params: {
-                        page_size: p.page_size,
+                        page_size: ps,
                         page_token: p.page_token,
                       },
                     },

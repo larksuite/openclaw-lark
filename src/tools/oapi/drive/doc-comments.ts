@@ -13,7 +13,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import {
   StringEnum,
@@ -58,7 +58,7 @@ const DocCommentsSchema = Type.Object({
       description: '是否只获取已解决的评论(action=list时可选)',
     }),
   ),
-  page_size: Type.Optional(Type.Integer({ description: '分页大小' })),
+  page_size: Type.Optional(Type.Integer({ description: '分页大小', minimum: 1, maximum: 100 })),
   page_token: Type.Optional(Type.String({ description: '分页标记' })),
   // create / reply action参数
   elements: Type.Optional(

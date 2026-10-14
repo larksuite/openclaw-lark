@@ -1,64 +1,964 @@
 {
-  "id": "openclaw-lark",
-  "channels": [
-    "feishu"
-  ],
-  "skills": [
-    "./skills"
-  ],
-  "configSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {}
-  },
-  "contracts": {
-    "tools": [
-      "feishu_bitable_app",
-      "feishu_bitable_app_table",
-      "feishu_bitable_app_table_field",
-      "feishu_bitable_app_table_record",
-      "feishu_bitable_app_table_view",
-      "feishu_calendar_calendar",
-      "feishu_calendar_event",
-      "feishu_calendar_event_attendee",
-      "feishu_calendar_freebusy",
-      "feishu_chat",
-      "feishu_chat_members",
-      "feishu_create_doc",
-      "feishu_doc_comments",
-      "feishu_doc_media",
-      "feishu_drive_file",
-      "feishu_fetch_doc",
-      "feishu_get_user",
-      "feishu_im_bot_image",
-      "feishu_im_user_fetch_resource",
-      "feishu_im_user_get_messages",
-      "feishu_im_user_get_thread_messages",
-      "feishu_im_user_message",
-      "feishu_im_user_search_messages",
-      "feishu_oauth",
-      "feishu_oauth_batch_auth",
-      "feishu_search_doc_wiki",
-      "feishu_search_user",
-      "feishu_sheet",
-      "feishu_task_comment",
-      "feishu_task_subtask",
-      "feishu_task_task",
-      "feishu_task_agent",
-      "feishu_task_attachment",
-      "feishu_task_tasklist",
-      "feishu_update_doc",
-      "feishu_wiki_space",
-      "feishu_wiki_space_node",
-      "feishu_task_section",
-      "feishu_ask_user_question"
+ "id": "openclaw-lark",
+ "name": "OpenClaw Lark (Community Compat)",
+ "channels": [
+  "feishu"
+ ],
+ "skills": [
+  "./skills"
+ ],
+ "configSchema": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+   "appId": {
+    "type": "string"
+   },
+   "appSecret": {
+    "type": "string"
+   },
+   "encryptKey": {
+    "type": "string"
+   },
+   "verificationToken": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "enabled": {
+    "type": "boolean"
+   },
+   "domain": {
+    "anyOf": [
+     {
+      "type": "string",
+      "const": "feishu"
+     },
+     {
+      "type": "string",
+      "const": "lark"
+     },
+     {
+      "type": "string",
+      "pattern": "^https:\\/\\/"
+     }
     ]
-  },
-  "channelConfigs": {
-    "feishu": {
-      "schema": {
-        "type": "object"
+   },
+   "connectionMode": {
+    "type": "string",
+    "enum": [
+     "websocket",
+     "webhook"
+    ]
+   },
+   "webhookPath": {
+    "type": "string"
+   },
+   "webhookPort": {
+    "type": "number"
+   },
+   "dmPolicy": {
+    "type": "string",
+    "enum": [
+     "open",
+     "pairing",
+     "allowlist",
+     "disabled"
+    ]
+   },
+   "allowFrom": {
+    "anyOf": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
       }
+     }
+    ]
+   },
+   "groupPolicy": {
+    "type": "string",
+    "enum": [
+     "open",
+     "allowlist",
+     "disabled"
+    ]
+   },
+   "groupAllowFrom": {
+    "anyOf": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    ]
+   },
+   "requireMention": {
+    "type": "boolean"
+   },
+   "respondToMentionAll": {
+    "type": "boolean"
+   },
+   "groups": {
+    "type": "object",
+    "propertyNames": {
+     "type": "string"
+    },
+    "additionalProperties": {
+     "type": "object",
+     "properties": {
+      "groupPolicy": {
+       "type": "string",
+       "enum": [
+        "open",
+        "allowlist",
+        "disabled"
+       ]
+      },
+      "requireMention": {
+       "type": "boolean"
+      },
+      "respondToMentionAll": {
+       "type": "boolean"
+      },
+      "tools": {
+       "type": "object",
+       "properties": {
+        "allow": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "deny": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "skills": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "enabled": {
+       "type": "boolean"
+      },
+      "allowFrom": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       ]
+      },
+      "systemPrompt": {
+       "type": "string"
+      },
+      "allowBots": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "string",
+         "const": "mentions"
+        }
+       ]
+      },
+      "replyInThread": {
+       "type": "boolean"
+      }
+     }
     }
+   },
+   "historyLimit": {
+    "type": "number"
+   },
+   "dmHistoryLimit": {
+    "type": "number"
+   },
+   "dms": {
+    "type": "object",
+    "properties": {
+     "historyLimit": {
+      "type": "number"
+     }
+    }
+   },
+   "textChunkLimit": {
+    "type": "number"
+   },
+   "chunkMode": {
+    "type": "string",
+    "enum": [
+     "newline",
+     "paragraph",
+     "none"
+    ]
+   },
+   "blockStreamingCoalesce": {
+    "type": "object",
+    "properties": {
+     "minChars": {
+      "type": "number"
+     },
+     "maxChars": {
+      "type": "number"
+     },
+     "idleMs": {
+      "type": "number"
+     }
+    }
+   },
+   "mediaMaxMb": {
+    "type": "number"
+   },
+   "heartbeat": {
+    "type": "object",
+    "properties": {
+     "every": {
+      "type": "string"
+     },
+     "activeHours": {
+      "type": "object",
+      "properties": {
+       "start": {
+        "type": "string"
+       },
+       "end": {
+        "type": "string"
+       },
+       "timezone": {
+        "type": "string"
+       }
+      }
+     },
+     "target": {
+      "type": "string"
+     },
+     "to": {
+      "type": "string"
+     },
+     "prompt": {
+      "type": "string"
+     },
+     "accountId": {
+      "type": "string"
+     }
+    }
+   },
+   "replyMode": {
+    "anyOf": [
+     {
+      "type": "string",
+      "enum": [
+       "auto",
+       "static",
+       "streaming"
+      ]
+     },
+     {
+      "type": "object",
+      "properties": {
+       "default": {
+        "type": "string",
+        "enum": [
+         "auto",
+         "static",
+         "streaming"
+        ]
+       },
+       "group": {
+        "type": "string",
+        "enum": [
+         "auto",
+         "static",
+         "streaming"
+        ]
+       },
+       "direct": {
+        "type": "string",
+        "enum": [
+         "auto",
+         "static",
+         "streaming"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "streaming": {
+    "anyOf": [
+     {
+      "type": "boolean"
+     },
+     {
+      "type": "object",
+      "properties": {
+       "mode": {
+        "type": "string",
+        "enum": [
+         "off",
+         "partial",
+         "block",
+         "progress"
+        ]
+       },
+       "block": {
+        "type": "object",
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         }
+        },
+        "additionalProperties": {}
+       }
+      },
+      "additionalProperties": {}
+     }
+    ]
+   },
+   "blockStreaming": {
+    "type": "boolean"
+   },
+   "toolUseDisplay": {
+    "type": "object",
+    "properties": {
+     "showFullPaths": {
+      "type": "boolean"
+     }
+    }
+   },
+   "tools": {
+    "type": "object",
+    "properties": {
+     "doc": {
+      "type": "boolean"
+     },
+     "wiki": {
+      "type": "boolean"
+     },
+     "drive": {
+      "type": "boolean"
+     },
+     "perm": {
+      "type": "boolean"
+     },
+     "scopes": {
+      "type": "boolean"
+     }
+    }
+   },
+   "footer": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "boolean"
+     },
+     "elapsed": {
+      "type": "boolean"
+     },
+     "tokens": {
+      "type": "boolean"
+     },
+     "cache": {
+      "type": "boolean"
+     },
+     "context": {
+      "type": "boolean"
+     },
+     "model": {
+      "type": "boolean"
+     }
+    }
+   },
+   "markdown": {
+    "type": "object",
+    "properties": {
+     "tables": {
+      "type": "string",
+      "enum": [
+       "off",
+       "bullets",
+       "code"
+      ]
+     }
+    }
+   },
+   "configWrites": {
+    "type": "boolean"
+   },
+   "capabilities": {
+    "type": "object",
+    "properties": {
+     "image": {
+      "type": "boolean"
+     },
+     "audio": {
+      "type": "boolean"
+     },
+     "video": {
+      "type": "boolean"
+     }
+    }
+   },
+   "dedup": {
+    "type": "object",
+    "properties": {
+     "ttlMs": {
+      "type": "number"
+     },
+     "maxEntries": {
+      "type": "number"
+     }
+    }
+   },
+   "reactionNotifications": {
+    "type": "string",
+    "enum": [
+     "off",
+     "own",
+     "all"
+    ]
+   },
+   "threadSession": {
+    "type": "boolean"
+   },
+   "allowBots": {
+    "anyOf": [
+     {
+      "type": "boolean"
+     },
+     {
+      "type": "string",
+      "const": "mentions"
+     }
+    ]
+   },
+   "replyInThread": {
+    "type": "boolean"
+   },
+   "uat": {
+    "type": "object",
+    "properties": {
+     "enabled": {
+      "type": "boolean"
+     },
+     "allowedScopes": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "blockedScopes": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "accounts": {
+    "type": "object",
+    "propertyNames": {
+     "type": "string"
+    },
+    "additionalProperties": {
+     "type": "object",
+     "properties": {
+      "appId": {
+       "type": "string"
+      },
+      "appSecret": {
+       "type": "string"
+      },
+      "encryptKey": {
+       "type": "string"
+      },
+      "verificationToken": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "enabled": {
+       "type": "boolean"
+      },
+      "domain": {
+       "anyOf": [
+        {
+         "type": "string",
+         "const": "feishu"
+        },
+        {
+         "type": "string",
+         "const": "lark"
+        },
+        {
+         "type": "string",
+         "pattern": "^https:\\/\\/"
+        }
+       ]
+      },
+      "connectionMode": {
+       "type": "string",
+       "enum": [
+        "websocket",
+        "webhook"
+       ]
+      },
+      "webhookPath": {
+       "type": "string"
+      },
+      "webhookPort": {
+       "type": "number"
+      },
+      "dmPolicy": {
+       "type": "string",
+       "enum": [
+        "open",
+        "pairing",
+        "allowlist",
+        "disabled"
+       ]
+      },
+      "allowFrom": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       ]
+      },
+      "groupPolicy": {
+       "type": "string",
+       "enum": [
+        "open",
+        "allowlist",
+        "disabled"
+       ]
+      },
+      "groupAllowFrom": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       ]
+      },
+      "requireMention": {
+       "type": "boolean"
+      },
+      "respondToMentionAll": {
+       "type": "boolean"
+      },
+      "groups": {
+       "type": "object",
+       "propertyNames": {
+        "type": "string"
+       },
+       "additionalProperties": {
+        "type": "object",
+        "properties": {
+         "groupPolicy": {
+          "type": "string",
+          "enum": [
+           "open",
+           "allowlist",
+           "disabled"
+          ]
+         },
+         "requireMention": {
+          "type": "boolean"
+         },
+         "respondToMentionAll": {
+          "type": "boolean"
+         },
+         "tools": {
+          "type": "object",
+          "properties": {
+           "allow": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           },
+           "deny": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          }
+         },
+         "skills": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "enabled": {
+          "type": "boolean"
+         },
+         "allowFrom": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          ]
+         },
+         "systemPrompt": {
+          "type": "string"
+         },
+         "allowBots": {
+          "anyOf": [
+           {
+            "type": "boolean"
+           },
+           {
+            "type": "string",
+            "const": "mentions"
+           }
+          ]
+         },
+         "replyInThread": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "historyLimit": {
+       "type": "number"
+      },
+      "dmHistoryLimit": {
+       "type": "number"
+      },
+      "dms": {
+       "type": "object",
+       "properties": {
+        "historyLimit": {
+         "type": "number"
+        }
+       }
+      },
+      "textChunkLimit": {
+       "type": "number"
+      },
+      "chunkMode": {
+       "type": "string",
+       "enum": [
+        "newline",
+        "paragraph",
+        "none"
+       ]
+      },
+      "blockStreamingCoalesce": {
+       "type": "object",
+       "properties": {
+        "minChars": {
+         "type": "number"
+        },
+        "maxChars": {
+         "type": "number"
+        },
+        "idleMs": {
+         "type": "number"
+        }
+       }
+      },
+      "mediaMaxMb": {
+       "type": "number"
+      },
+      "heartbeat": {
+       "type": "object",
+       "properties": {
+        "every": {
+         "type": "string"
+        },
+        "activeHours": {
+         "type": "object",
+         "properties": {
+          "start": {
+           "type": "string"
+          },
+          "end": {
+           "type": "string"
+          },
+          "timezone": {
+           "type": "string"
+          }
+         }
+        },
+        "target": {
+         "type": "string"
+        },
+        "to": {
+         "type": "string"
+        },
+        "prompt": {
+         "type": "string"
+        },
+        "accountId": {
+         "type": "string"
+        }
+       }
+      },
+      "replyMode": {
+       "anyOf": [
+        {
+         "type": "string",
+         "enum": [
+          "auto",
+          "static",
+          "streaming"
+         ]
+        },
+        {
+         "type": "object",
+         "properties": {
+          "default": {
+           "type": "string",
+           "enum": [
+            "auto",
+            "static",
+            "streaming"
+           ]
+          },
+          "group": {
+           "type": "string",
+           "enum": [
+            "auto",
+            "static",
+            "streaming"
+           ]
+          },
+          "direct": {
+           "type": "string",
+           "enum": [
+            "auto",
+            "static",
+            "streaming"
+           ]
+          }
+         }
+        }
+       ]
+      },
+      "streaming": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "object",
+         "properties": {
+          "mode": {
+           "type": "string",
+           "enum": [
+            "off",
+            "partial",
+            "block",
+            "progress"
+           ]
+          },
+          "block": {
+           "type": "object",
+           "properties": {
+            "enabled": {
+             "type": "boolean"
+            }
+           },
+           "additionalProperties": {}
+          }
+         },
+         "additionalProperties": {}
+        }
+       ]
+      },
+      "blockStreaming": {
+       "type": "boolean"
+      },
+      "toolUseDisplay": {
+       "type": "object",
+       "properties": {
+        "showFullPaths": {
+         "type": "boolean"
+        }
+       }
+      },
+      "tools": {
+       "type": "object",
+       "properties": {
+        "doc": {
+         "type": "boolean"
+        },
+        "wiki": {
+         "type": "boolean"
+        },
+        "drive": {
+         "type": "boolean"
+        },
+        "perm": {
+         "type": "boolean"
+        },
+        "scopes": {
+         "type": "boolean"
+        }
+       }
+      },
+      "footer": {
+       "type": "object",
+       "properties": {
+        "status": {
+         "type": "boolean"
+        },
+        "elapsed": {
+         "type": "boolean"
+        },
+        "tokens": {
+         "type": "boolean"
+        },
+        "cache": {
+         "type": "boolean"
+        },
+        "context": {
+         "type": "boolean"
+        },
+        "model": {
+         "type": "boolean"
+        }
+       }
+      },
+      "markdown": {
+       "type": "object",
+       "properties": {
+        "tables": {
+         "type": "string",
+         "enum": [
+          "off",
+          "bullets",
+          "code"
+         ]
+        }
+       }
+      },
+      "configWrites": {
+       "type": "boolean"
+      },
+      "capabilities": {
+       "type": "object",
+       "properties": {
+        "image": {
+         "type": "boolean"
+        },
+        "audio": {
+         "type": "boolean"
+        },
+        "video": {
+         "type": "boolean"
+        }
+       }
+      },
+      "dedup": {
+       "type": "object",
+       "properties": {
+        "ttlMs": {
+         "type": "number"
+        },
+        "maxEntries": {
+         "type": "number"
+        }
+       }
+      },
+      "reactionNotifications": {
+       "type": "string",
+       "enum": [
+        "off",
+        "own",
+        "all"
+       ]
+      },
+      "threadSession": {
+       "type": "boolean"
+      },
+      "allowBots": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "string",
+         "const": "mentions"
+        }
+       ]
+      },
+      "replyInThread": {
+       "type": "boolean"
+      },
+      "uat": {
+       "type": "object",
+       "properties": {
+        "enabled": {
+         "type": "boolean"
+        },
+        "allowedScopes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "blockedScopes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
   }
+ },
+ "channelConfigs": {
+  "feishu": {
+   "schema": {
+    "type": "object"
+   }
+  }
+ }
 }

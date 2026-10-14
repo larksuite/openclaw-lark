@@ -9,7 +9,7 @@
  * enabled for a given account.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuToolsConfig, LarkAccount } from './types';
 
 // ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ function matchesAnyPattern(value: string, patterns: string[]): boolean {
  * shouldRegisterTool(cfg, "feishu_task_task")        // true
  * ```
  */
-export function shouldRegisterTool(cfg: ClawdbotConfig, toolName: string): boolean {
+export function shouldRegisterTool(cfg: OpenClawConfig, toolName: string): boolean {
   const feishuConfig = cfg.channels?.feishu;
   const denyList = feishuConfig?.['tools']?.['deny'];
 

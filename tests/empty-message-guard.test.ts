@@ -87,8 +87,8 @@ vi.mock('openclaw/plugin-sdk/reply-history', () => ({
   recordPendingHistoryEntryIfEnabled: vi.fn(),
 }));
 
-vi.mock('openclaw/plugin-sdk/command-auth', () => ({
-  resolveSenderCommandAuthorization: vi.fn().mockResolvedValue({ commandAuthorized: false }),
+vi.mock('../src/messaging/inbound/command-auth-compat', () => ({
+  resolveSenderCommandAuthorizationCompat: vi.fn().mockResolvedValue({ commandAuthorized: false }),
 }));
 
 vi.mock('openclaw/plugin-sdk/allow-from', () => ({

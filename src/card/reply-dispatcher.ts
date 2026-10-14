@@ -11,9 +11,9 @@
  * 4. Assembles and returns FeishuReplyDispatcherResult
  */
 
-import { createReplyPrefixContext, createTypingCallbacks } from 'openclaw/plugin-sdk/channel-runtime';
+import { createReplyPrefixContext, createTypingCallbacks } from 'openclaw/plugin-sdk/channel-outbound';
 import { logTypingFailure } from 'openclaw/plugin-sdk/channel-feedback';
-import type { ReplyPayload } from 'openclaw/plugin-sdk';
+import type { ReplyPayload } from 'openclaw/plugin-sdk/core';
 import { getLarkAccount } from '../core/accounts';
 import { resolveFooterConfig } from '../core/footer-config';
 import { LarkClient } from '../core/lark-client';
@@ -24,7 +24,7 @@ import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } 
 import { splitReasoningText, stripReasoningTags } from './builder';
 import { isCardTableLimitError } from './card-error';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
-import { expandAutoMode, resolveReplyMode, shouldUseCard } from './reply-mode';
+import { expandAutoMode, resolveReplyMode, resolveStreamingFlags, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
 
@@ -50,15 +50,16 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   // ---- Reply mode resolution ----
   const chatType = params.chatType;
   const effectiveReplyMode = resolveReplyMode({ feishuCfg, chatType });
+  const streamingFlags = resolveStreamingFlags(feishuCfg);
   const replyMode = expandAutoMode({
     mode: effectiveReplyMode,
-    streaming: feishuCfg?.streaming,
+    streaming: streamingFlags.streaming,
     chatType,
   });
   const useStreamingCards = replyMode === 'streaming';
 
   // ---- Block streaming for static mode ----
-  const enableBlockStreaming = feishuCfg?.blockStreaming === true && !useStreamingCards;
+  const enableBlockStreaming = streamingFlags.blockStreaming && !useStreamingCards;
   const { toolUseDisplay } = params;
 
   const resolvedFooter = resolveFooterConfig(feishuCfg?.footer);
@@ -67,6 +68,8 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
     effectiveReplyMode,
     replyMode,
     chatType,
+    streamingRaw: feishuCfg?.streaming ?? null,
+    streamingFlags,
   });
   log.info('footer config resolved', {
     accountId: account.accountId,

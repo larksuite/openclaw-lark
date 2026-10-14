@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import type { TSchema } from '@sinclair/typebox';
 import { createToolContext, formatToolResult, registerTool } from '../helpers';
 import { handleInvokeErrorWithAutoAuth } from '../oapi/helpers';

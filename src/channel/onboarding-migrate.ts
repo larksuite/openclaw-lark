@@ -9,7 +9,7 @@
  * semantic of "allow this group for any sender".
  */
 
-import type { ClawdbotConfig, WizardPrompter } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, WizardPrompter } from 'openclaw/plugin-sdk/core';
 import type { FeishuConfig, FeishuGroupConfig } from '../core/types';
 import { setFeishuGroupAllowFrom, setFeishuGroups } from './onboarding-config';
 
@@ -24,9 +24,9 @@ import { setFeishuGroupAllowFrom, setFeishuGroups } from './onboarding-config';
  * to the groups config and keeps only sender IDs in groupAllowFrom.
  */
 export async function migrateLegacyGroupAllowFrom(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   prompter: WizardPrompter;
-}): Promise<ClawdbotConfig> {
+}): Promise<OpenClawConfig> {
   let next = params.cfg;
   const { prompter } = params;
 

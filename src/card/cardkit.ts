@@ -5,7 +5,7 @@
  * CardKit streaming APIs for Lark/Feishu.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { LarkClient } from '../core/lark-client';
 import { larkLogger } from '../core/lark-logger';
 import { runWithMessageUnavailableGuard } from '../core/message-unavailable';
@@ -67,7 +67,7 @@ function logCardKitResponse(params: { resp: CardKitResponse; api: string; contex
  * The card can then be sent via IM API and streamed via CardKit.
  */
 export async function createCardEntity(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   card: Record<string, unknown>;
   accountId?: string;
 }): Promise<string | null> {
@@ -106,7 +106,7 @@ export async function createCardEntity(params: {
  * @param params.sequence  - Monotonically increasing sequence number.
  */
 export async function streamCardContent(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   cardId: string;
   elementId: string;
   content: string;
@@ -140,7 +140,7 @@ export async function streamCardContent(params: {
  * @param params.sequence - Monotonically increasing sequence number.
  */
 export async function updateCardKitCard(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   cardId: string;
   card: Record<string, unknown>;
   sequence: number;
@@ -166,7 +166,7 @@ export async function updateCardKitCard(params: {
 }
 
 export async function updateCardKitCardForAuth(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   cardId: string;
   card: Record<string, unknown>;
   sequence: number;
@@ -183,7 +183,7 @@ export async function updateCardKitCardForAuth(params: {
  * streaming updates via cardElement.content().
  */
 export async function sendCardByCardId(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   to: string;
   cardId: string;
   replyToMessageId?: string;
@@ -251,7 +251,7 @@ export async function sendCardByCardId(params: {
  * behaviour (forwarding, interaction callbacks, etc.).
  */
 export async function setCardStreamingMode(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   cardId: string;
   streamingMode: boolean;
   sequence: number;

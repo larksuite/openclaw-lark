@@ -15,7 +15,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, parseTimeToTimestampMs, registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
@@ -102,11 +102,7 @@ const FeishuTaskSectionSchema = Type.Union([
         description: '如resource_type为"tasklist"，这里需要填写要列取自定义分组的清单的GUID。',
       }),
     ),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '分页大小',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '分页大小', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',
@@ -122,11 +118,7 @@ const FeishuTaskSectionSchema = Type.Union([
     section_guid: Type.String({
       description: '要获取任务的自定义分组全局唯一ID',
     }),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '分页大小',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '分页大小', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',

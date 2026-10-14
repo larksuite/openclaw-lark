@@ -13,7 +13,7 @@
  *   - get:    GET /open-apis/im/v1/chats/:chat_id
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
@@ -29,12 +29,7 @@ const FeishuChatSchema = Type.Union([
     query: Type.String({
       description: '搜索关键词（必填）。支持匹配群名称、群成员名称。' + '支持多语种、拼音、前缀等模糊搜索。',
     }),
-    page_size: Type.Optional(
-      Type.Integer({
-        description: '分页大小（默认20）',
-        minimum: 1,
-      }),
-    ),
+    page_size: Type.Optional(Type.Integer({ description: '分页大小（默认20）', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记。首次请求无需填写',

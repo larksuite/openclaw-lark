@@ -184,7 +184,18 @@ export const FeishuAccountConfigSchema = z.object({
   mediaMaxMb: z.number().optional(),
   heartbeat: HeartbeatSchema,
   replyMode: ReplyModeSchema,
-  streaming: z.boolean().optional(),
+  // Legacy boolean, or OpenClaw >=2026.8 nested shape written by doctor migration.
+  streaming: z
+    .union([
+      z.boolean(),
+      z
+        .object({
+          mode: z.enum(['off', 'partial', 'block', 'progress']).optional(),
+          block: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+        })
+        .passthrough(),
+    ])
+    .optional(),
   blockStreaming: z.boolean().optional(),
   toolUseDisplay: z
     .object({

@@ -15,7 +15,7 @@
  *   - copy:   POST /open-apis/bitable/v1/apps/:app_token/copy
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json , registerTool } from '../helpers';
 import type { BitableAppListData } from '../sdk-types';
@@ -42,7 +42,7 @@ const FeishuBitableAppSchema = Type.Union([
   Type.Object({
     action: Type.Literal('list'),
     folder_token: Type.Optional(Type.String({ description: '文件夹 token（默认列出我的空间）' })),
-    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 200' })),
+    page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 200', minimum: 1, maximum: 200 })),
     page_token: Type.Optional(Type.String({ description: '分页标记' })),
   }),
 

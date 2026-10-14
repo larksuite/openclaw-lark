@@ -15,7 +15,8 @@
  */
 
 import * as crypto from 'node:crypto';
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { DEFAULT_GROUP_HISTORY_LIMIT } from 'openclaw/plugin-sdk/reply-history';
 import type { FeishuReactionCreatedEvent, MessageContext  } from '../types';
@@ -63,7 +64,7 @@ export interface ReactionContext {
  * for the same chat.
  */
 export async function resolveReactionContext(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuReactionCreatedEvent;
   botOpenId?: string;
   runtime?: RuntimeEnv;
@@ -185,7 +186,7 @@ export async function resolveReactionContext(params: {
 // ---------------------------------------------------------------------------
 
 export async function handleFeishuReaction(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuReactionCreatedEvent;
   botOpenId?: string;
   runtime?: RuntimeEnv;
@@ -205,7 +206,7 @@ export async function handleFeishuReaction(params: {
   // ---- Step A: Account resolution + accountScopedCfg ----
   const account = getLarkAccount(cfg, accountId);
   const accountFeishuCfg = account.config;
-  const accountScopedCfg: ClawdbotConfig = {
+  const accountScopedCfg: OpenClawConfig = {
     ...cfg,
     channels: { ...cfg.channels, feishu: accountFeishuCfg },
   };

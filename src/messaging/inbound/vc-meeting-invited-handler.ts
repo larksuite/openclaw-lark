@@ -10,7 +10,8 @@
  */
 
 import * as crypto from 'node:crypto'
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk'
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history'
 import type { FeishuVcMeetingInvitedEvent, MessageContext, VcMeetingInvitedSyntheticEvent } from '../types'
 import { SYNTHETIC_VC_CHAT_ID, SYNTHETIC_VC_CHAT_TYPE } from '../../core/synthetic-target'
@@ -124,7 +125,7 @@ function matchesAnySenderId(params: {
 }
 
 export async function handleFeishuVcMeetingInvited(params: {
-  cfg: ClawdbotConfig
+  cfg: OpenClawConfig
   event: FeishuVcMeetingInvitedEvent
   runtime?: RuntimeEnv
   chatHistories?: Map<string, HistoryEntry[]>
@@ -141,7 +142,7 @@ export async function handleFeishuVcMeetingInvited(params: {
   }
 
   const account = getLarkAccount(cfg, accountId)
-  const accountScopedCfg: ClawdbotConfig = {
+  const accountScopedCfg: OpenClawConfig = {
     ...cfg,
     channels: { ...cfg.channels, feishu: account.config },
   }

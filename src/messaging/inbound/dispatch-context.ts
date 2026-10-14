@@ -9,7 +9,8 @@
  * event emission.
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime-env';
 import { resolveThreadSessionKeys } from 'openclaw/plugin-sdk/routing';
 import type { MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
@@ -26,8 +27,8 @@ const log = larkLogger('inbound/dispatch-context');
 
 export interface DispatchContext {
   ctx: MessageContext;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: OpenClawConfig;
   account: LarkAccount;
   runtime: RuntimeEnv;
   log: (...args: unknown[]) => void;
@@ -72,7 +73,7 @@ export function ensureRuntime(runtime: RuntimeEnv | undefined): RuntimeEnv {
 export function buildDispatchContext(params: {
   ctx: MessageContext;
   account: LarkAccount;
-  accountScopedCfg: ClawdbotConfig;
+  accountScopedCfg: OpenClawConfig;
   runtime?: RuntimeEnv;
   commandAuthorized?: boolean;
 }): DispatchContext {
@@ -170,7 +171,7 @@ export function buildDispatchContext(params: {
  * to minimise OAPI calls.
  */
 export async function resolveThreadSessionKey(params: {
-  accountScopedCfg: ClawdbotConfig;
+  accountScopedCfg: OpenClawConfig;
   account: LarkAccount;
   chatId: string;
   threadId: string;

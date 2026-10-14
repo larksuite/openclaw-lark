@@ -11,7 +11,7 @@
  * parameters and delegates to standalone sending functions.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ChannelOutboundAdapter } from 'openclaw/plugin-sdk/channel-send-result';
 import { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
@@ -137,7 +137,7 @@ export interface FeishuChannelData {
  * Common send context extracted from outbound adapter parameters.
  */
 interface FeishuSendContext {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   to: string;
   replyToMessageId?: string;
   replyInThread: boolean;
@@ -152,7 +152,7 @@ interface FeishuSendContext {
  * Slack (`sendSlackOutboundMessage`) to centralise parameter mapping.
  */
 function resolveFeishuSendContext(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   to: string;
   accountId?: string | null;
   replyToId?: string | null;

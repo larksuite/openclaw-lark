@@ -14,7 +14,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import {
   StringEnum,
@@ -274,11 +274,7 @@ const FeishuCalendarEventSchema = Type.Union([
         description: 'Calendar ID (optional; primary calendar used if omitted)',
       }),
     ),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '每页数量',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '每页数量', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',
@@ -317,11 +313,7 @@ const FeishuCalendarEventSchema = Type.Union([
     end_time: Type.String({
       description: "查询结束时间（ISO 8601 / RFC 3339 格式（包含时区），例如 '2024-01-01T00:00:00+08:00'）",
     }),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '每页数量',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '每页数量', minimum: 1, maximum: 1000 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',
@@ -343,11 +335,7 @@ const FeishuCalendarEventSchema = Type.Union([
         description: 'Calendar ID (optional; primary calendar used if omitted)',
       }),
     ),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '每页数量',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '每页数量', minimum: 1, maximum: 1000 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',
@@ -904,7 +892,12 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi): void {
 
               const calendarId = await resolveCalendarIdOrFail(p.calendar_id, client);
 
-              log.info(`search: calendar_id=${calendarId}, query=${p.query}, page_size=${p.page_size ?? 50}`);
+              // 钳制 page_size 到 [1,100]（飞书文档：calendar-event search 最大值 100）
+              let ps = p.page_size;
+              if (ps === undefined || ps === null) ps = 20;
+              ps = Math.min(100, Math.max(1, Math.trunc(ps)));
+
+              log.info(`search: calendar_id=${calendarId}, query=${p.query}, page_size=${ps}`);
 
               const res = await client.invoke(
                 'feishu_calendar_event.search',
@@ -913,7 +906,7 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi): void {
                     {
                       path: { calendar_id: calendarId },
                       params: {
-                        page_size: p.page_size,
+                        page_size: ps,
                         page_token: p.page_token,
                       },
                       data: {
@@ -995,6 +988,11 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi): void {
 
               log.info(`instances: calendar_id=${calendarId}, event_id=${p.event_id}, start=${startTs}, end=${endTs}`);
 
+              // 钳制 page_size 到 [1,1000]（宽松上限，instances 文档未明确范围）
+              let ps = p.page_size;
+              if (ps === undefined || ps === null) ps = 50;
+              ps = Math.min(1000, Math.max(1, Math.trunc(ps)));
+
               const res = await client.invoke(
                 'feishu_calendar_event.instances',
                 (sdk, opts) =>
@@ -1004,7 +1002,7 @@ export function registerFeishuCalendarEventTool(api: OpenClawPluginApi): void {
                       params: {
                         start_time: startTs as any,
                         end_time: endTs as any,
-                        page_size: p.page_size,
+                        page_size: ps,
                         page_token: p.page_token,
                       },
                     },

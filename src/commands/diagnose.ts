@@ -14,7 +14,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-import type { OpenClawConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 
 interface DiagLogger {
   info: (message: string) => void;
@@ -91,7 +91,9 @@ const ERROR_LEVEL_RE = /\[error\]|\[warn\]/i;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function maskSecret(secret?: string): string {
+function maskSecret(secret?: unknown): string {
+  // Unresolved SecretRef objects (e.g. { source: 'env' }) reach CLI commands as-is.
+  if (typeof secret !== 'string') return '(SecretRef)';
   if (!secret) return '(未设置)';
   if (secret.length <= 4) return '****';
   return secret.slice(0, 4) + '****';

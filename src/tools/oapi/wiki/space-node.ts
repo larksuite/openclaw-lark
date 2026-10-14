@@ -15,7 +15,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import {
@@ -44,12 +44,7 @@ const FeishuWikiSpaceNodeSchema = Type.Union([
         description: 'parent_node_token',
       }),
     ),
-    page_size: Type.Optional(
-      Type.Integer({
-        description: 'page_size',
-        minimum: 1,
-      }),
-    ),
+    page_size: Type.Optional(Type.Integer({ description: 'page_size', minimum: 1, maximum: 50 })),
     page_token: Type.Optional(
       Type.String({
         description: 'page_token',

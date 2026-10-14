@@ -17,7 +17,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import {
   StringEnum,
@@ -144,11 +144,7 @@ const FeishuTaskTaskSchema = Type.Union([
   // LIST
   Type.Object({
     action: Type.Literal('list'),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '每页数量（默认 50，最大 100）。',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '每页数量（默认 50，最大 100）。', minimum: 1, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',

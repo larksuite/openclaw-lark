@@ -9,7 +9,7 @@
  * without proper isolation via agents + bindings.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { getEnabledLarkAccounts } from './accounts';
 import type { LarkAccount } from './types';
 
@@ -35,7 +35,7 @@ export type IsolationStatus =
  * Diagnose whether multiple enabled accounts from different tenants
  * are properly isolated via agent bindings.
  */
-export function checkMultiAccountIsolation(cfg: ClawdbotConfig): IsolationStatus {
+export function checkMultiAccountIsolation(cfg: OpenClawConfig): IsolationStatus {
   const accounts = getEnabledLarkAccounts(cfg);
   if (accounts.length <= 1) return { mode: 'not-applicable' };
 
@@ -75,7 +75,7 @@ function accountNames(accounts: LarkAccount[]): string {
   return accounts.map((a) => a.name ?? a.accountId).join('、');
 }
 
-function isMultiTenant(cfg: ClawdbotConfig): boolean {
+function isMultiTenant(cfg: OpenClawConfig): boolean {
   const accounts = getEnabledLarkAccounts(cfg);
   if (accounts.length <= 1) return false;
   const appIds = new Set(accounts.map((a) => (a.configured ? a.appId : undefined)).filter((id): id is string => !!id));
@@ -94,14 +94,14 @@ const RECOMMENDED_DM_SCOPE = 'per-account-channel-peer';
  * Without this setting, different bots talking to the same user share
  * the same session — even if agent bindings are configured.
  */
-export function needsDmScopeFix(cfg: ClawdbotConfig): boolean {
+export function needsDmScopeFix(cfg: OpenClawConfig): boolean {
   if (!isMultiTenant(cfg)) return false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (cfg as any).session?.dmScope !== RECOMMENDED_DM_SCOPE;
 }
 
 /** Return the fix command string, or null if not needed. */
-export function getDmScopeFixCommand(cfg: ClawdbotConfig): string | null {
+export function getDmScopeFixCommand(cfg: OpenClawConfig): string | null {
   if (!needsDmScopeFix(cfg)) return null;
   return `openclaw config set session.dmScope "${RECOMMENDED_DM_SCOPE}"`;
 }
@@ -123,7 +123,7 @@ function formatDmScopeWarning(): string {
  * Generate a combined warning block for doctor / start.
  * Returns null when everything is fine.
  */
-export function formatIsolationWarning(status: IsolationStatus, cfg?: ClawdbotConfig): string | null {
+export function formatIsolationWarning(status: IsolationStatus, cfg?: OpenClawConfig): string | null {
   const sections: string[] = [];
 
   // Agent sharing warning
@@ -154,7 +154,7 @@ export function formatIsolationWarning(status: IsolationStatus, cfg?: ClawdbotCo
 /**
  * Generate `openclaw config set` commands for per-account isolation.
  */
-export function generateIsolationFixCommands(cfg: ClawdbotConfig): { commands: string[]; preview: string } | null {
+export function generateIsolationFixCommands(cfg: OpenClawConfig): { commands: string[]; preview: string } | null {
   const status = checkMultiAccountIsolation(cfg);
   if (status.mode !== 'shared-implicit') return null;
 
@@ -186,7 +186,7 @@ export function generateIsolationFixCommands(cfg: ClawdbotConfig): { commands: s
 /**
  * Generate commands for explicitly sharing the same agent across accounts.
  */
-export function generateSharedAgentCommands(cfg: ClawdbotConfig): { commands: string[]; preview: string } | null {
+export function generateSharedAgentCommands(cfg: OpenClawConfig): { commands: string[]; preview: string } | null {
   const status = checkMultiAccountIsolation(cfg);
   if (status.mode !== 'shared-implicit') return null;
 
@@ -213,7 +213,7 @@ export function generateSharedAgentCommands(cfg: ClawdbotConfig): { commands: st
 // collectWarnings adapter (for SDK security.collectWarnings)
 // ---------------------------------------------------------------------------
 
-export function collectIsolationWarnings(_cfg: ClawdbotConfig): string[] {
+export function collectIsolationWarnings(_cfg: OpenClawConfig): string[] {
   // TODO: 产品明确多账号隔离方案后再透出告警
   return [];
 }
@@ -223,7 +223,7 @@ export function collectIsolationWarnings(_cfg: ClawdbotConfig): string[] {
 // ---------------------------------------------------------------------------
 
 export function emitSecurityWarnings(
-  _cfg: ClawdbotConfig,
+  _cfg: OpenClawConfig,
   _logger: { warn?: (msg: string) => void; info?: (msg: string) => void },
 ): void {
   // TODO: 产品明确多账号隔离方案后再透出告警

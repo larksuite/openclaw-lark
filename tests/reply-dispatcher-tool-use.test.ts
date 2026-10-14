@@ -14,7 +14,7 @@ const controllerSpies = {
   shouldSkipForUnavailable: vi.fn().mockReturnValue(false),
 };
 
-vi.mock('openclaw/plugin-sdk/channel-runtime', () => ({
+vi.mock('openclaw/plugin-sdk/channel-outbound', () => ({
   createReplyPrefixContext: () => ({
     responsePrefix: '',
     responsePrefixContextProvider: () => null,
@@ -92,6 +92,7 @@ vi.mock('../src/card/card-error', () => ({
 vi.mock('../src/card/reply-mode', () => ({
   resolveReplyMode: () => replyModeState.mode,
   expandAutoMode: ({ mode }: { mode: string }) => mode,
+  resolveStreamingFlags: () => ({ streaming: false, blockStreaming: false }),
   shouldUseCard: () => false,
 }));
 vi.mock('../src/card/streaming-card-controller', () => ({

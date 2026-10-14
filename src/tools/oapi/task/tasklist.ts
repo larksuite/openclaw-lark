@@ -17,7 +17,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
@@ -69,7 +69,7 @@ const FeishuTaskTasklistSchema = Type.Union([
     Type.Object({
       action: Type.Literal('list'),
       auth_type: FeishuTaskTasklistAuthType,
-      page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
+      page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100', minimum: 1, maximum: 100 })),
       page_token: Type.Optional(Type.String({ description: '分页标记' })),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),
     }),
@@ -79,7 +79,7 @@ const FeishuTaskTasklistSchema = Type.Union([
       action: Type.Literal('tasks'),
       auth_type: FeishuTaskTasklistAuthType,
       tasklist_guid: Type.String({ description: '清单 GUID' }),
-      page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100' })),
+      page_size: Type.Optional(Type.Number({ description: '每页数量，默认 50，最大 100', minimum: 1, maximum: 100 })),
       page_token: Type.Optional(Type.String({ description: '分页标记' })),
       completed: Type.Optional(Type.Boolean({ description: '是否只返回已完成的任务（默认返回所有）' })),
       user_id_type: Type.Optional(StringEnum(['open_id', 'union_id', 'user_id'])),

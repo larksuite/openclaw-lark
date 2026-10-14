@@ -1,6 +1,6 @@
 {
-  "name": "@larksuite/openclaw-lark",
-  "version": "2026.7.9",
+  "name": "@hotwvpyym/openclaw-lark",
+  "version": "2026.10.6",
   "description": "OpenClaw Lark/Feishu channel plugin",
   "type": "module",
   "exports": {
@@ -23,7 +23,8 @@
     "secret-contract-api.js",
     "openclaw.plugin.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "README.zh.md"
   ],
   "packageManager": "pnpm@10.32.1",
   "engines": {
@@ -31,7 +32,6 @@
   },
   "scripts": {
     "build": "tsdown",
-    "release": "node scripts/release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/ index.ts secret-contract-api.ts",
@@ -48,7 +48,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.5.4"
+    "openclaw": ">=2026.8.1"
   },
   "peerDependenciesMeta": {
     "openclaw": {
@@ -66,7 +66,7 @@
     "fs-extra": "^11.3.2",
     "globals": "^16.2.0",
     "minimist": "^1.2.8",
-    "openclaw": "^2026.4.9",
+    "openclaw": "2026.10.3",
     "prettier": "^3.8.1",
     "tsdown": "^0.21.4",
     "typescript": "^5.9.3",
@@ -91,9 +91,17 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@larksuite/openclaw-lark",
+      "npmSpec": "@hotwvpyym/openclaw-lark",
       "localPath": "extensions/feishu",
-      "defaultChoice": "npm"
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.8.1"
+    },
+    "compat": {
+      "pluginApi": ">=2026.8.1"
+    },
+    "build": {
+      "openclawVersion": "2026.10.6"
     }
-  }
+  },
+  "license": "MIT"
 }

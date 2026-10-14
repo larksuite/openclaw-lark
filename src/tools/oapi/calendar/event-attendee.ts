@@ -12,7 +12,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { StringEnum, assertLarkOk, createToolContext, handleInvokeErrorWithAutoAuth, json, registerTool } from '../helpers';
 import type { PaginatedData } from '../sdk-types';
@@ -62,11 +62,7 @@ const FeishuCalendarEventAttendeeSchema = Type.Union([
     event_id: Type.String({
       description: '日程 ID',
     }),
-    page_size: Type.Optional(
-      Type.Number({
-        description: '每页数量（默认 50，最大 500）',
-      }),
-    ),
+    page_size: Type.Optional(Type.Number({ description: '每页数量（默认 50，最大 500）', minimum: 10, maximum: 100 })),
     page_token: Type.Optional(
       Type.String({
         description: '分页标记',
