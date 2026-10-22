@@ -18,6 +18,8 @@
 export const LARK_ERROR = {
   /** 应用 scope 不足（租户维度） */
   APP_SCOPE_MISSING: 99991672,
+  /** 飞书访问控制策略拒绝（见 tenant_access_token/internal 返回的业务码） */
+  ACCESS_CONTROL_DENIED: 21001,
   /** 用户 token scope 不足 */
   USER_SCOPE_INSUFFICIENT: 99991679,
   /** access_token 无效 */

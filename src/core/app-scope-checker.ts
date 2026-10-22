@@ -13,10 +13,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
+import { extractLarkApiCode, formatLarkError } from './api-error';
+import { AppScopeCheckFailedError, LARK_ERROR } from './auth-errors';
 import { larkLogger } from './lark-logger';
 
 const log = larkLogger('core/app-scope-checker');
-import { AppScopeCheckFailedError } from './auth-errors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,7 +99,13 @@ export async function getAppGrantedScopes(
     });
 
     if (res.code !== 0) {
-      // 任何 API 错误都认为是应用缺少 application:application:self_manage 权限
+      if (Number(res.code) === LARK_ERROR.ACCESS_CONTROL_DENIED) {
+        throw Object.assign(new Error(res.msg ?? `Feishu API error (code: ${res.code})`), {
+          code: LARK_ERROR.ACCESS_CONTROL_DENIED,
+          msg: res.msg,
+        });
+      }
+      // 其他 API 错误沿用原有 scope 权限提示。
       throw new AppScopeCheckFailedError(appId);
     }
 
@@ -134,6 +141,18 @@ export async function getAppGrantedScopes(
     // 如果是 AppScopeCheckFailedError，重新抛出（不吞掉）
     if (err instanceof AppScopeCheckFailedError) {
       throw err;
+    }
+
+    // 21001 is an access-control denial, not evidence that the app is missing
+    // application:application:self_manage. Cache the empty result for the same
+    // TTL as a successful lookup to avoid repeating this failed request on every
+    // invocation; invalidateAppScopeCache() still permits an immediate recheck.
+    if (extractLarkApiCode(err) === LARK_ERROR.ACCESS_CONTROL_DENIED) {
+      cache.set(appId, { rawScopes: [], fetchedAt: Date.now() });
+      log.warn(
+        `app scope lookup for ${appId} denied by Lark access-control policy; caching empty result for ${CACHE_TTL_MS}ms: ${formatLarkError(err)}`,
+      );
+      return [];
     }
 
     // 检查是否是权限相关的 HTTP 错误（400/403）
