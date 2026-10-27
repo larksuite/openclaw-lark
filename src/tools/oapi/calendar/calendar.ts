@@ -21,13 +21,15 @@ import type { CalendarGetData, CalendarListData, CalendarPrimaryData } from '../
 // Schema
 // ---------------------------------------------------------------------------
 
-const FeishuCalendarCalendarSchema = Type.Union([
+export const FeishuCalendarCalendarSchema = Type.Union([
   // LIST
   Type.Object({
     action: Type.Literal('list'),
     page_size: Type.Optional(
-      Type.Number({
-        description: 'Number of calendars to return per page (default: 50, max: 1000)',
+      Type.Integer({
+        minimum: 50,
+        maximum: 1000,
+        description: 'Number of calendars to return per page (default: 50, min: 50, max: 1000)',
       }),
     ),
     page_token: Type.Optional(
