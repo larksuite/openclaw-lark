@@ -20,6 +20,7 @@ import { larkLogger } from '../core/lark-logger';
 import { LarkClient } from '../core/lark-client';
 import { registerShutdownHook } from '../core/shutdown-hooks';
 import { sendCardFeishu, updateCardFeishu } from '../messaging/outbound/send';
+import { readFooterSessionMetricsFromSdk } from './footer-session-metrics';
 import {
   STREAMING_ELEMENT_ID,
   buildCardContent,
@@ -151,8 +152,6 @@ export class StreamingCardController {
           };
         };
       } | null;
-      if (!runtime) return undefined;
-
       const cfgWithSession = this.deps.cfg as { sessions?: { store?: string }; session?: { store?: string } };
       const sessionStorePath = cfgWithSession.sessions?.store ?? cfgWithSession.session?.store;
       const key = this.deps.sessionKey.trim().toLowerCase();
@@ -170,7 +169,33 @@ export class StreamingCardController {
       const defaultAgentId = resolveDefaultAgentId(this.deps.cfg as Record<string, unknown>);
       const fallbackKey = key.replace(/^(agent):[^:]+:/, `$1:${defaultAgentId}:`);
       const candidateKeys = fallbackKey !== key ? [key, fallbackKey] : [key];
+      const sdkCandidates =
+        fallbackKey !== key
+          ? [
+              { sessionKey: key, agentId: this.deps.agentId },
+              { sessionKey: fallbackKey, agentId: defaultAgentId },
+            ]
+          : [{ sessionKey: key, agentId: this.deps.agentId }];
+      const sdkLookup = readFooterSessionMetricsFromSdk({ store: sessionStorePath, candidates: sdkCandidates });
+      if (sdkLookup.supported) {
+        if (!sdkLookup.metrics) {
+          log.debug('footer metrics lookup: session entry missing', {
+            sessionKey: this.deps.sessionKey,
+            candidateKeys,
+            source: 'plugin-sdk.session-store-runtime',
+          });
+          return undefined;
+        }
+        log.debug('footer metrics lookup: session entry found', {
+          sessionKey: this.deps.sessionKey,
+          matchedKey: sdkLookup.matchedSessionKey,
+          storePath: sdkLookup.storePath,
+          source: 'plugin-sdk.session-store-runtime',
+        });
+        return sdkLookup.metrics;
+      }
 
+      if (!runtime) return undefined;
       const sessionApi = runtime.agent?.session;
       if (sessionApi?.resolveStorePath && sessionApi?.loadSessionStore) {
         const storePath = sessionApi.resolveStorePath(sessionStorePath, { agentId: this.deps.agentId });
