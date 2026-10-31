@@ -42,7 +42,7 @@ export async function downloadResources(params: {
       const resourceType = res.type === 'image' ? 'image' : 'file';
       const result = await downloadMessageResourceFeishu({
         cfg,
-        messageId,
+        messageId: res.messageId ?? messageId,
         fileKey: res.fileKey,
         type: resourceType,
         accountId,

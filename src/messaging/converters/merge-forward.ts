@@ -19,7 +19,8 @@
  */
 
 import { larkLogger } from '../../core/lark-logger';
-import type { ApiMessageItem, ContentConverterFn, ConvertContext } from './types';
+import type { ResourceDescriptor } from '../types';
+import type { ApiMessageItem, ContentConverterFn, ConvertContext, ConvertResult } from './types';
 import { buildConvertContextFromItem } from './content-converter-helpers';
 
 const log = larkLogger('converters/merge-forward');
@@ -42,7 +43,7 @@ export const convertMergeForward: ContentConverterFn = async (_raw, ctx) => {
     return { content: '<forwarded_messages/>', resources: [] };
   }
 
-  const content = await expand(
+  return expand(
     accountId,
     messageId,
     resolveUserName,
@@ -50,7 +51,6 @@ export const convertMergeForward: ContentConverterFn = async (_raw, ctx) => {
     fetchSubMessages,
     convertMessageContent,
   );
-  return { content, resources: [] };
 };
 
 // ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ async function expand(
   batchResolveNames?: (openIds: string[]) => Promise<void>,
   fetchSubMessages?: (messageId: string) => Promise<ApiMessageItem[]>,
   convertContent?: ConvertContext['convertMessageContent'],
-): Promise<string> {
+): Promise<ConvertResult> {
   // --- Phase 1: Fetch (single API call via callback) ---
   let items: ApiMessageItem[];
   try {
@@ -74,11 +74,11 @@ async function expand(
       messageId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return '<forwarded_messages/>';
+    return { content: '<forwarded_messages/>', resources: [] };
   }
 
   if (items.length === 0) {
-    return '<forwarded_messages/>';
+    return { content: '<forwarded_messages/>', resources: [] };
   }
 
   // --- Phase 2: Build children map ---
@@ -184,13 +184,14 @@ async function formatSubTree(
   accountId: string | undefined,
   resolveUserName?: (openId: string) => string | undefined,
   convertContent?: ConvertContext['convertMessageContent'],
-): Promise<string> {
+): Promise<ConvertResult> {
   const children = childrenMap.get(parentId);
   if (!children || children.length === 0) {
-    return '<forwarded_messages/>';
+    return { content: '<forwarded_messages/>', resources: [] };
   }
 
   const parts: string[] = [];
+  const resources: ResourceDescriptor[] = [];
 
   for (const item of children) {
     try {
@@ -206,7 +207,9 @@ async function formatSubTree(
         // Recurse into nested merge_forward via the tree — no API call
         const nestedId: string | undefined = item.message_id;
         if (nestedId) {
-          content = await formatSubTree(nestedId, childrenMap, accountId, resolveUserName, convertContent);
+          const nested = await formatSubTree(nestedId, childrenMap, accountId, resolveUserName, convertContent);
+          content = nested.content;
+          resources.push(...nested.resources);
         } else {
           content = '<forwarded_messages/>';
         }
@@ -224,7 +227,9 @@ async function formatSubTree(
         if (!convertContent) {
           content = rawContent;
         } else {
-          content = (await convertContent(rawContent, msgType, subCtx)).content;
+          const converted = await convertContent(rawContent, msgType, subCtx);
+          content = converted.content;
+          resources.push(...converted.resources.map((resource) => ({ ...resource, messageId: subCtx.messageId })));
         }
       }
 
@@ -241,10 +246,10 @@ async function formatSubTree(
   }
 
   if (parts.length === 0) {
-    return '<forwarded_messages/>';
+    return { content: '<forwarded_messages/>', resources: [] };
   }
 
-  return `<forwarded_messages>\n${parts.join('\n')}\n</forwarded_messages>`;
+  return { content: `<forwarded_messages>\n${parts.join('\n')}\n</forwarded_messages>`, resources };
 }
 
 // ---------------------------------------------------------------------------
