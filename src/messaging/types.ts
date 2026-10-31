@@ -209,6 +209,8 @@ export interface ResourceDescriptor {
   type: 'image' | 'file' | 'audio' | 'video' | 'sticker';
   /** image_key or file_key from the raw message content. */
   fileKey: string;
+  /** Owning message ID for resources inside merged forwards. */
+  messageId?: string;
   /** Original file name (file/video messages). */
   fileName?: string;
   /** Duration in milliseconds (audio/video messages). */
