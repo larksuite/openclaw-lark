@@ -26,6 +26,7 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 import { probeFeishu } from '../channel/probe';
 import { getEnabledLarkAccounts, getLarkAccount, getLarkAccountIds } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
+import { formatSecretForDisplay } from '../core/secret-display';
 
 /**
  * Resolve the global config for cross-account operations.
@@ -90,12 +91,6 @@ const ERROR_LEVEL_RE = /\[error\]|\[warn\]/i;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function maskSecret(secret?: string): string {
-  if (!secret) return '(未设置)';
-  if (secret.length <= 4) return '****';
-  return secret.slice(0, 4) + '****';
-}
 
 async function extractRecentErrors(logPath: string): Promise<string[]> {
   try {
@@ -184,7 +179,7 @@ async function diagnoseAccount(account: LarkAccount): Promise<AccountDiagResult>
     name: '凭证完整性',
     status: account.configured ? 'pass' : 'fail',
     message: account.configured
-      ? `appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret)}`
+      ? `appId: ${account.appId}, appSecret: ${formatSecretForDisplay(account.appSecret, '(未设置)')}`
       : '缺少 appId 或 appSecret',
   });
 
@@ -200,6 +195,15 @@ async function diagnoseAccount(account: LarkAccount): Promise<AccountDiagResult>
       name: 'API 连通性',
       status: 'skip',
       message: '凭证未配置，跳过',
+    });
+    return result;
+  }
+
+  if (typeof account.appSecret !== 'string') {
+    checks.push({
+      name: 'API 连通性',
+      status: 'skip',
+      message: 'appSecret 是 SecretRef，只有网关能解析，命令行无法检测；请在飞书私聊机器人发送 /feishu_diagnose',
     });
     return result;
   }

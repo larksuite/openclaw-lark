@@ -34,6 +34,7 @@ import { REQUIRED_APP_SCOPES, TOOL_SCOPES, filterSensitiveScopes } from '../core
 import { probeFeishu } from '../channel/probe';
 import { AppScopeCheckFailedError } from '../core/tool-client';
 import { getPluginVersion } from '../core/version';
+import { formatSecretForDisplay } from '../core/secret-display';
 import { openPlatformDomain } from '../core/domains';
 // TODO: 暂时注释掉，等产品策略明确后再放开
 // import { checkMultiAccountIsolation, formatIsolationWarning } from "../core/security-check";
@@ -290,15 +291,6 @@ function getAllToolScopes(): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * 掩码敏感信息（appSecret）
- */
-function maskSecret(secret: string | undefined, locale: DoctorLocale): string {
-  if (!secret) return T[locale].notSet;
-  if (secret.length <= 4) return '****';
-  return secret.slice(0, 4) + '****';
-}
-
-/**
  * 检查基础信息和账号状态
  */
 async function checkBasicInfo(
@@ -320,7 +312,9 @@ async function checkBasicInfo(
     lines.push(t.legacyDisabled);
   }
 
-  lines.push(`${t.credentials}: appId: ${account.appId}, appSecret: ${maskSecret(account.appSecret, locale)}`);
+  lines.push(
+    `${t.credentials}: appId: ${account.appId}, appSecret: ${formatSecretForDisplay(account.appSecret, t.notSet)}`,
+  );
   lines.push(t.accountEnabled);
 
   // API 连通性
