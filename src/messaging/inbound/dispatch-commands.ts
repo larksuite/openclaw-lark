@@ -8,6 +8,7 @@
  * and permission-error notifications via the streaming card flow.
  */
 
+import { settleReplyDispatcher } from 'openclaw/plugin-sdk/reply-runtime';
 import type { LarkClient } from '../../core/lark-client';
 import { larkLogger } from '../../core/lark-logger';
 import { ticketElapsed } from '../../core/lark-ticket';
@@ -81,14 +82,16 @@ export async function dispatchPermissionNotification(
 
   dc.log(`feishu[${dc.account.accountId}]: dispatching permission error notification to agent`);
 
-  await dc.core.channel.reply.dispatchReplyFromConfig({
-    ctx: permCtx,
-    cfg: dc.accountScopedCfg,
-    dispatcher: permDispatcher,
-    replyOptions: permReplyOptions,
-  });
-
-  await permDispatcher.waitForIdle();
+  try {
+    await dc.core.channel.reply.dispatchReplyFromConfig({
+      ctx: permCtx,
+      cfg: dc.accountScopedCfg,
+      dispatcher: permDispatcher,
+      replyOptions: permReplyOptions,
+    });
+  } finally {
+    await settleReplyDispatcher({ dispatcher: permDispatcher });
+  }
   markPermComplete();
   markPermIdle();
 }

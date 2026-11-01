@@ -12,17 +12,17 @@
  *   5. Policy gate           → gate.ts
  *   6. User name prefetch    → enrich.ts (batch cache warm-up)
  *   7. Content resolution    → enrich.ts (media / quote, parallel)
- *   8. Command authorization → plugin-sdk/command-auth
+ *   8. Command authorization → command-auth.ts
  *   9. Agent dispatch        → dispatch.ts
  */
 
-import type { ClawdbotConfig, RuntimeEnv } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import {
   DEFAULT_GROUP_HISTORY_LIMIT,
   recordPendingHistoryEntryIfEnabled,
 } from 'openclaw/plugin-sdk/reply-history';
-import { resolveSenderCommandAuthorization } from 'openclaw/plugin-sdk/command-auth';
 import { isNormalizedSenderAllowed } from 'openclaw/plugin-sdk/allow-from';
 import type { FeishuMessageEvent } from '../types';
 import { getLarkAccount } from '../../core/accounts';
@@ -31,6 +31,7 @@ import { larkLogger } from '../../core/lark-logger';
 import { ticketElapsed } from '../../core/lark-ticket';
 import { threadScopedKey } from '../../channel/chat-queue';
 import { sendMessageFeishu } from '../outbound/send';
+import { resolveSenderCommandAuthorization } from './command-auth';
 import { parseMessageEvent } from './parse';
 import {
   prefetchUserNames,
@@ -53,7 +54,7 @@ const logger = larkLogger('inbound/handler');
 // ---------------------------------------------------------------------------
 
 export async function handleFeishuMessage(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   event: FeishuMessageEvent;
   botOpenId?: string;
   runtime?: RuntimeEnv;
@@ -92,7 +93,7 @@ export async function handleFeishuMessage(params: {
   const account = getLarkAccount(cfg, accountId);
   const accountFeishuCfg = account.config;
 
-  // ★ 多账号配置隔离：构造 account 级别的 ClawdbotConfig
+  // ★ 多账号配置隔离：构造 account 级别的 OpenClawConfig
   //
   //   在多账号场景下，每个 account 可以独立配置 groupPolicy / requireMention
   //   等策略。但 SDK 的 resolveGroupPolicy / resolveRequireMention 等函数从
@@ -102,7 +103,7 @@ export async function handleFeishuMessage(params: {
   //   这里将 cfg.channels.feishu 替换为经过 getLarkAccount() 合并后的
   //   accountFeishuCfg（= base config + account override），确保下游所有 SDK 调用
   //   都能正确读取当前 account 的配置。
-  const accountScopedCfg: ClawdbotConfig = {
+  const accountScopedCfg: OpenClawConfig = {
     ...cfg,
     channels: { ...cfg.channels, feishu: accountFeishuCfg },
   };

@@ -9,7 +9,7 @@
  * start the inbound event gateway.
  */
 
-import type { ChannelPlugin, ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { ChannelPlugin, OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
 import { DEFAULT_ACCOUNT_ID } from 'openclaw/plugin-sdk/account-id';
 import { PAIRING_APPROVED_MESSAGE } from 'openclaw/plugin-sdk/channel-status';
@@ -43,11 +43,11 @@ const PROBE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /** Convert nullable SDK params to optional params for directory functions. */
 function adaptDirectoryParams(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   query?: string | null;
   limit?: number | null;
   accountId?: string | null;
-}): { cfg: ClawdbotConfig; query?: string; limit?: number; accountId?: string } {
+}): { cfg: OpenClawConfig; query?: string; limit?: number; accountId?: string } {
   return {
     cfg: params.cfg,
     query: params.query ?? undefined,

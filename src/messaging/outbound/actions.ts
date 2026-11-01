@@ -15,10 +15,10 @@
 
 import type {
   ChannelMessageActionAdapter,
-  ChannelMessageActionName,
-  OpenClawConfig,
-} from 'openclaw/plugin-sdk';
-import type { ChannelMessageToolSchemaContribution, ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
+  ChannelMessageToolSchemaContribution,
+  ChannelThreadingToolContext,
+} from 'openclaw/plugin-sdk/channel-contract';
+import type { ChannelMessageActionName, OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';
 import { Type } from '@sinclair/typebox';
@@ -181,7 +181,7 @@ export const feishuMessageActions: ChannelMessageActionAdapter = {
     }
     return {
       actions: Array.from(SUPPORTED_ACTIONS),
-      capabilities: ['cards'],
+      capabilities: [],
       schema: FEISHU_MESSAGE_TOOL_SCHEMA,
     };
   },

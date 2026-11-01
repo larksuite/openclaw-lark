@@ -14,9 +14,11 @@
  * - dispatch-commands.ts — system command & permission notification
  */
 
-import type { ClawdbotConfig, RuntimeEnv  } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
+import type { RuntimeEnv } from 'openclaw/plugin-sdk/runtime';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import { clearHistoryEntriesIfEnabled } from 'openclaw/plugin-sdk/reply-history';
+import { settleReplyDispatcher } from 'openclaw/plugin-sdk/reply-runtime';
 import type { MessageContext } from '../types';
 import type { FeishuGroupConfig, LarkAccount  } from '../../core/types';
 import { larkLogger } from '../../core/lark-logger';
@@ -297,29 +299,26 @@ async function dispatchNormalMessage(
     : <T>(fn: () => Promise<T>): Promise<T> => fn();
 
   try {
-    const { queuedFinal, counts } = await withBotPeer(() =>
-      dc.core.channel.reply.dispatchReplyFromConfig({
-        ctx: ctxPayload,
-        cfg: dc.accountScopedCfg,
-        dispatcher,
-        replyOptions: {
-          ...replyOptions,
-          abortSignal: abortController.signal,
-          ...(skillFilter ? { skillFilter } : {}),
-        },
-      }),
-    );
-
-    // Wait for all enqueued deliver() calls in the SDK's sendChain to
-    // complete before marking the dispatch as done.  Without this,
-    // dispatchReplyFromConfig() may return while the final deliver() is
-    // still pending in the Promise chain, causing markFullyComplete() to
-    // block it and leaving completedText incomplete — which in turn makes
-    // the streaming card's final update show truncated content.
-    //
-    // Run under withBotPeer too so any deliveries flushed during waitForIdle
-    // still see the peer context.
-    await withBotPeer(() => dispatcher.waitForIdle());
+    // settleReplyDispatcher marks the dispatcher complete and waits for queued
+    // deliveries. Until it runs, the host counts this reply as pending and a
+    // gateway restart or update drains forever. It also has to finish before
+    // markFullyComplete(), or the streaming card's final update is truncated.
+    const { queuedFinal, counts } = await withBotPeer(async () => {
+      try {
+        return await dc.core.channel.reply.dispatchReplyFromConfig({
+          ctx: ctxPayload,
+          cfg: dc.accountScopedCfg,
+          dispatcher,
+          replyOptions: {
+            ...replyOptions,
+            abortSignal: abortController.signal,
+            ...(skillFilter ? { skillFilter } : {}),
+          },
+        });
+      } finally {
+        await settleReplyDispatcher({ dispatcher });
+      }
+    });
 
     markFullyComplete();
     markDispatchIdle();
@@ -352,8 +351,8 @@ export async function dispatchToAgent(params: {
   extraInboundFields?: Record<string, unknown>;
   quotedContent?: string;
   account: LarkAccount;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: OpenClawConfig;
   runtime?: RuntimeEnv;
   chatHistories?: Map<string, HistoryEntry[]>;
   historyLimit: number;

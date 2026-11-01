@@ -32,6 +32,11 @@ const ReplyModeSchema = z
   .optional();
 const ChunkModeEnum = z.enum(['newline', 'paragraph', 'none']);
 
+// OpenClaw 2026.10 rewrites a boolean `channels.feishu.streaming` to `{ mode }`
+// and refuses to start until it has, so accept both shapes.
+const StreamingModeEnum = z.enum(['off', 'partial', 'block', 'progress']);
+const StreamingSchema = z.union([z.boolean(), z.looseObject({ mode: StreamingModeEnum.optional() })]).optional();
+
 const DomainSchema = z.union([z.literal('feishu'), z.literal('lark'), z.string().regex(/^https:\/\//)]).optional();
 
 const AllowFromSchema = z
@@ -184,7 +189,7 @@ export const FeishuAccountConfigSchema = z.object({
   mediaMaxMb: z.number().optional(),
   heartbeat: HeartbeatSchema,
   replyMode: ReplyModeSchema,
-  streaming: z.boolean().optional(),
+  streaming: StreamingSchema,
   blockStreaming: z.boolean().optional(),
   toolUseDisplay: z
     .object({

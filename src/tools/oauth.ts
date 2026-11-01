@@ -16,7 +16,7 @@
  *     them).
  */
 
-import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import type { ConfiguredLarkAccount } from '../core/types';
 import { getLarkAccount } from '../core/accounts';
@@ -247,7 +247,7 @@ export interface ExecuteAuthorizeParams {
   showBatchAuthHint?: boolean; // true 时在授权卡片底部展示"授予所有用户权限"提示（仅 auto-auth 流程）
   forceAuth?: boolean; // true 时跳过本地 token 缓存检查，强制发起新 Device Flow（AppScopeMissing 场景专用）
   onAuthComplete?: () => void | Promise<void>; // 授权完成回调（用于批量授权链式触发）
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   ticket: LarkTicket | undefined;
 }
 

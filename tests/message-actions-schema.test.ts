@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { feishuMessageActions } from '../src/messaging/outbound/actions';
 
-function configuredFeishuConfig(): ClawdbotConfig {
+function configuredFeishuConfig(): OpenClawConfig {
   return {
     channels: {
       feishu: {
@@ -11,7 +11,7 @@ function configuredFeishuConfig(): ClawdbotConfig {
         appSecret: 'secret',
       },
     },
-  } as unknown as ClawdbotConfig;
+  } as unknown as OpenClawConfig;
 }
 
 describe('Feishu message action discovery', () => {

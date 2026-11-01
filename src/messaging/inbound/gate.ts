@@ -23,7 +23,7 @@
  *       `"disabled"` → block all senders
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { HistoryEntry } from 'openclaw/plugin-sdk/reply-history';
 import type { MessageContext } from '../types';
 import type { FeishuConfig, FeishuGroupConfig, LarkAccount  } from '../../core/types';
@@ -131,8 +131,8 @@ export async function checkMessageGate(params: {
   ctx: MessageContext;
   accountFeishuCfg?: FeishuConfig;
   account: LarkAccount;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg?: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg?: OpenClawConfig;
   log: (...args: unknown[]) => void;
   /**
    * When true, treat the mention requirement as already satisfied (e.g. a card
@@ -189,7 +189,7 @@ function resolveFeishuGroupAccess(params: {
   ctx: MessageContext;
   accountFeishuCfg?: FeishuConfig;
   account: LarkAccount;
-  accountScopedCfg?: ClawdbotConfig;
+  accountScopedCfg?: OpenClawConfig;
   log: (...args: unknown[]) => void;
 }): FeishuGroupAccess {
   const { ctx, accountFeishuCfg, account, accountScopedCfg, log } = params;
@@ -264,7 +264,7 @@ function checkBotSenderGate(params: {
   ctx: MessageContext;
   accountFeishuCfg?: FeishuConfig;
   account: LarkAccount;
-  accountScopedCfg?: ClawdbotConfig;
+  accountScopedCfg?: OpenClawConfig;
   log: (...args: unknown[]) => void;
 }): GateResult {
   const { ctx, accountFeishuCfg, account, log } = params;
@@ -336,7 +336,7 @@ function checkGroupGate(params: {
   ctx: MessageContext;
   accountFeishuCfg?: FeishuConfig;
   account: LarkAccount;
-  accountScopedCfg?: ClawdbotConfig;
+  accountScopedCfg?: OpenClawConfig;
   log: (...args: unknown[]) => void;
   mentionSatisfied?: boolean;
 }): GateResult {
@@ -431,7 +431,7 @@ async function checkDmGate(params: {
   ctx: MessageContext;
   accountFeishuCfg?: FeishuConfig;
   account: LarkAccount;
-  accountScopedCfg?: ClawdbotConfig;
+  accountScopedCfg?: OpenClawConfig;
   log: (...args: unknown[]) => void;
 }): Promise<GateResult> {
   const { ctx, accountFeishuCfg, account, accountScopedCfg, log } = params;

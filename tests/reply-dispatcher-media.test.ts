@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('openclaw/plugin-sdk/channel-runtime', () => ({
+vi.mock('openclaw/plugin-sdk/channel-outbound', () => ({
   createReplyPrefixContext: () => ({
     responsePrefix: '',
     responsePrefixContextProvider: () => null,
@@ -76,6 +76,7 @@ vi.mock('../src/card/card-error', () => ({
   isCardTableLimitError: () => false,
 }));
 vi.mock('../src/card/reply-mode', () => ({
+  isStreamingEnabled: () => false,
   resolveReplyMode: () => 'static',
   expandAutoMode: ({ mode }: { mode: string }) => mode,
   shouldUseCard: () => false,

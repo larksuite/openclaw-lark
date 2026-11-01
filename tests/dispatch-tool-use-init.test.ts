@@ -112,6 +112,7 @@ vi.mock('../src/core/lark-ticket', () => ({
   ticketElapsed: () => 1,
 }));
 
+import { createReplyDispatcherWithTyping } from 'openclaw/plugin-sdk/reply-runtime';
 import { dispatchToAgent } from '../src/messaging/inbound/dispatch';
 
 function createDispatchContext() {
@@ -173,8 +174,32 @@ function createDispatchContext() {
 
 function createDispatcher() {
   return {
+    markComplete: vi.fn(),
     waitForIdle: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+function pendingReplyDispatches(): number {
+  const registry = (globalThis as Record<symbol, Set<{ pending: () => number }> | undefined>)[
+    Symbol.for('openclaw.activeReplyDispatchers')
+  ];
+  let total = 0;
+  for (const entry of registry ?? []) total += entry.pending();
+  return total;
+}
+
+function useHostDispatcher() {
+  const { dispatcher, replyOptions, markDispatchIdle } = createReplyDispatcherWithTyping({
+    deliver: async () => {},
+  });
+  createFeishuReplyDispatcherMock.mockReturnValueOnce({
+    dispatcher,
+    replyOptions,
+    markDispatchIdle,
+    markFullyComplete: vi.fn(),
+    abortCard: vi.fn(),
+  });
+  return dispatcher;
 }
 
 beforeEach(() => {
@@ -259,5 +284,38 @@ describe('dispatchToAgent tool_use trace initialization', () => {
       },
     });
   });
+});
 
+describe('dispatchToAgent reply dispatcher lifecycle', () => {
+  const dispatchOnce = () => {
+    const dc = createDispatchContext();
+    return dispatchToAgent({
+      ctx: dc.ctx as never,
+      mediaPayload: {},
+      account: dc.account as never,
+      accountScopedCfg: {} as never,
+      historyLimit: 0,
+    });
+  };
+
+  it('leaves no pending reply for the gateway drain after a delivered reply', async () => {
+    const dispatcher = useHostDispatcher();
+    dispatchReplyFromConfigMock.mockImplementationOnce(async () => {
+      dispatcher.sendFinalReply({ text: 'done' });
+      return { queuedFinal: true, counts: { final: 1 } };
+    });
+
+    await dispatchOnce();
+
+    expect(pendingReplyDispatches()).toBe(0);
+  });
+
+  it('leaves no pending reply for the gateway drain when the agent run throws', async () => {
+    useHostDispatcher();
+    dispatchReplyFromConfigMock.mockRejectedValueOnce(new Error('model unavailable'));
+
+    await expect(dispatchOnce()).rejects.toThrow('model unavailable');
+
+    expect(pendingReplyDispatches()).toBe(0);
+  });
 });

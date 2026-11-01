@@ -8,7 +8,7 @@
  * to these for its `sendText` and `sendMedia` implementations.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuSendResult } from '../types';
 import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
@@ -56,7 +56,7 @@ interface PreparedText {
  * returned for the caller to record after the send succeeds.
  */
 async function prepareTextForLark(
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
   text: string,
   to: string,
   accountId?: string,
@@ -222,7 +222,7 @@ function detectCardJson(text: string): Record<string, unknown> | undefined {
  */
 export interface SendTextLarkParams {
   /** Plugin configuration. */
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /** Target identifier (chat_id, open_id, or user_id). */
   to: string;
   /** Message text content (supports Feishu markdown subset). */
@@ -291,7 +291,7 @@ export async function sendTextLark(params: SendTextLarkParams): Promise<FeishuSe
  */
 export interface SendCardLarkParams {
   /** Plugin configuration. */
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /** Target identifier (chat_id, open_id, or user_id). */
   to: string;
   /**
@@ -383,7 +383,7 @@ export async function sendCardLark(params: SendCardLarkParams): Promise<FeishuSe
  */
 export interface SendMediaLarkParams {
   /** Plugin configuration. */
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /** Target identifier (chat_id, open_id, or user_id). */
   to: string;
   /** Media URL to upload and send. */
@@ -471,7 +471,7 @@ export async function sendMediaLark(params: SendMediaLarkParams): Promise<Feishu
  */
 export interface SendCommentReplyLarkParams {
   /** Plugin configuration. */
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /**
    * Target in comment format: `comment:<fileType>:<fileToken>:<commentId>`.
    * Parsed via `parseFeishuCommentTarget`.
