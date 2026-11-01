@@ -76,6 +76,7 @@ vi.mock('../src/card/card-error', () => ({
   isCardTableLimitError: () => false,
 }));
 vi.mock('../src/card/reply-mode', () => ({
+  isStreamingEnabled: () => false,
   resolveReplyMode: () => 'static',
   expandAutoMode: ({ mode }: { mode: string }) => mode,
   shouldUseCard: () => false,

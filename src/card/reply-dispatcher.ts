@@ -24,7 +24,7 @@ import { type TypingIndicatorState, addTypingIndicator, removeTypingIndicator } 
 import { splitReasoningText, stripReasoningTags } from './builder';
 import { isCardTableLimitError } from './card-error';
 import type { CreateFeishuReplyDispatcherParams, FeishuReplyDispatcherResult } from './reply-dispatcher-types';
-import { expandAutoMode, resolveReplyMode, shouldUseCard } from './reply-mode';
+import { expandAutoMode, isStreamingEnabled, resolveReplyMode, shouldUseCard } from './reply-mode';
 import { StreamingCardController } from './streaming-card-controller';
 import { UnavailableGuard } from './unavailable-guard';
 
@@ -52,7 +52,7 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
   const effectiveReplyMode = resolveReplyMode({ feishuCfg, chatType });
   const replyMode = expandAutoMode({
     mode: effectiveReplyMode,
-    streaming: feishuCfg?.streaming,
+    streaming: isStreamingEnabled(feishuCfg?.streaming),
     chatType,
   });
   const useStreamingCards = replyMode === 'streaming';

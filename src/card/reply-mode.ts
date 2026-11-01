@@ -17,6 +17,15 @@ import { FEISHU_CARD_TABLE_LIMIT, findMarkdownTablesOutsideCodeBlocks } from './
 
 type ReplyModeValue = 'auto' | 'static' | 'streaming';
 
+/**
+ * Whether `channels.feishu.streaming` turns streaming cards on. Accepts the
+ * legacy boolean and the host's `{ mode }` object, where any mode but "off" is on.
+ */
+export function isStreamingEnabled(streaming: FeishuConfig['streaming']): boolean {
+  if (typeof streaming === 'boolean') return streaming;
+  return streaming?.mode !== undefined && streaming.mode !== 'off';
+}
+
 // ---------------------------------------------------------------------------
 // resolveReplyMode
 // ---------------------------------------------------------------------------
@@ -32,8 +41,7 @@ export function resolveReplyMode(params: {
 }): ReplyModeValue {
   const { feishuCfg, chatType } = params;
 
-  // streaming 布尔总开关：仅 true 时允许流式，未设置或 false 一律 static
-  if (feishuCfg?.streaming !== true) return 'static';
+  if (!isStreamingEnabled(feishuCfg?.streaming)) return 'static';
 
   const replyMode = feishuCfg?.replyMode;
   if (!replyMode) return 'auto';
@@ -63,7 +71,7 @@ export function expandAutoMode(params: {
   const { mode, streaming, chatType } = params;
   if (mode !== 'auto') return mode;
 
-  return streaming === true ? (chatType === 'group' ? 'static' : 'streaming') : 'static';
+  return streaming ? (chatType === 'group' ? 'static' : 'streaming') : 'static';
 }
 
 // ---------------------------------------------------------------------------
