@@ -21,7 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 import { getTicket, withTicket } from '../core/lark-ticket';
 import { resolveCardCallbackOperatorId } from '../core/card-action-operator';
@@ -79,7 +79,7 @@ interface QuestionContext {
   accountId: string;
   senderOpenId: string;
   cardId: string;
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   questions: QuestionItem[];
   threadId?: string;
   chatType?: 'p2p' | 'group';
@@ -205,7 +205,7 @@ function getCheckerFieldName(questionIndex: number, optionIndex: number): string
  *
  * @returns 卡片回调响应，或 undefined 表示非本模块的 action
  */
-export function handleAskUserAction(data: unknown, _cfg: ClawdbotConfig, accountId: string): unknown | undefined {
+export function handleAskUserAction(data: unknown, _cfg: OpenClawConfig, accountId: string): unknown | undefined {
   let action: string | undefined;
   let operationId: string | undefined;
   let senderOpenId: string | undefined;

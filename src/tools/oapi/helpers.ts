@@ -7,7 +7,7 @@
  * 提供 OAPI 工具特有的功能（如时间转换），并复用通用辅助函数。
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { Client as LarkClient } from '@larksuiteoapi/node-sdk';
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ import { createClientGetter, formatToolResult } from '../helpers';
  * }
  * ```
  */
-export function createFeishuClientFromConfig(config: ClawdbotConfig): LarkClient {
+export function createFeishuClientFromConfig(config: OpenClawConfig): LarkClient {
   const getClient = createClientGetter(config);
   return getClient();
 }

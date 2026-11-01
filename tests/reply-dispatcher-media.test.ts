@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('openclaw/plugin-sdk/channel-runtime', () => ({
+vi.mock('openclaw/plugin-sdk/channel-outbound', () => ({
   createReplyPrefixContext: () => ({
     responsePrefix: '',
     responsePrefixContextProvider: () => null,

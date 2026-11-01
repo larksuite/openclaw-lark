@@ -11,7 +11,7 @@
  * 超过 50 个时自动分批处理，每批授权完成后自动发起下一批（链式触发）。
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { getLarkAccount } from '../core/accounts';
 import { LarkClient } from '../core/lark-client';
 import { getAppGrantedScopes } from '../core/app-scope-checker';
@@ -42,7 +42,7 @@ const MAX_SCOPES_PER_BATCH = 100;
  *   4. 每批授权完成后通过 onAuthComplete 回调自动发起下一批
  */
 export async function triggerOnboarding(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   userOpenId: string;
   accountId: string;
 }): Promise<void> {

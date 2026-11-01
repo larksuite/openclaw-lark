@@ -5,7 +5,7 @@
  * Message sending for the Lark/Feishu channel plugin.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuSendResult, MentionInfo  } from '../types';
 import { getLarkAccount } from '../../core/accounts';
 import { LarkClient } from '../../core/lark-client';
@@ -29,7 +29,7 @@ const sendLog = larkLogger('outbound/send');
  * to record after a successful send.
  */
 async function normalizeFeishuOutboundText(
-  cfg: ClawdbotConfig,
+  cfg: OpenClawConfig,
   to: string,
   text: string,
   accountId?: string,
@@ -84,7 +84,7 @@ function recordFeishuSendSentinels(
  * Parameters for sending a text / post message.
  */
 export interface SendFeishuMessageParams {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /** Target identifier (chat_id, open_id, or user_id). */
   to: string;
   /** Message text content (supports Feishu markdown subset). */
@@ -111,7 +111,7 @@ export interface SendFeishuMessageParams {
  * Parameters for sending an interactive card message.
  */
 export interface SendFeishuCardParams {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   /** Target identifier (chat_id, open_id, or user_id). */
   to: string;
   /** The full interactive card JSON payload. */
@@ -340,7 +340,7 @@ export async function sendCardFeishu(params: SendFeishuCardParams): Promise<Feis
  * @param params.accountId - Optional account identifier.
  */
 export async function updateCardFeishu(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   messageId: string;
   card: Record<string, unknown>;
   accountId?: string;
@@ -456,7 +456,7 @@ export function buildI18nMarkdownCard(i18nTexts: Record<string, string>): Record
  * @returns The send result containing the new message ID.
  */
 export async function sendMarkdownCardFeishu(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   to: string;
   text: string;
   replyToMessageId?: string;
@@ -506,7 +506,7 @@ export async function sendMarkdownCardFeishu(params: {
  * @param params.accountId - Optional account identifier.
  */
 export async function editMessageFeishu(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   messageId: string;
   text: string;
   accountId?: string;

@@ -12,7 +12,7 @@
  *   - create: POST /open-apis/wiki/v2/spaces
  */
 
-import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import { Type } from '@sinclair/typebox';
 
 import {

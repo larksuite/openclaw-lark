@@ -7,7 +7,7 @@
  * 提供所有工具通用的模式，减少重复代码。
  */
 
-import type { ClawdbotConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig, OpenClawPluginApi } from 'openclaw/plugin-sdk/core';
 import type { Client as LarkSdkClient } from '@larksuiteoapi/node-sdk';
 import { getEnabledLarkAccounts, getLarkAccount } from '../core/accounts';
 import { LarkClient, getResolvedConfig } from '../core/lark-client';
@@ -97,7 +97,7 @@ export { getResolvedConfig } from '../core/lark-client';
  * }
  * ```
  */
-export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): ClientGetter {
+export function createClientGetter(config: OpenClawConfig, accountIndex = 0): ClientGetter {
   return () => {
     // `config` may be stale after a hot-reload; use live config for account resolution.
     const resolveConfig = getResolvedConfig(config);
@@ -145,7 +145,7 @@ export function createClientGetter(config: ClawdbotConfig, accountIndex = 0): Cl
  * const client = LarkClient.fromAccount(account);
  * ```
  */
-export function getFirstAccount(config: ClawdbotConfig): LarkAccount {
+export function getFirstAccount(config: OpenClawConfig): LarkAccount {
   // `config` may be stale after a hot-reload; use live config for account resolution.
   const resolveConfig = getResolvedConfig(config);
 

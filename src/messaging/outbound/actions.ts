@@ -13,11 +13,8 @@
  * where a single action handles all outbound message types.
  */
 
-import type {
-  ChannelMessageActionAdapter,
-  ChannelMessageActionName,
-  OpenClawConfig,
-} from 'openclaw/plugin-sdk';
+import type { ChannelMessageActionAdapter } from 'openclaw/plugin-sdk/channel-contract';
+import type { ChannelMessageActionName, OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { ChannelMessageToolSchemaContribution, ChannelThreadingToolContext } from 'openclaw/plugin-sdk/channel-contract';
 import { extractToolSend } from 'openclaw/plugin-sdk/tool-send';
 import { readStringParam } from 'openclaw/plugin-sdk/param-readers';

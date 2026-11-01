@@ -5,7 +5,7 @@
  * Shared types for the content converter system.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { LarkAccount } from '../../core/types';
 import type { MentionInfo, ResourceDescriptor } from '../types';
 
@@ -46,7 +46,7 @@ export interface ConvertContext {
   messageId: string;
   botOpenId?: string;
   /** Plugin config — retained for non-converter downstream consumers. */
-  cfg?: ClawdbotConfig;
+  cfg?: OpenClawConfig;
   /**
    * Pre-resolved account — retained for non-converter downstream consumers.
    * merge_forward no longer reads this; it uses injected callbacks instead.

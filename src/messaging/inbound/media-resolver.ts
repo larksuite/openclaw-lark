@@ -9,7 +9,7 @@
  * into the agent envelope.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuMediaInfo, ResourceDescriptor } from '../types';
 import { LarkClient } from '../../core/lark-client';
 import { downloadMessageResourceFeishu } from '../outbound/media';
@@ -23,7 +23,7 @@ import { downloadMessageResourceFeishu } from '../outbound/media';
  * the converter phase.
  */
 export async function downloadResources(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   messageId: string;
   resources: ResourceDescriptor[];
   maxBytes: number;

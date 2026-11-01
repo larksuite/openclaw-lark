@@ -13,7 +13,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { larkLogger } from './lark-logger';
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,7 @@ import { larkLogger } from './lark-logger';
 
 /** Minimal structural type for LarkClient class (avoids circular import). */
 interface LarkClientStatic {
-  fromCfg(cfg: ClawdbotConfig, accountId?: string): { sdk: Lark.Client };
+  fromCfg(cfg: OpenClawConfig, accountId?: string): { sdk: Lark.Client };
 }
 
 let _LarkClient: LarkClientStatic | null = null;
@@ -137,7 +137,7 @@ export function clearChatInfoCache(accountId?: string): void {
  * Results are cached per-account with a 1-hour TTL to minimise OAPI calls.
  */
 export async function isThreadCapableGroup(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   chatId: string;
   accountId?: string;
 }): Promise<boolean> {
@@ -153,7 +153,7 @@ export async function isThreadCapableGroup(params: {
  * Returns `undefined` when the API call fails (best-effort).
  */
 export async function getChatInfo(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   chatId: string;
   accountId?: string;
 }): Promise<ChatInfo | undefined> {
@@ -203,7 +203,7 @@ export async function getChatInfo(params: {
  * Falls back to "p2p" if the API call fails.
  */
 export async function getChatTypeFeishu(params: {
-  cfg: ClawdbotConfig;
+  cfg: OpenClawConfig;
   chatId: string;
   accountId?: string;
 }): Promise<'p2p' | 'group'> {

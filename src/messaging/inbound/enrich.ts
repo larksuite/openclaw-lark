@@ -22,7 +22,7 @@
  * messages are still expanded here via {@link resolveQuotedContent}.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuMediaInfo, MessageContext } from '../types';
 import type { LarkAccount } from '../../core/types';
 import { getMessageFeishu } from '../outbound/fetch';
@@ -150,8 +150,8 @@ export interface ResolveMediaResult {
  */
 export async function resolveMedia(params: {
   ctx: MessageContext;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: OpenClawConfig;
   account: LarkAccount;
   log: (...args: unknown[]) => void;
 }): Promise<ResolveMediaResult> {
@@ -249,8 +249,8 @@ function escapeRegExp(s: string): string {
  */
 export async function resolveQuotedContent(params: {
   ctx: MessageContext;
-  /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-  accountScopedCfg: ClawdbotConfig;
+  /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+  accountScopedCfg: OpenClawConfig;
   account: LarkAccount;
   log: (...args: unknown[]) => void;
 }): Promise<string | undefined> {

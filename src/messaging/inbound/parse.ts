@@ -13,7 +13,7 @@
  * can make API calls during parsing.
  */
 
-import type { ClawdbotConfig } from 'openclaw/plugin-sdk';
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import type { FeishuMessageEvent, MentionInfo, MessageContext } from '../types';
 import { type ConvertContext, convertMessageContent } from '../converters/content-converter';
 import { getLarkAccount } from '../../core/accounts';
@@ -40,8 +40,8 @@ export async function parseMessageEvent(
   event: FeishuMessageEvent,
   botOpenId?: string,
   expandCtx?: {
-    /** account 级别的 ClawdbotConfig（channels.feishu 已替换为 per-account 合并后的配置） */
-    cfg: ClawdbotConfig;
+    /** account 级别的 OpenClawConfig（channels.feishu 已替换为 per-account 合并后的配置） */
+    cfg: OpenClawConfig;
     accountId?: string;
   },
 ): Promise<MessageContext> {
