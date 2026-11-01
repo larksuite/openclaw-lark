@@ -84,7 +84,7 @@ async function monitorSingleAccount(params: {
 
   const ctx: MonitorContext = {
     get cfg() {
-      return LarkClient.runtime.config.loadConfig();
+      return LarkClient.runtime.config.current() as OpenClawConfig;
     },
     lark,
     accountId,

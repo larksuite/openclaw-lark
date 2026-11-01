@@ -11,7 +11,7 @@
 
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/core';
 import { resolveDefaultAgentId } from 'openclaw/plugin-sdk/agent-runtime';
-import { loadSessionStore, resolveSessionStoreEntry, resolveStorePath } from 'openclaw/plugin-sdk/config-runtime';
+import { getSessionEntry } from 'openclaw/plugin-sdk/session-store-runtime';
 import type { FeishuConfig } from '../core/types';
 
 export type ToolUseMode = 'off' | 'on' | 'full';
@@ -55,17 +55,11 @@ function resolveEffectiveVerboseMode(params: {
 
 function resolveSessionVerboseMode(cfg: OpenClawConfig, sessionKey: string, agentId: string): ToolUseMode | undefined {
   try {
-    const cfgWithSession = cfg as { session?: { store?: string }; sessions?: { store?: string } };
-    const sessionStorePath = cfgWithSession.session?.store ?? cfgWithSession.sessions?.store;
-    const storePath = resolveStorePath(sessionStorePath, { agentId });
-    const store = loadSessionStore(storePath);
-    const candidateKeys = resolveCandidateSessionKeys(cfg, sessionKey);
-
-    for (const candidateKey of candidateKeys) {
-      const resolved = resolveSessionStoreEntry({ store, sessionKey: candidateKey });
-      const mode = normalizeToolUseMode(resolved.existing?.verboseLevel);
+    for (const candidate of resolveCandidateSessions(cfg, sessionKey, agentId)) {
+      const existing = getSessionEntry(candidate);
+      const mode = normalizeToolUseMode(existing?.verboseLevel);
       if (mode) return mode;
-      if (resolved.existing) return undefined;
+      if (existing) return undefined;
     }
     return undefined;
   } catch {
@@ -73,11 +67,20 @@ function resolveSessionVerboseMode(cfg: OpenClawConfig, sessionKey: string, agen
   }
 }
 
-function resolveCandidateSessionKeys(cfg: OpenClawConfig, sessionKey: string): string[] {
+export function resolveCandidateSessions(
+  cfg: OpenClawConfig,
+  sessionKey: string,
+  agentId: string,
+): Array<{ agentId: string; sessionKey: string }> {
   const key = sessionKey.trim().toLowerCase();
   const defaultAgentId = resolveDefaultAgentId(cfg as Record<string, unknown>);
   const fallbackKey = key.replace(/^(agent):[^:]+:/, `$1:${defaultAgentId}:`);
-  return fallbackKey !== key ? [key, fallbackKey] : [key];
+  return fallbackKey !== key
+    ? [
+        { agentId, sessionKey: key },
+        { agentId: defaultAgentId, sessionKey: fallbackKey },
+      ]
+    : [{ agentId, sessionKey: key }];
 }
 
 function extractInlineVerboseMode(body?: string): ToolUseMode | undefined {

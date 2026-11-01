@@ -486,24 +486,18 @@ injectLarkClient(LarkClient);
  *
  * The `config` object captured in tool-registration closures may be stale
  * after a hot-reload, so we prefer the live config from
- * `LarkClient.runtime.config.loadConfig()`.  However, `loadConfig()` may
- * return `{}` when the runtime config snapshot has been cleared (e.g. in
- * isolated cron sessions), so we fall back to the closure-captured config
- * when the live result lacks Feishu credentials.
+ * `LarkClient.runtime.config.current()`, and fall back to the captured
+ * config when the live one lacks Feishu credentials.
  *
  * @param fallback - Config to use when the runtime is not yet initialised
- *   or when `loadConfig()` returns an incomplete config.
+ *   or when `current()` returns an incomplete config.
  */
 export function getResolvedConfig(fallback: OpenClawConfig): OpenClawConfig {
   try {
-    const live = LarkClient.runtime.config.loadConfig() as OpenClawConfig;
-    // loadConfig() may return {} (empty config) when runtimeConfigSnapshot
-    // has been cleared (e.g. after writeConfigFile, secrets teardown, or
-    // concurrent cron race conditions in isolated sessions).  In that case
-    // the closure-captured fallback still holds a valid resolved config.
+    const live = LarkClient.runtime.config.current() as OpenClawConfig;
     if (live?.channels?.feishu) return live;
     if (fallback?.channels?.feishu) {
-      log.debug(`loadConfig() returned config without channels.feishu, using fallback`);
+      log.debug(`config.current() returned config without channels.feishu, using fallback`);
       return fallback;
     }
     return live;
